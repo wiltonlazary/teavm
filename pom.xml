@@ -86,6 +86,7 @@
     <module>teavm-tests</module>
     <module>teavm-extras-slf4j</module>
     <module>teavm-jso-impl</module>
+    <module>teavm-jso-webview</module>
   </modules>
 
   <dependencyManagement>
