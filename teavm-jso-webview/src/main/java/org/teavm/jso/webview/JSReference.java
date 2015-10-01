@@ -15,23 +15,40 @@
  */
 package org.teavm.jso.webview;
 
+import netscape.javascript.JSObject;
+
 /**
  *
  * @author Alexey Andreev
  */
-class JSString extends JSValue {
-    private String value;
+class JSReference extends JSValue {
+    JSObject target;
 
-    public JSString(String value) {
-        this.value = value;
+    public JSReference(JSObject target) {
+        this.target = target;
     }
 
-    public String getValue() {
-        return value;
+    public JSObject getTarget() {
+        return target;
     }
 
     @Override
     public JSValueType getType() {
-        return JSValueType.STRING;
+        return JSValueType.REFERENCE;
+    }
+
+    @Override
+    public JSObject asJSObject() {
+        return target;
+    }
+
+    @Override
+    public boolean isWrapped() {
+        return false;
+    }
+
+    @Override
+    public Object asObject() {
+        return target;
     }
 }

@@ -21,19 +21,42 @@ import netscape.javascript.JSObject;
  *
  * @author Alexey Andreev
  */
-class JSObjectReference extends JSValue {
-    JSObject target;
+class JSNumberValue extends JSValue {
+    private Number value;
 
-    public JSObjectReference(JSObject target) {
-        this.target = target;
+    public JSNumberValue(int value) {
+        this.value = value;
     }
 
-    public JSObject getTarget() {
-        return target;
+    public JSNumberValue(double value) {
+        this.value = value;
+    }
+
+    public JSNumberValue(Number value) {
+        this.value = value;
+    }
+
+    public Number getValue() {
+        return value;
     }
 
     @Override
     public JSValueType getType() {
-        return JSValueType.REFERENCE;
+        return JSValueType.NUMBER;
+    }
+
+    @Override
+    public JSObject asJSObject() {
+        return (JSObject) JS.getAccessor().call("unmarshallPrimitive", value);
+    }
+
+    @Override
+    public boolean isWrapped() {
+        return true;
+    }
+
+    @Override
+    public Object asObject() {
+        return value;
     }
 }

@@ -15,10 +15,37 @@
  */
 package org.teavm.jso.webview;
 
+import netscape.javascript.JSObject;
+
 /**
  *
  * @author Alexey Andreev
  */
 abstract class JSValue implements org.teavm.jso.JSObject {
     public abstract JSValueType getType();
+
+    public abstract JSObject asJSObject();
+
+    public abstract Object asObject();
+
+    public abstract boolean isWrapped();
+
+    public static JSValue from(Object value) {
+        if (value == null) {
+            return null;
+        }
+
+        if (value instanceof Boolean) {
+            return new JSBooleanValue((Boolean) value);
+        } else if (value instanceof Number) {
+            return new JSNumberValue((Number) value);
+        } else if (value instanceof String) {
+            return new JSStringValue((String) value);
+        } else if (value instanceof JSObject) {
+            return new JSReference((JSObject) value);
+        } else {
+            throw new IllegalArgumentException("Can't convert value of type " + value.getClass().getName()
+                    + " to JS value");
+        }
+    }
 }

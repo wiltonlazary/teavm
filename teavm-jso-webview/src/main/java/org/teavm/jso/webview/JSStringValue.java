@@ -15,23 +15,40 @@
  */
 package org.teavm.jso.webview;
 
+import netscape.javascript.JSObject;
+
 /**
  *
  * @author Alexey Andreev
  */
-class JSBoolean extends JSValue {
-    private boolean value;
+class JSStringValue extends JSValue {
+    private String value;
 
-    public JSBoolean(boolean value) {
+    public JSStringValue(String value) {
         this.value = value;
     }
 
-    public boolean getValue() {
+    public String getValue() {
         return value;
     }
 
     @Override
     public JSValueType getType() {
-        return JSValueType.BOOLEAN;
+        return JSValueType.STRING;
+    }
+
+    @Override
+    public JSObject asJSObject() {
+        return (JSObject) JS.getAccessor().call("unmarshallPrimitive", value);
+    }
+
+    @Override
+    public boolean isWrapped() {
+        return true;
+    }
+
+    @Override
+    public Object asObject() {
+        return value;
     }
 }

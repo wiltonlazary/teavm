@@ -15,6 +15,8 @@
  */
 package org.teavm.jso.webview;
 
+import netscape.javascript.JSObject;
+
 /**
  *
  * @author Alexey Andreev
@@ -32,5 +34,20 @@ class JSUndefined extends JSValue {
     @Override
     public JSValueType getType() {
         return JSValueType.UNDEFINED;
+    }
+
+    @Override
+    public JSObject asJSObject() {
+        return (JSObject) JS.getAccessor().call("unmarshallUndefined");
+    }
+
+    @Override
+    public boolean isWrapped() {
+        return true;
+    }
+
+    @Override
+    public Object asObject() {
+        return null;
     }
 }
