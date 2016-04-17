@@ -98,11 +98,7 @@ public final class Runtime {
     }
 
     private static PlatformObject wrapArray(PlatformClass cls, JSArrayReader<? extends JSObject> data) {
-        return arrayClass(cls).newInstance(data);
-    }
-
-    private static PlatformObject createUnfilledArray(PlatformClass cls, int sz) {
-        return wrapArray(cls, JSArray.create(sz));
+        return arrayClass(cls).newArrayInstance(data);
     }
 
     private static PlatformObject createLongArray(int sz) {
@@ -114,14 +110,14 @@ public final class Runtime {
         return arr;
     }
 
-    private static ArrayConstructor arrayClass(PlatformClass cls) {
+    public static PlatformClass arrayClass(PlatformClass cls) {
         if (cls.getMetadata().getArray() == null) {
-            PlatformClass arraycls = createArrayClass(newInstance(PlatformClass.OBJECT));
-            PlatformClass.init(arraycls);
-            fillArrayClass(arraycls, cls, PlatformClass.OBJECT);
-            cls.getMetadata().setArray(arraycls);
+            PlatformClass arrayCls = createArrayClass(newInstance(PlatformClass.OBJECT));
+            PlatformClass.init(arrayCls);
+            fillArrayClass(arrayCls, cls, PlatformClass.OBJECT);
+            cls.getMetadata().setArray(arrayCls);
         }
-        return (ArrayConstructor) cls.getMetadata().getArray();
+        return cls.getMetadata().getArray();
     }
 
     @JSBody(params = "prototype", script = ""
@@ -202,7 +198,7 @@ public final class Runtime {
     }
 
     private static PlatformObject createNumericTypedArray(PlatformClass itemType, JSObject data) {
-        return arrayClass(itemType).newInstance(data);
+        return arrayClass(itemType).newArrayInstance(data);
     }
 
     private static PlatformObject createNumericUntypedArray(PlatformClass itemType, int size) {
@@ -217,9 +213,121 @@ public final class Runtime {
     @JSBody(params = {}, script = "return typeof this.ArrayBuffer !== 'undefined';")
     private static native boolean typedArraysAvailable();
 
-    static abstract class ArrayConstructor extends PlatformClass {
-        @JSBody(params = "data", script = "return new this(data);")
-        public native PlatformObject newInstance(JSObject data);
+    public static PlatformObject nullCheck(PlatformObject obj) {
+        if (obj == null) {
+            throw new NullPointerException();
+        }
+        return obj;
+    }
+
+    public static PlatformObject createMultiArray(PlatformClass cls, JSArray<JSNumber> dimensions) {
+        JSArray<PlatformObject> arrays = JSArray.create(primitiveArrayCount(dimensions));
+        int firstDim = dimensions.get(0).intValue();
+        for (int i = 0; i < arrays.getLength(); ++i) {
+            arrays.set(i, createArray(cls, firstDim));
+        }
+        return createMultiArrayImpl(cls, arrays, dimensions);
+    }
+
+    public static PlatformObject createBooleanMultiArray(JSArray<JSNumber> dimensions) {
+        JSArray<PlatformObject> arrays = JSArray.create(primitiveArrayCount(dimensions));
+        int firstDim = dimensions.get(0).intValue();
+        for (int i = 0; i < arrays.getLength(); ++i) {
+            arrays.set(i, createByteArray(firstDim));
+        }
+        return createMultiArrayImpl(PlatformClass.BYTE, arrays, dimensions);
+    }
+
+    public static PlatformObject createByteMultiArray(JSArray<JSNumber> dimensions) {
+        JSArray<PlatformObject> arrays = JSArray.create(primitiveArrayCount(dimensions));
+        int firstDim = dimensions.get(0).intValue();
+        for (int i = 0; i < arrays.getLength(); ++i) {
+            arrays.set(i, createBooleanArray(firstDim));
+        }
+        return createMultiArrayImpl(PlatformClass.BOOLEAN, arrays, dimensions);
+    }
+
+    public static PlatformObject createShortMultiArray(JSArray<JSNumber> dimensions) {
+        JSArray<PlatformObject> arrays = JSArray.create(primitiveArrayCount(dimensions));
+        int firstDim = dimensions.get(0).intValue();
+        for (int i = 0; i < arrays.getLength(); ++i) {
+            arrays.set(i, createShortArray(firstDim));
+        }
+        return createMultiArrayImpl(PlatformClass.SHORT, arrays, dimensions);
+    }
+
+    public static PlatformObject createCharMultiArray(JSArray<JSNumber> dimensions) {
+        JSArray<PlatformObject> arrays = JSArray.create(primitiveArrayCount(dimensions));
+        int firstDim = dimensions.get(0).intValue();
+        for (int i = 0; i < arrays.getLength(); ++i) {
+            arrays.set(i, createCharArray(firstDim));
+        }
+        return createMultiArrayImpl(PlatformClass.CHAR, arrays, dimensions);
+    }
+
+    public static PlatformObject createIntMultiArray(JSArray<JSNumber> dimensions) {
+        JSArray<PlatformObject> arrays = JSArray.create(primitiveArrayCount(dimensions));
+        int firstDim = dimensions.get(0).intValue();
+        for (int i = 0; i < arrays.getLength(); ++i) {
+            arrays.set(i, createIntArray(firstDim));
+        }
+        return createMultiArrayImpl(PlatformClass.INT, arrays, dimensions);
+    }
+
+    public static PlatformObject createLongMultiArray(JSArray<JSNumber> dimensions) {
+        JSArray<PlatformObject> arrays = JSArray.create(primitiveArrayCount(dimensions));
+        int firstDim = dimensions.get(0).intValue();
+        for (int i = 0; i < arrays.getLength(); ++i) {
+            arrays.set(i, createLongArray(firstDim));
+        }
+        return createMultiArrayImpl(PlatformClass.LONG, arrays, dimensions);
+    }
+
+    public static PlatformObject createFloatMultiArray(JSArray<JSNumber> dimensions) {
+        JSArray<PlatformObject> arrays = JSArray.create(primitiveArrayCount(dimensions));
+        int firstDim = dimensions.get(0).intValue();
+        for (int i = 0; i < arrays.getLength(); ++i) {
+            arrays.set(i, createFloatArray(firstDim));
+        }
+        return createMultiArrayImpl(PlatformClass.FLOAT, arrays, dimensions);
+    }
+
+    public static PlatformObject createDoubleMultiArray(JSArray<JSNumber> dimensions) {
+        JSArray<PlatformObject> arrays = JSArray.create(primitiveArrayCount(dimensions));
+        int firstDim = dimensions.get(0).intValue();
+        for (int i = 0; i < arrays.getLength(); ++i) {
+            arrays.set(i, createDoubleArray(firstDim));
+        }
+        return createMultiArrayImpl(PlatformClass.DOUBLE, arrays, dimensions);
+    }
+
+    private static PlatformObject createMultiArrayImpl(PlatformClass cls, JSArray<PlatformObject> arrays,
+            JSArrayReader<JSNumber> dimensions) {
+        int limit = arrays.getLength();
+        for (int i = 1; i < dimensions.getLength(); ++i) {
+            cls = arrayClass(cls);
+            int dim = dimensions.get(i).intValue();
+            int index = 0;
+            int packedIndex = 0;
+            while (index < limit) {
+                JSArray<PlatformObject> data = JSArray.create(dim);
+                PlatformObject arr = wrapArray(cls, data);
+                for (int j = 0; j < dim; ++j) {
+                    data.set(j, arrays.get(index++));
+                }
+                arrays.set(packedIndex++, arr);
+            }
+            limit = packedIndex;
+        }
+        return arrays.get(0);
+    }
+
+    private static int primitiveArrayCount(JSArrayReader<JSNumber> dimensions) {
+        int val = dimensions.get(1).intValue();
+        for (int i = 2; i < dimensions.getLength(); ++i) {
+            val *= dimensions.get(i).intValue();
+        }
+        return val;
     }
 
     private interface PrimitiveArrayFactory {

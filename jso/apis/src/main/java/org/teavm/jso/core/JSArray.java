@@ -19,11 +19,6 @@ import org.teavm.jso.JSBody;
 import org.teavm.jso.JSIndexer;
 import org.teavm.jso.JSObject;
 
-/**
- *
- * @author Alexey Andreev
- * @param <T>
- */
 public abstract class JSArray<T extends JSObject> implements JSArrayReader<T> {
     private JSArray() {
     }

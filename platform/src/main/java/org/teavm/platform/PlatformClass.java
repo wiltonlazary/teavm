@@ -76,4 +76,7 @@ public abstract class PlatformClass implements JSObject {
             + "meta.enum = false;\n"
             + "meta.item = null;")
     private static native void fillPrimitive(PlatformClass cls, PlatformString name, PlatformString binaryName);
+
+    @JSBody(params = "data", script = "return new this(data);")
+    public native PlatformObject newArrayInstance(JSObject data);
 }

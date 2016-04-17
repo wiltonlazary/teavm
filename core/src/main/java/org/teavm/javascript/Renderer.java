@@ -215,7 +215,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
             return;
         }
         try {
-            writer.append("$rt_stringPool([");
+            writer.appendMethodBody(PlatformNames.STRING_INIT_POOL).append("([");
             for (int i = 0; i < stringPool.size(); ++i) {
                 if (i > 0) {
                     writer.append(',').ws();
@@ -226,109 +226,6 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
         } catch (IOException e) {
             throw new RenderingException("IO error", e);
         }
-    }
-
-    public void renderRuntime() throws RenderingException {
-        try {
-            renderRuntimeCls();
-            renderRuntimeString();
-            renderRuntimeUnwrapString();
-            renderRuntimeObjcls();
-            renderRuntimeNullCheck();
-            renderRuntimeIntern();
-            renderRuntimeThreads();
-        } catch (NamingException e) {
-            throw new RenderingException("Error rendering runtime methods. See a cause for details", e);
-        } catch (IOException e) {
-            throw new RenderingException("IO error", e);
-        }
-    }
-
-    private void renderRuntimeCls() throws IOException {
-        writer.append("function $rt_cls(cls)").ws().append("{").softNewLine().indent();
-        writer.append("return ").appendMethodBody("java.lang.Class", "getClass",
-                ValueType.object("org.teavm.platform.PlatformClass"),
-                ValueType.object("java.lang.Class")).append("(cls);")
-                .softNewLine();
-        writer.outdent().append("}").newLine();
-    }
-
-    private void renderRuntimeString() throws IOException {
-        MethodReference stringCons = new MethodReference(String.class, "<init>", char[].class, void.class);
-        writer.append("function $rt_str(str) {").indent().softNewLine();
-        writer.append("if (str===null){").indent().softNewLine();
-        writer.append("return null;").softNewLine();
-        writer.outdent().append("}").softNewLine();
-        writer.append("var characters = $rt_createCharArray(str.length);").softNewLine();
-        writer.append("var charsBuffer = characters.data;").softNewLine();
-        writer.append("for (var i = 0; i < str.length; i = (i + 1) | 0) {").indent().softNewLine();
-        writer.append("charsBuffer[i] = str.charCodeAt(i) & 0xFFFF;").softNewLine();
-        writer.outdent().append("}").softNewLine();
-        writer.append("return ").append(naming.getNameForInit(stringCons)).append("(characters);").softNewLine();
-        writer.outdent().append("}").newLine();
-    }
-
-    private void renderRuntimeUnwrapString() throws IOException {
-        MethodReference stringLen = new MethodReference(String.class, "length", int.class);
-        MethodReference getChars = new MethodReference(String.class, "getChars", int.class, int.class,
-                char[].class, int.class, void.class);
-        writer.append("function $rt_ustr(str) {").indent().softNewLine();
-        writer.append("var result = \"\";").softNewLine();
-        writer.append("var sz = ").appendMethodBody(stringLen).append("(str);").softNewLine();
-        writer.append("var array = $rt_createCharArray(sz);").softNewLine();
-        writer.appendMethodBody(getChars).append("(str, 0, sz, array, 0);").softNewLine();
-        writer.append("for (var i = 0; i < sz; i = (i + 1) | 0) {").indent().softNewLine();
-        writer.append("result += String.fromCharCode(array.data[i]);").softNewLine();
-        writer.outdent().append("}").softNewLine();
-        writer.append("return result;").softNewLine();
-        writer.outdent().append("}").newLine();
-    }
-
-    private void renderRuntimeNullCheck() throws IOException {
-        writer.append("function $rt_nullCheck(val) {").indent().softNewLine();
-        writer.append("if (val === null) {").indent().softNewLine();
-        writer.append("$rt_throw(").append(naming.getNameForInit(new MethodReference(NullPointerException.class,
-                "<init>", void.class))).append("());").softNewLine();
-        writer.outdent().append("}").softNewLine();
-        writer.append("return val;").softNewLine();
-        writer.outdent().append("}").newLine();
-    }
-
-    private void renderRuntimeIntern() throws IOException {
-        writer.append("function $rt_intern(str) {").indent().softNewLine();
-        writer.append("return ").appendMethodBody(new MethodReference(String.class, "intern", String.class))
-            .append("(str);").softNewLine();
-        writer.outdent().append("}").newLine();
-    }
-
-    private void renderRuntimeObjcls() throws IOException {
-        writer.append("function $rt_objcls() { return ").appendClass("java.lang.Object").append("; }").newLine();
-    }
-
-    private void renderRuntimeThreads() throws IOException {
-        writer.append("function $rt_getThread()").ws().append("{").indent().softNewLine();
-        writer.append("return ").appendMethodBody(Thread.class, "currentThread", Thread.class).append("();")
-                .softNewLine();
-        writer.outdent().append("}").newLine();
-
-        writer.append("function $rt_setThread(t)").ws().append("{").indent().softNewLine();
-        writer.append("return ").appendMethodBody(Thread.class, "setCurrentThread", Thread.class, void.class)
-                .append("(t);").softNewLine();
-        writer.outdent().append("}").newLine();
-    }
-
-    private void renderRuntimeAliases() throws IOException {
-        String[] names = { "$rt_throw", "$rt_compare", "$rt_nullCheck", "$rt_cls", "$rt_createArray",
-                "$rt_isInstance", "$rt_nativeThread", "$rt_suspending", "$rt_resuming", "$rt_invalidPointer" };
-        boolean first = true;
-        for (String name : names) {
-            if (!first) {
-                writer.softNewLine();
-            }
-            first = false;
-            writer.append("var ").appendFunction(name).ws().append('=').ws().append(name).append(";").softNewLine();
-        }
-        writer.newLine();
     }
 
     public void render(List<ClassNode> classes) throws RenderingException {
@@ -342,13 +239,6 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
             orderer.apply(naming);
         }
 
-        if (minifying) {
-            try {
-                renderRuntimeAliases();
-            } catch (IOException e) {
-                throw new RenderingException(e);
-            }
-        }
         for (ClassNode cls : classes) {
             renderDeclaration(cls);
         }
@@ -669,7 +559,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 Renderer.this.async = methodNode.isAsync();
                 methodNode.getGenerator().generate(this, writer, methodNode.getReference());
             } catch (IOException e) {
-                throw new RenderingException("IO error occured", e);
+                throw new RenderingException("IO error occurred", e);
             }
         }
 
@@ -713,7 +603,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 currentPart = 0;
                 method.getBody().acceptVisitor(Renderer.this);
             } catch (IOException e) {
-                throw new RenderingException("IO error occured", e);
+                throw new RenderingException("IO error occurred", e);
             }
         }
 
@@ -825,7 +715,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 writer.append(pointerName()).append(");");
                 writer.softNewLine();
             } catch (IOException e) {
-                throw new RenderingException("IO error occured", e);
+                throw new RenderingException("IO error occurred", e);
             }
         }
 
@@ -877,7 +767,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
 
     private void appendMonitor(MethodNode methodNode) throws IOException {
         if (methodNode.getModifiers().contains(NodeModifier.STATIC)) {
-            writer.appendFunction("$rt_cls").append("(")
+            writer.appendMethodBody(PlatformNames.CREATE_CLASS).append("(")
                     .appendClass(methodNode.getReference().getClassName()).append(")");
         } else {
             writer.append(variableName(0));
@@ -948,7 +838,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                         variableName(receiver.getIndex()));
             }
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -990,7 +880,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
             }
             writer.outdent().append("}").softNewLine();
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -1038,7 +928,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
             }
             writer.outdent().append("}").softNewLine();
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -1073,7 +963,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
             end = oldEnd;
             writer.outdent().append("}").softNewLine();
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -1103,7 +993,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
             visitStatements(statement.getBody());
             writer.outdent().append("}").softNewLine();
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -1123,7 +1013,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 popLocation();
             }
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -1143,7 +1033,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 popLocation();
             }
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -1167,7 +1057,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 popLocation();
             }
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -1188,7 +1078,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 popLocation();
             }
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -1212,7 +1102,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 popLocation();
             }
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -1327,7 +1217,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 popLocation();
             }
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -1397,7 +1287,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 visitBinary(expr, "+");
                 break;
             case ADD_LONG:
-                visitBinaryFunction(expr, "Long_add");
+                visitBinaryFunction(expr, naming.getFullNameFor(PlatformNames.LONG_ADD));
                 break;
             case SUBTRACT:
                 visitBinary(expr, "-");
@@ -1535,13 +1425,13 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                     writer.append(".length");
                     break;
                 case INT_TO_LONG:
-                    writer.append("Long_fromInt(");
+                    writer.appendMethodBody(PlatformNames.LONG_FROM_INT);
                     precedence = Precedence.min();
                     expr.getOperand().acceptVisitor(this);
                     writer.append(')');
                     break;
                 case NUM_TO_LONG:
-                    writer.append("Long_fromNumber(");
+                    writer.appendMethodBody(PlatformNames.LONG_FROM_NUMBER);
                     precedence = Precedence.min();
                     expr.getOperand().acceptVisitor(this);
                     writer.append(')');
@@ -1603,7 +1493,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                     }
                     break;
                 case NULL_CHECK:
-                    writer.appendFunction("$rt_nullCheck").append("(");
+                    writer.appendMethodBody(PlatformNames.RUNTIME_NULL_CHECK).append("(");
                     precedence = Precedence.min();
                     expr.getOperand().acceptVisitor(this);
                     writer.append(')');
@@ -1675,7 +1565,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
         }
         if (cst instanceof ValueType) {
             ValueType type = (ValueType) cst;
-            return naming.getNameForFunction("$rt_cls") + "(" + typeToClsString(naming, type) + ")";
+            return naming.getFullNameFor(PlatformNames.CREATE_CLASS) + "(" + typeToClsString(naming, type) + ")";
         } else if (cst instanceof String) {
             String string = (String) cst;
             Integer index = stringPoolMap.get(string);
@@ -1684,7 +1574,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 stringPool.add(string);
                 stringPoolMap.put(string, index);
             }
-            return "$rt_s(" + index + ")";
+            return naming.getFullNameFor(PlatformNames.STRING_GET_FROM_POOL) + "(" + index + ")";
         } else if (cst instanceof Long) {
             long value = (Long) cst;
             if (value == 0) {
@@ -1748,7 +1638,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
         }
 
         for (int i = 0; i < arrayCount; ++i) {
-            value = "$rt_arraycls(" + value + ")";
+            value = naming.getFullNameFor(PlatformNames.RUNTIME_ARRAY_CLASS) + "(" + value + ")";
         }
         return value;
     }
@@ -2062,33 +1952,33 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
             if (type instanceof ValueType.Primitive) {
                 switch (((ValueType.Primitive) type).getKind()) {
                     case BOOLEAN:
-                        writer.append("$rt_createBooleanMultiArray(");
+                        writer.appendMethodBody(PlatformNames.RUNTIME_CREATE_BOOLEAN_MULTI_ARRAY).append('(');
                         break;
                     case BYTE:
-                        writer.append("$rt_createByteMultiArray(");
+                        writer.appendMethodBody(PlatformNames.RUNTIME_CREATE_BYTE_MULTI_ARRAY).append('(');
                         break;
                     case SHORT:
-                        writer.append("$rt_createShortMultiArray(");
+                        writer.appendMethodBody(PlatformNames.RUNTIME_CREATE_SHORT_MULTI_ARRAY).append('(');
                         break;
                     case INTEGER:
-                        writer.append("$rt_createIntMultiArray(");
+                        writer.appendMethodBody(PlatformNames.RUNTIME_CREATE_INT_MULTI_ARRAY).append('(');
                         break;
                     case LONG:
-                        writer.append("$rt_createLongMultiArray(");
+                        writer.appendMethodBody(PlatformNames.RUNTIME_CREATE_LONG_MULTI_ARRAY).append('(');
                         break;
                     case FLOAT:
-                        writer.append("$rt_createFloatMultiArray(");
+                        writer.appendMethodBody(PlatformNames.RUNTIME_CREATE_FLOAT_MULTI_ARRAY).append('(');
                         break;
                     case DOUBLE:
-                        writer.append("$rt_createDoubleMultiArray(");
+                        writer.appendMethodBody(PlatformNames.RUNTIME_CREATE_DOUBLE_MULTI_ARRAY).append('(');
                         break;
                     case CHARACTER:
-                        writer.append("$rt_createCharMultiArray(");
+                        writer.appendMethodBody(PlatformNames.RUNTIME_CREATE_CHAR_MULTI_ARRAY).append('(');
                         break;
                 }
             } else {
-                writer.append("$rt_createMultiArray(").append(typeToClsString(naming, expr.getType()))
-                        .append(",").ws();
+                writer.appendMethodBody(PlatformNames.RUNTIME_CREATE_MULTI_ARRAY).append('(')
+                        .append(typeToClsString(naming, expr.getType())).append(",").ws();
             }
             writer.append("[");
             boolean first = true;
@@ -2191,7 +2081,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
             writer.outdent().append("}").softNewLine();
             writer.outdent().append("}").softNewLine();
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -2206,7 +2096,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 writer.append("continue ").append(mainLoopName()).append(";").softNewLine();
             }
         } catch (IOException ex) {
-            throw new RenderingException("IO error occured", ex);
+            throw new RenderingException("IO error occurred", ex);
         }
     }
 
@@ -2230,7 +2120,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 writer.append(");").softNewLine();
             }
         } catch (IOException ex) {
-            throw new RenderingException("IO error occured", ex);
+            throw new RenderingException("IO error occurred", ex);
         }
     }
 
@@ -2260,7 +2150,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 writer.append(");").softNewLine();
             }
         } catch (IOException ex) {
-            throw new RenderingException("IO error occured", ex);
+            throw new RenderingException("IO error occurred", ex);
         }
     }
 

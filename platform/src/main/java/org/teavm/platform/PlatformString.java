@@ -15,11 +15,18 @@
  */
 package org.teavm.platform;
 
+import java.util.HashMap;
+import java.util.Map;
 import org.teavm.jso.JSBody;
 import org.teavm.jso.JSObject;
 import org.teavm.jso.JSProperty;
+import org.teavm.jso.core.JSArray;
 
 public abstract class PlatformString implements JSObject {
+    private static JSArray<PlatformObject> pool;
+
+    private static Map<String, String> internMap = new HashMap<>();
+
     public abstract PlatformString toUpperCase();
 
     public abstract PlatformString toLowerCase();
@@ -40,4 +47,25 @@ public abstract class PlatformString implements JSObject {
 
     @JSBody(params = "other", script = "return this + other;")
     public native PlatformString concat(PlatformString other);
+
+    public static PlatformObject getFromPool(int index) {
+        return pool.get(index);
+    }
+
+    public static void initPool(JSArray<PlatformString> strings) {
+        int length = strings.getLength();
+        pool = JSArray.create(length);
+        for (int i = 0; i < length; ++i) {
+            pool.set(i, Platform.getPlatformObject(intern(asString(strings.get(i)))));
+        }
+    }
+
+    public static String intern(String str) {
+        String result = internMap.get(str);
+        if (result == null) {
+            result = str;
+            internMap.put(str, str);
+        }
+        return result;
+    }
 }

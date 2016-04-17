@@ -448,7 +448,6 @@ public class TeaVM implements TeaVMHost, ServiceRepository {
                 listener.begin(renderer, target);
             }
             sourceWriter.append("\"use strict\";").newLine();
-            renderer.renderRuntime();
             renderer.render(clsNodes);
             renderer.renderStringPool();
             for (Map.Entry<String, TeaVMEntryPoint> entry : entryPoints.entrySet()) {

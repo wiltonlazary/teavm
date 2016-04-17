@@ -24,7 +24,10 @@ public final class PlatformNames {
     public static final String RUNTIME = "org.teavm.platform.Runtime";
     public static final String OBJECT = "org.teavm.platform.PlatformObject";
     public static final String CLASS = "org.teavm.platform.PlatformClass";
+    public static final String STRING = "org.teavm.platform.PlatformString";
     public static final String EXCEPTION = "org.teavm.platform.PlatformException";
+    public static final String LONG = "org.teavm.platform.PlatformLong";
+    private static final String JS_ARRAY = "org.teavm.jso.core.JSArray";
 
     public static final MethodReference RUNTIME_COMPARE = new MethodReference(RUNTIME, "compare", ValueType.DOUBLE,
             ValueType.DOUBLE, ValueType.INTEGER);
@@ -48,6 +51,30 @@ public final class PlatformNames {
             "createDoubleArray", ValueType.INTEGER, object(OBJECT));
     public static final MethodReference RUNTIME_CREATE_ARRAY = new MethodReference(RUNTIME,
             "createArray", object(CLASS), ValueType.INTEGER, object(OBJECT));
+    public static final MethodReference RUNTIME_ARRAY_CLASS = new MethodReference(RUNTIME,
+            "arrayClass", object(CLASS), object(CLASS));
+
+    public static final MethodReference RUNTIME_CREATE_MULTI_ARRAY = new MethodReference(RUNTIME,
+            "createMultiArray", object(CLASS), object(JS_ARRAY), object(OBJECT));
+    public static final MethodReference RUNTIME_CREATE_BOOLEAN_MULTI_ARRAY = new MethodReference(RUNTIME,
+            "createBooleanMultiArray", object(JS_ARRAY), object(OBJECT));
+    public static final MethodReference RUNTIME_CREATE_BYTE_MULTI_ARRAY = new MethodReference(RUNTIME,
+            "createByteMultiArray", object(JS_ARRAY), object(OBJECT));
+    public static final MethodReference RUNTIME_CREATE_CHAR_MULTI_ARRAY = new MethodReference(RUNTIME,
+            "createCharMultiArray", object(JS_ARRAY), object(OBJECT));
+    public static final MethodReference RUNTIME_CREATE_SHORT_MULTI_ARRAY = new MethodReference(RUNTIME,
+            "createShortMultiArray", object(JS_ARRAY), object(OBJECT));
+    public static final MethodReference RUNTIME_CREATE_INT_MULTI_ARRAY = new MethodReference(RUNTIME,
+            "createIntMultiArray", object(JS_ARRAY), object(OBJECT));
+    public static final MethodReference RUNTIME_CREATE_LONG_MULTI_ARRAY = new MethodReference(RUNTIME,
+            "createLongMultiArray", object(JS_ARRAY), object(OBJECT));
+    public static final MethodReference RUNTIME_CREATE_FLOAT_MULTI_ARRAY = new MethodReference(RUNTIME,
+            "createFloatMultiArray", object(JS_ARRAY), object(OBJECT));
+    public static final MethodReference RUNTIME_CREATE_DOUBLE_MULTI_ARRAY = new MethodReference(RUNTIME,
+            "createDoubleMultiArray", object(JS_ARRAY), object(OBJECT));
+
+    public static final MethodReference RUNTIME_NULL_CHECK = new MethodReference(RUNTIME,
+            "nullCheck", object(OBJECT), object(OBJECT));
 
     public static final FieldReference CLASS_VOID = new FieldReference(CLASS, "VOID");
     public static final FieldReference CLASS_BOOLEAN = new FieldReference(CLASS, "BOOLEAN");
@@ -59,8 +86,23 @@ public final class PlatformNames {
     public static final FieldReference CLASS_FLOAT = new FieldReference(CLASS, "FLOAT");
     public static final FieldReference CLASS_DOUBLE = new FieldReference(CLASS, "DOUBLE");
 
+    public static final MethodReference STRING_INIT_POOL = new MethodReference(STRING, "initPool",
+            object(JS_ARRAY), ValueType.VOID);
+    public static final MethodReference STRING_GET_FROM_POOL = new MethodReference(STRING, "getFromPool",
+            ValueType.INTEGER, object(OBJECT));
+
+    public static final MethodReference LONG_ADD = new MethodReference(LONG, "add", object(LONG), object(LONG),
+            object(LONG));
+    public static final MethodReference LONG_FROM_INT = new MethodReference(LONG, "fromInt", ValueType.INTEGER,
+            object(LONG));
+    public static final MethodReference LONG_FROM_NUMBER = new MethodReference(LONG, "fromNumber", ValueType.DOUBLE,
+            object(LONG));
+
     public static final MethodReference EXCEPTION_RAISE = new MethodReference(EXCEPTION, "raise", object(OBJECT),
             ValueType.VOID);
+
+    public static final MethodReference CREATE_CLASS = new MethodReference("java.lang.Class", "getClass",
+            object(CLASS), object("java.lang.Class"));
 
     private PlatformNames() {
     }
