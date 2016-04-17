@@ -18,13 +18,18 @@ package org.teavm.platform;
 import org.teavm.jso.JSObject;
 import org.teavm.jso.JSProperty;
 
-/**
- *
- * @author Alexey Andreev
- */
 public interface PlatformClassMetadata extends JSObject {
     @JSProperty("item")
     PlatformClass getArrayItem();
+
+    @JSProperty("item")
+    void setArrayItem(PlatformClass cls);
+
+    @JSProperty
+    PlatformClass getArray();
+
+    @JSProperty
+    void setArray(PlatformClass cls);
 
     @JSProperty
     PlatformSequence<PlatformClass> getSupertypes();
@@ -33,7 +38,10 @@ public interface PlatformClassMetadata extends JSObject {
     PlatformClass getSuperclass();
 
     @JSProperty
-    String getName();
+    PlatformString getName();
+
+    @JSProperty
+    PlatformString getBinaryName();
 
     @JSProperty
     boolean isPrimitive();

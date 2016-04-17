@@ -18,10 +18,6 @@ package org.teavm.platform;
 import org.teavm.jso.JSObject;
 import org.teavm.jso.JSProperty;
 
-/**
- *
- * @author Alexey Andreev
- */
 public interface PlatformObject extends JSObject {
     @JSProperty("constructor")
     PlatformClass getPlatformClass();

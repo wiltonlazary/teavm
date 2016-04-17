@@ -15,16 +15,29 @@
  */
 package org.teavm.platform;
 
+import org.teavm.jso.JSBody;
 import org.teavm.jso.JSObject;
+import org.teavm.jso.JSProperty;
 
-/**
- *
- * @author Alexey Andreev
- */
-public interface PlatformString extends JSObject {
-    PlatformString toUpperCase();
+public abstract class PlatformString implements JSObject {
+    public abstract PlatformString toUpperCase();
 
-    PlatformString toLowerCase();
+    public abstract PlatformString toLowerCase();
 
-    int charCodeAt(int index);
+    public abstract int charCodeAt(int index);
+
+    @JSProperty
+    public abstract int getLength();
+
+    public static String asString(PlatformString string) {
+        int length = string.getLength();
+        char[] data = new char[length];
+        for (int i = 0; i < length; ++i) {
+            data[i] = (char) string.charCodeAt(i);
+        }
+        return new String(data);
+    }
+
+    @JSBody(params = "other", script = "return this + other;")
+    public native PlatformString concat(PlatformString other);
 }

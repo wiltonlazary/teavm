@@ -26,10 +26,6 @@ import org.teavm.platform.metadata.ClassResource;
 import org.teavm.platform.metadata.StaticFieldResource;
 import org.teavm.platform.plugin.PlatformGenerator;
 
-/**
- *
- * @author Alexey Andreev
- */
 public final class Platform {
     private Platform() {
     }
@@ -140,4 +136,10 @@ public final class Platform {
     public static PlatformString stringFromCharCode(int charCode) {
         return ((PlatformHelper) Window.current()).getStringClass().fromCharCode(charCode);
     }
+
+    @InjectedBy(PlatformGenerator.class)
+    public static native PlatformClass getPlatformClass(Class cls);
+
+    @InjectedBy(PlatformGenerator.class)
+    public static native PlatformString getPlatformString(String value);
 }

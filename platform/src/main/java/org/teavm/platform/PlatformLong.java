@@ -1,5 +1,5 @@
 /*
- *  Copyright 2014 Alexey Andreev.
+ *  Copyright 2016 Alexey Andreev.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -13,21 +13,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package org.teavm.jso.typedarrays;
+package org.teavm.platform;
 
 import org.teavm.jso.JSObject;
-import org.teavm.jso.JSProperty;
 
-public abstract class ArrayBufferView implements JSObject {
-    protected ArrayBufferView() {
-    }
-
-    @JSProperty
-    public abstract int getLength();
-
-    @JSProperty
-    public abstract int getByteLength();
-
-    @JSProperty
-    public abstract ArrayBuffer getBuffer();
+public abstract class PlatformLong implements JSObject {
+    public static final PlatformLong ZERO = null;
 }

@@ -21,6 +21,8 @@ import org.teavm.codegen.SourceWriter;
 import org.teavm.dependency.DependencyAgent;
 import org.teavm.dependency.DependencyPlugin;
 import org.teavm.dependency.MethodDependency;
+import org.teavm.javascript.ast.ConstantExpr;
+import org.teavm.javascript.ast.Expr;
 import org.teavm.javascript.spi.Generator;
 import org.teavm.javascript.spi.GeneratorContext;
 import org.teavm.javascript.spi.Injector;
@@ -73,6 +75,24 @@ public class PlatformGenerator implements Generator, Injector, DependencyPlugin 
             case "getPlatformObject":
                 context.writeExpr(context.getArgument(0));
                 break;
+            case "getPlatformClass": {
+                Expr arg = context.getArgument(0);
+                if (!(arg instanceof ConstantExpr) || ((ConstantExpr) arg).getValue() instanceof ValueType.Object)  {
+                    throw new IllegalArgumentException("Calling " + methodRef + " with non-constant argument");
+                }
+                ValueType.Object type = (ValueType.Object) ((ConstantExpr) arg).getValue();
+                context.getWriter().appendClass(type.getClassName());
+                break;
+            }
+            case "getPlatformString": {
+                Expr arg = context.getArgument(0);
+                if (!(arg instanceof ConstantExpr) || ((ConstantExpr) arg).getValue() instanceof String)  {
+                    throw new IllegalArgumentException("Calling " + methodRef + " with non-constant argument");
+                }
+                String value = (String) ((ConstantExpr) arg).getValue();
+                context.writeEscaped(value);
+                break;
+            }
         }
     }
 

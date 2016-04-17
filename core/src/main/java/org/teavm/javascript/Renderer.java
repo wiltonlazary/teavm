@@ -31,6 +31,7 @@ import java.util.Set;
 import org.teavm.codegen.NamingException;
 import org.teavm.codegen.NamingOrderer;
 import org.teavm.codegen.NamingStrategy;
+import org.teavm.codegen.PlatformNames;
 import org.teavm.codegen.SourceWriter;
 import org.teavm.common.ServiceRepository;
 import org.teavm.debugging.information.DebugInformationEmitter;
@@ -1177,7 +1178,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
             if (statement.getLocation() != null) {
                 pushLocation(statement.getLocation());
             }
-            writer.appendFunction("$rt_throw").append("(");
+            writer.appendMethodBody(PlatformNames.EXCEPTION_RAISE).append("(");
             prevCallSite = debugEmitter.emitCallSite();
             precedence = Precedence.min();
             statement.getException().acceptVisitor(this);
@@ -1385,7 +1386,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 popLocation();
             }
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -1447,7 +1448,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 visitBinary(expr, "!==");
                 break;
             case COMPARE:
-                visitBinaryFunction(expr, naming.getNameForFunction("$rt_compare"));
+                visitBinaryFunction(expr, naming.getFullNameFor(PlatformNames.RUNTIME_COMPARE));
                 break;
             case COMPARE_LONG:
                 visitBinaryFunction(expr, "Long_compare");
@@ -1612,7 +1613,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 popLocation();
             }
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -1645,7 +1646,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 popLocation();
             }
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -1664,7 +1665,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 popLocation();
             }
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -1711,33 +1712,33 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
             ValueType.Object objType = (ValueType.Object) type;
             value = naming.getNameFor(objType.getClassName());
         } else if (type instanceof ValueType.Void) {
-            value = "$rt_voidcls()";
+            value = naming.getFullNameFor(PlatformNames.CLASS_VOID);
         } else if (type instanceof ValueType.Primitive) {
             ValueType.Primitive primitiveType = (ValueType.Primitive) type;
             switch (primitiveType.getKind()) {
                 case BOOLEAN:
-                    value = "$rt_booleancls()";
+                    value = naming.getFullNameFor(PlatformNames.CLASS_BOOLEAN);
                     break;
                 case CHARACTER:
-                    value = "$rt_charcls()";
+                    value = naming.getFullNameFor(PlatformNames.CLASS_CHAR);
                     break;
                 case BYTE:
-                    value = "$rt_bytecls()";
+                    value = naming.getFullNameFor(PlatformNames.CLASS_BYTE);
                     break;
                 case SHORT:
-                    value = "$rt_shortcls()";
+                    value = naming.getFullNameFor(PlatformNames.CLASS_SHORT);
                     break;
                 case INTEGER:
-                    value = "$rt_intcls()";
+                    value = naming.getFullNameFor(PlatformNames.CLASS_INT);
                     break;
                 case LONG:
-                    value = "$rt_longcls()";
+                    value = naming.getFullNameFor(PlatformNames.CLASS_LONG);
                     break;
                 case FLOAT:
-                    value = "$rt_floatcls()";
+                    value = naming.getFullNameFor(PlatformNames.CLASS_FLOAT);
                     break;
                 case DOUBLE:
-                    value = "$rt_doublecls()";
+                    value = naming.getFullNameFor(PlatformNames.CLASS_DOUBLE);
                     break;
                 default:
                     throw new IllegalArgumentException("The type is not renderable");
@@ -1805,7 +1806,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 popLocation();
             }
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -1825,7 +1826,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 popLocation();
             }
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -1842,7 +1843,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 popLocation();
             }
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -1932,7 +1933,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 popLocation();
             }
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -1955,7 +1956,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 popLocation();
             }
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -1971,7 +1972,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 popLocation();
             }
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -1985,57 +1986,57 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
             if (type instanceof ValueType.Primitive) {
                 switch (((ValueType.Primitive) type).getKind()) {
                     case BOOLEAN:
-                        writer.append("$rt_createBooleanArray(");
+                        writer.appendMethodBody(PlatformNames.RUNTIME_CREATE_BOOLEAN_ARRAY).append('(');
                         precedence = Precedence.min();
                         expr.getLength().acceptVisitor(this);
                         writer.append(")");
                         break;
                     case BYTE:
-                        writer.append("$rt_createByteArray(");
+                        writer.appendMethodBody(PlatformNames.RUNTIME_CREATE_BYTE_ARRAY).append('(');
                         precedence = Precedence.min();
                         expr.getLength().acceptVisitor(this);
                         writer.append(")");
                         break;
                     case SHORT:
-                        writer.append("$rt_createShortArray(");
+                        writer.appendMethodBody(PlatformNames.RUNTIME_CREATE_SHORT_ARRAY).append('(');
                         precedence = Precedence.min();
                         expr.getLength().acceptVisitor(this);
                         writer.append(")");
                         break;
                     case INTEGER:
-                        writer.append("$rt_createIntArray(");
+                        writer.appendMethodBody(PlatformNames.RUNTIME_CREATE_INT_ARRAY).append('(');
                         precedence = Precedence.min();
                         expr.getLength().acceptVisitor(this);
                         writer.append(")");
                         break;
                     case LONG:
-                        writer.append("$rt_createLongArray(");
+                        writer.appendMethodBody(PlatformNames.RUNTIME_CREATE_LONG_ARRAY).append('(');
                         precedence = Precedence.min();
                         expr.getLength().acceptVisitor(this);
                         writer.append(")");
                         break;
                     case FLOAT:
-                        writer.append("$rt_createFloatArray(");
+                        writer.appendMethodBody(PlatformNames.RUNTIME_CREATE_FLOAT_ARRAY).append('(');
                         precedence = Precedence.min();
                         expr.getLength().acceptVisitor(this);
                         writer.append(")");
                         break;
                     case DOUBLE:
-                        writer.append("$rt_createDoubleArray(");
+                        writer.appendMethodBody(PlatformNames.RUNTIME_CREATE_DOUBLE_ARRAY).append('(');
                         precedence = Precedence.min();
                         expr.getLength().acceptVisitor(this);
                         writer.append(")");
                         break;
                     case CHARACTER:
-                        writer.append("$rt_createCharArray(");
+                        writer.appendMethodBody(PlatformNames.RUNTIME_CREATE_CHAR_ARRAY).append('(');
                         precedence = Precedence.min();
                         expr.getLength().acceptVisitor(this);
                         writer.append(")");
                         break;
                 }
             } else {
-                writer.appendFunction("$rt_createArray").append("(").append(typeToClsString(naming, expr.getType()))
-                        .append(",").ws();
+                writer.appendMethodBody(PlatformNames.RUNTIME_CREATE_ARRAY).append('(')
+                        .append(typeToClsString(naming, expr.getType())).append(",").ws();
                 precedence = Precedence.min();
                 expr.getLength().acceptVisitor(this);
                 writer.append(")");
@@ -2044,7 +2045,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 popLocation();
             }
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -2106,7 +2107,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 popLocation();
             }
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -2129,7 +2130,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                     return;
                 }
             }
-            writer.appendFunction("$rt_isInstance").append("(");
+            writer.appendMethodBody(PlatformNames.RUNTIME_IS_INSTANCE).append("(");
             precedence = Precedence.min();
             expr.getExpr().acceptVisitor(this);
             writer.append(",").ws().append(typeToClsString(naming, expr.getType())).append(")");
@@ -2137,7 +2138,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 popLocation();
             }
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
