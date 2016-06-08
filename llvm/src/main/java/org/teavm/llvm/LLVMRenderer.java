@@ -111,10 +111,18 @@ public class LLVMRenderer {
                 }
             }
             renderStructure(structure);
+        }
+
+        for (String className : classNames) {
+            ClassReader cls = classSource.get(className);
 
             for (MethodReader method : cls.getMethods()) {
                 emitMethod(method);
             }
+        }
+
+        for (String className : classNames) {
+            ClassReader cls = classSource.get(className);
 
             appendable.append("@vtable." + className + " = private constant ");
             renderVirtualTableValues(cls, vtableProvider.lookup(cls.getName()), 0);
@@ -206,7 +214,7 @@ public class LLVMRenderer {
         }
 
         MethodReader methodReader = cls.getMethod(method.getDescriptor());
-        if (methodReader != null) {
+        if (methodReader != null && !methodReader.hasModifier(ElementModifier.ABSTRACT)) {
             return method;
         }
 
@@ -258,7 +266,7 @@ public class LLVMRenderer {
     }
 
     private void emitMethod(MethodReader method) throws IOException {
-        if (method.hasModifier(ElementModifier.NATIVE)) {
+        if (method.hasModifier(ElementModifier.NATIVE) || method.hasModifier(ElementModifier.ABSTRACT)) {
             return;
         }
 
@@ -807,9 +815,6 @@ public class LLVMRenderer {
             }
 
             if (type == InvocationType.SPECIAL) {
-                if (receiver != null) {
-                    sb.append("%v" + receiver.getIndex() + " = ");
-                }
                 sb.append("call " + renderType(method.getReturnType()) + " @" + mangleMethod(method) + "(");
             } else {
                 VirtualTableEntry entry = vtableProvider.lookup(method);
@@ -819,7 +824,7 @@ public class LLVMRenderer {
                 int headerFieldRef = temporaryVariable++;
                 int vtableRef = temporaryVariable++;
                 int vtableTypedRef = temporaryVariable++;
-                emitted.add("%t" + objectRef + " = bitcast i8* %v" + receiver.getIndex() + " to %teavm.Object*");
+                emitted.add("%t" + objectRef + " = bitcast i8* %v" + instance.getIndex() + " to %teavm.Object*");
                 emitted.add("%t" + headerFieldRef + " = getelementptr inbounds %teavm.Object, %teavm.Object* %t"
                         + objectRef + ", i32 0, i32 0");
                 emitted.add("%t" + vtableRef + " = load i8*, i8** %t" + headerFieldRef);
@@ -828,8 +833,11 @@ public class LLVMRenderer {
                 int functionRef = temporaryVariable++;
                 emitted.add("%t" + functionRef + " = getelementptr inbounds " + typeRef + ", "
                         + typeRef + "* %t" + vtableTypedRef + ", i32 0, i32 " + (entry.getIndex() + 1));
+                int function = temporaryVariable++;
+                String methodType = methodType(method.getDescriptor());
+                emitted.add("%t" + function + " = load " + methodType + ", " + methodType + "* %t" + functionRef);
 
-                sb.append("call " + renderType(method.getReturnType()) + " %t" + functionRef + "(");
+                sb.append("call " + renderType(method.getReturnType()) + " %t" + function + "(");
             }
 
             List<String> argumentStrings = new ArrayList<>();
