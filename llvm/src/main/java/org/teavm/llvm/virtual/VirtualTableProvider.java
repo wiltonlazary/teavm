@@ -13,20 +13,14 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package org.teavm.llvm;
+package org.teavm.llvm.virtual;
 
-public class TestClass {
-    private TestClass() {
-    }
+import org.teavm.model.MethodReference;
 
-    public static void main(String[] args) {
-        int a = 0;
-        int b = 1;
-        for (int i = 0; i < 20; ++i) {
-            System.out.println(a);
-            int c = a + b;
-            a = b;
-            b = c;
-        }
-    }
+public interface VirtualTableProvider {
+    VirtualTableEntry lookup(MethodReference method);
+
+    VirtualTable lookup(String className);
+
+    VirtualTable getInterfaceTable();
 }

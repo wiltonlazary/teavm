@@ -1,5 +1,5 @@
 /*
- *  Copyright 2016 konsoletyper.
+ *  Copyright 2016 Alexey Andreev.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -34,10 +34,12 @@ import org.teavm.diagnostics.AccumulationDiagnostics;
 import org.teavm.diagnostics.ProblemProvider;
 import org.teavm.javascript.spi.Generator;
 import org.teavm.javascript.spi.Injector;
+import org.teavm.llvm.virtual.VirtualTableRegistry;
 import org.teavm.model.ClassHolder;
 import org.teavm.model.ClassHolderTransformer;
 import org.teavm.model.ClassReaderSource;
 import org.teavm.model.ListableClassHolderSource;
+import org.teavm.model.ListableClassReaderSource;
 import org.teavm.model.MethodReference;
 import org.teavm.model.MutableClassHolderSource;
 import org.teavm.model.Program;
@@ -59,7 +61,6 @@ import org.teavm.vm.spi.TeaVMHost;
 import org.teavm.vm.spi.TeaVMPlugin;
 
 public class TeaVMLLVMEmitter implements TeaVMHost, ServiceRepository {
-    private final ClassReaderSource classSource;
     private final ClassLoader classLoader;
     private final DependencyChecker dependencyChecker;
     private final AccumulationDiagnostics diagnostics = new AccumulationDiagnostics();
@@ -69,10 +70,10 @@ public class TeaVMLLVMEmitter implements TeaVMHost, ServiceRepository {
     private final Properties properties = new Properties();
     private TeaVMProgressListener progressListener;
     private String mainClassName;
+    private VirtualTableRegistry vtableRegistry;
 
     public TeaVMLLVMEmitter(ClassLoader classLoader, ClassReaderSource classSource) {
         this.classLoader = classLoader;
-        this.classSource = classSource;
         dependencyChecker = new DependencyChecker(classSource, classLoader, this, diagnostics);
         progressListener = new TeaVMProgressListener() {
             @Override public TeaVMProgressFeedback progressReached(int progress) {
@@ -179,6 +180,12 @@ public class TeaVMLLVMEmitter implements TeaVMHost, ServiceRepository {
         ListableClassHolderSource classSet = link(dependencyChecker);
         devirtualize(classSet, dependencyChecker);
         optimize(classSet);
+
+        vtableRegistry = buildVirtualTables(classSet);
+        LLVMRenderer renderer = new LLVMRenderer(classSet, vtableRegistry, writer);
+        renderer.renderPrologue();
+        renderer.renderInterfaceTable();
+        renderer.renderClasses(classSet.getClassNames());
     }
 
     private ListableClassHolderSource link(DependencyInfo dependency) {
@@ -227,5 +234,11 @@ public class TeaVMLLVMEmitter implements TeaVMHost, ServiceRepository {
 
     private List<MethodOptimization> getOptimizations() {
         return Arrays.asList(new LoopInvariantMotion(), new GlobalValueNumbering(), new UnusedVariableElimination());
+    }
+
+    private VirtualTableRegistry buildVirtualTables(ListableClassReaderSource classSource) {
+        VirtualTableRegistry registry = new VirtualTableRegistry(classSource);
+        classSource.getClassNames().forEach(registry::fillClass);
+        return registry;
     }
 }

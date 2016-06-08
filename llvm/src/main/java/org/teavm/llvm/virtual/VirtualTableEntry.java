@@ -13,20 +13,29 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package org.teavm.llvm;
+package org.teavm.llvm.virtual;
 
-public class TestClass {
-    private TestClass() {
+import org.teavm.model.MethodReference;
+
+public class VirtualTableEntry {
+    private VirtualTable virtualTable;
+    private MethodReference method;
+    private int index;
+
+    VirtualTableEntry(MethodReference method, int index) {
+        this.method = method;
+        this.index = index;
     }
 
-    public static void main(String[] args) {
-        int a = 0;
-        int b = 1;
-        for (int i = 0; i < 20; ++i) {
-            System.out.println(a);
-            int c = a + b;
-            a = b;
-            b = c;
-        }
+    public VirtualTable getVirtualTable() {
+        return virtualTable;
+    }
+
+    public MethodReference getMethod() {
+        return method;
+    }
+
+    public int getIndex() {
+        return index;
     }
 }

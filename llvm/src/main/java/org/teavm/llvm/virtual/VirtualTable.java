@@ -13,20 +13,29 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package org.teavm.llvm;
+package org.teavm.llvm.virtual;
 
-public class TestClass {
-    private TestClass() {
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+public class VirtualTable {
+    private String className;
+    List<VirtualTableEntry> entries = new ArrayList<>();
+    private List<VirtualTableEntry> readonlyEntries;
+
+    VirtualTable(String className) {
+        this.className = className;
     }
 
-    public static void main(String[] args) {
-        int a = 0;
-        int b = 1;
-        for (int i = 0; i < 20; ++i) {
-            System.out.println(a);
-            int c = a + b;
-            a = b;
-            b = c;
+    public String getClassName() {
+        return className;
+    }
+
+    public List<VirtualTableEntry> getEntries() {
+        if (readonlyEntries == null) {
+            readonlyEntries = Collections.unmodifiableList(entries);
         }
+        return readonlyEntries;
     }
 }
