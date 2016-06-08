@@ -16,8 +16,6 @@
 package org.teavm.llvm;
 
 import java.io.IOException;
-import java.util.List;
-import java.util.stream.Collectors;
 import org.teavm.parsing.ClasspathClassHolderSource;
 import org.teavm.tooling.TeaVMProblemRenderer;
 import org.teavm.tooling.TeaVMToolLog;
@@ -41,11 +39,6 @@ public final class TeaVMLLVMCommandLine {
             System.out.println("*/");
         } else {
             System.out.println("; no errors occurred");
-            List<String> methods = emitter.getDependencyInfo().getReachableMethods().stream()
-                    .map(Object::toString).sorted().collect(Collectors.toList());
-            for (String method : methods) {
-                System.out.println("; METHOD: " + method);
-            }
         }
 
         System.out.println("; end of llvm IR file");

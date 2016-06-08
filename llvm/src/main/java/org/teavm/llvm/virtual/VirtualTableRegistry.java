@@ -85,6 +85,7 @@ public class VirtualTableRegistry implements VirtualTableProvider {
         VirtualTable vtable = virtualTables.computeIfAbsent(method.getClassName(), VirtualTable::new);
         VirtualTableEntry entry = new VirtualTableEntry(method, vtable.entries.size());
         vtable.entries.add(entry);
+        entryMap.put(method, entry);
     }
 
     private void addInterfaceMethod(MethodReference method) {
@@ -93,6 +94,7 @@ public class VirtualTableRegistry implements VirtualTableProvider {
         }
         VirtualTableEntry entry = new VirtualTableEntry(method, interfaceTable.entries.size());
         interfaceTable.entries.add(entry);
+        entryMap.put(method, entry);
     }
 
     @Override

@@ -186,6 +186,7 @@ public class TeaVMLLVMEmitter implements TeaVMHost, ServiceRepository {
         renderer.renderPrologue();
         renderer.renderInterfaceTable();
         renderer.renderClasses(classSet.getClassNames());
+        renderer.renderMain(mainMethod.getMethod().getReference());
     }
 
     private ListableClassHolderSource link(DependencyInfo dependency) {
