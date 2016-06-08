@@ -1,5 +1,5 @@
 /*
- *  Copyright 2016 Alexey Andreev.
+ *  Copyright 2016 konsoletyper.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -13,14 +13,19 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package org.teavm.optimization;
 
-import org.teavm.model.MethodReader;
-import org.teavm.model.Program;
+public class TestClass {
+    private TestClass() {
+    }
 
-public class LoopInversion implements MethodOptimization {
-    @Override
-    public void optimize(MethodReader method, Program program) {
-        new LoopInversionImpl(program, method.parameterCount() + 1).apply();
+    public static void main(String[] args) {
+        int a = 0;
+        int b = 1;
+        for (int i = 0; i < 20; ++i) {
+            System.out.println(a);
+            int c = a + b;
+            a = b;
+            b = c;
+        }
     }
 }

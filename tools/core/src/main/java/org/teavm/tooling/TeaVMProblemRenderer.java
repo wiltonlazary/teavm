@@ -21,6 +21,7 @@ import org.teavm.callgraph.CallGraphNode;
 import org.teavm.callgraph.CallSite;
 import org.teavm.diagnostics.DefaultProblemTextConsumer;
 import org.teavm.diagnostics.Problem;
+import org.teavm.diagnostics.ProblemProvider;
 import org.teavm.model.CallLocation;
 import org.teavm.model.InstructionLocation;
 import org.teavm.model.MethodReference;
@@ -35,14 +36,17 @@ public final class TeaVMProblemRenderer {
     }
 
     public static void describeProblems(TeaVM vm, TeaVMToolLog log) {
-        CallGraph cg = vm.getDependencyInfo().getCallGraph();
+        describeProblems(vm.getProblemProvider(), vm.getDependencyInfo().getCallGraph(), log);
+    }
+
+    public static void describeProblems(ProblemProvider problemProvider, CallGraph callGraph, TeaVMToolLog log) {
         DefaultProblemTextConsumer consumer = new DefaultProblemTextConsumer();
-        for (Problem problem : vm.getProblemProvider().getProblems()) {
+        for (Problem problem : problemProvider.getProblems()) {
             consumer.clear();
             problem.render(consumer);
             StringBuilder sb = new StringBuilder();
             sb.append(consumer.getText());
-            renderCallStack(cg, problem.getLocation(), sb);
+            renderCallStack(callGraph, problem.getLocation(), sb);
             String problemText = sb.toString();
             switch (problem.getSeverity()) {
                 case ERROR:

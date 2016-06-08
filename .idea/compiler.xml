@@ -27,6 +27,7 @@
         <outputRelativeToContentRoot value="true" />
         <processorPath useClasspath="true" />
         <module name="impl" />
+        <module name="llvm" />
         <module name="teavm-chrome-rdp" />
         <module name="teavm-classlib" />
         <module name="teavm-cli" />
@@ -55,6 +56,7 @@
     </annotationProcessing>
     <bytecodeTargetLevel>
       <module name="impl" target="1.8" />
+      <module name="llvm" target="1.8" />
       <module name="teavm" target="1.5" />
       <module name="teavm-chrome-rdp" target="1.8" />
       <module name="teavm-classlib" target="1.8" />

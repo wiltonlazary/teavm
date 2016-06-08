@@ -96,6 +96,7 @@
     <module>tests</module>
     <module>extras-slf4j</module>
     <module>metaprogramming/impl</module>
+    <module>llvm</module>
   </modules>
 
   <dependencyManagement>
