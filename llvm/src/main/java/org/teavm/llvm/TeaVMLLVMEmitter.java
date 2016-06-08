@@ -34,6 +34,7 @@ import org.teavm.diagnostics.AccumulationDiagnostics;
 import org.teavm.diagnostics.ProblemProvider;
 import org.teavm.javascript.spi.Generator;
 import org.teavm.javascript.spi.Injector;
+import org.teavm.llvm.layout.LayoutRegistry;
 import org.teavm.llvm.virtual.VirtualTableRegistry;
 import org.teavm.model.ClassHolder;
 import org.teavm.model.ClassHolderTransformer;
@@ -70,7 +71,6 @@ public class TeaVMLLVMEmitter implements TeaVMHost, ServiceRepository {
     private final Properties properties = new Properties();
     private TeaVMProgressListener progressListener;
     private String mainClassName;
-    private VirtualTableRegistry vtableRegistry;
 
     public TeaVMLLVMEmitter(ClassLoader classLoader, ClassReaderSource classSource) {
         this.classLoader = classLoader;
@@ -181,8 +181,9 @@ public class TeaVMLLVMEmitter implements TeaVMHost, ServiceRepository {
         devirtualize(classSet, dependencyChecker);
         optimize(classSet);
 
-        vtableRegistry = buildVirtualTables(classSet);
-        LLVMRenderer renderer = new LLVMRenderer(classSet, vtableRegistry, writer);
+        VirtualTableRegistry vtableRegistry = buildVirtualTables(classSet);
+        LayoutRegistry layoutRegistry = buildLayouts(classSet);
+        LLVMRenderer renderer = new LLVMRenderer(classSet, vtableRegistry, layoutRegistry, writer);
         renderer.renderPrologue();
         renderer.renderInterfaceTable();
         renderer.renderClasses(classSet.getClassNames());
@@ -240,6 +241,12 @@ public class TeaVMLLVMEmitter implements TeaVMHost, ServiceRepository {
     private VirtualTableRegistry buildVirtualTables(ListableClassReaderSource classSource) {
         VirtualTableRegistry registry = new VirtualTableRegistry(classSource);
         classSource.getClassNames().forEach(registry::fillClass);
+        return registry;
+    }
+
+    private LayoutRegistry buildLayouts(ListableClassReaderSource classSource) {
+        LayoutRegistry registry = new LayoutRegistry(classSource);
+        classSource.getClassNames().forEach(registry::addClass);
         return registry;
     }
 }

@@ -24,6 +24,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.teavm.llvm.layout.LayoutProvider;
 import org.teavm.llvm.virtual.VirtualTable;
 import org.teavm.llvm.virtual.VirtualTableEntry;
 import org.teavm.llvm.virtual.VirtualTableProvider;
@@ -60,11 +61,14 @@ import org.teavm.model.util.VariableType;
 public class LLVMRenderer {
     private ClassReaderSource classSource;
     private VirtualTableProvider vtableProvider;
+    private LayoutProvider layoutProvider;
     private Appendable appendable;
 
-    public LLVMRenderer(ClassReaderSource classSource, VirtualTableProvider vtableProvider, Appendable appendable) {
+    public LLVMRenderer(ClassReaderSource classSource, VirtualTableProvider vtableProvider,
+            LayoutProvider layoutProvider, Appendable appendable) {
         this.classSource = classSource;
         this.vtableProvider = vtableProvider;
+        this.layoutProvider = layoutProvider;
         this.appendable = appendable;
     }
 
@@ -94,7 +98,7 @@ public class LLVMRenderer {
             }
             emitVirtualTableEntries(vtableProvider.lookup(className), false, structure);
             if (structure.fields.isEmpty() && isTop) {
-                structure.fields.add(new Field("i8*", "<stub>"));
+                structure.fields.add(new Field("%itable"));
             }
             renderStructure(structure);
 
@@ -112,8 +116,105 @@ public class LLVMRenderer {
                 emitMethod(method);
             }
 
+            appendable.append("@vtable." + className + " = private constant ");
+            renderVirtualTableValues(cls, vtableProvider.lookup(cls.getName()), 0);
+
             appendable.append("\n");
         }
+    }
+
+    private void renderVirtualTableValues(ClassReader cls, VirtualTable vtable, int level) throws IOException {
+        ClassReader vtableCls = classSource.get(vtable.getClassName());
+        indent(level);
+        appendable.append("%vtable." + vtable.getClassName() + " {\n");
+
+        boolean first = true;
+        if (vtableCls.getParent() != null && !vtableCls.getParent().equals(vtableCls.getName())) {
+            VirtualTable parentVtable = vtableProvider.lookup(vtableCls.getParent());
+            if (parentVtable != null) {
+                renderVirtualTableValues(cls, parentVtable, level + 1);
+                first = false;
+            }
+        }
+
+        for (VirtualTableEntry entry : vtable.getEntries()) {
+            if (!first) {
+                appendable.append(",\n");
+            }
+            first = false;
+            MethodReference implementation = findImplementation(new MethodReference(cls.getName(),
+                    entry.getMethod().getDescriptor()));
+            indent(level + 1);
+            appendable.append(methodType(entry.getMethod().getDescriptor()) + " ");
+            if (implementation == null) {
+                appendable.append(" null");
+            } else {
+                appendable.append("@" + mangleMethod(implementation));
+            }
+        }
+
+        if (first) {
+            indent(level + 1);
+            appendable.append("%itable ");
+            renderInterfaceTableValues(cls, level + 1);
+        }
+
+        appendable.append("\n");
+        indent(level);
+        appendable.append("}");
+    }
+
+    private void renderInterfaceTableValues(ClassReader cls, int level) throws IOException {
+        appendable.append("{\n");
+        boolean first = true;
+        for (VirtualTableEntry entry : vtableProvider.getInterfaceTable().getEntries()) {
+            if (!first) {
+                appendable.append(",\n");
+            }
+            first = false;
+            MethodReference implementation = findImplementation(new MethodReference(cls.getName(),
+                    entry.getMethod().getDescriptor()));
+            indent(level + 1);
+            appendable.append(methodType(entry.getMethod().getDescriptor()) + " ");
+            if (implementation == null) {
+                appendable.append(" null");
+            } else {
+                appendable.append("@" + mangleMethod(implementation));
+            }
+        }
+
+        if (first) {
+            indent(level + 1);
+            appendable.append("i8* null");
+        }
+
+        appendable.append("\n");
+        indent(level);
+        appendable.append("}");
+    }
+
+    private void indent(int count) throws IOException {
+        while (count-- > 0) {
+            appendable.append("    ");
+        }
+    }
+
+    private MethodReference findImplementation(MethodReference method) {
+        ClassReader cls = classSource.get(method.getClassName());
+        if (cls == null) {
+            return null;
+        }
+
+        MethodReader methodReader = cls.getMethod(method.getDescriptor());
+        if (methodReader != null) {
+            return method;
+        }
+
+        if (cls.getParent() != null && !cls.getParent().equals(cls.getName())) {
+            return findImplementation(new MethodReference(cls.getParent(), method.getDescriptor()));
+        }
+
+        return null;
     }
 
     public void renderMain(MethodReference method) throws IOException {
@@ -140,19 +241,20 @@ public class LLVMRenderer {
 
         for (VirtualTableEntry entry : vtable.getEntries()) {
             MethodReference method = entry.getMethod();
-            StringBuilder methodType = new StringBuilder();
-            methodType.append(renderType(method.getReturnType())).append(" (");
-            if (method.parameterCount() > 0) {
-                methodType.append(renderType(method.parameterType(0)));
-                for (int i = 1; i < method.parameterCount(); ++i) {
-                    methodType.append(", ").append(renderType(method.parameterType(i)));
-                }
-            }
-            methodType.append(")*");
 
-            structure.fields.add(new Field(methodType.toString(),
+            structure.fields.add(new Field(methodType(method.getDescriptor()),
                     fqn ? method.toString() : method.getDescriptor().toString()));
         }
+    }
+
+    private String methodType(MethodDescriptor method) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(renderType(method.getResultType())).append(" (i8*");
+        for (int i = 0; i < method.parameterCount(); ++i) {
+            sb.append(", ").append(renderType(method.parameterType(i)));
+        }
+        sb.append(")*");
+        return sb.toString();
     }
 
     private void emitMethod(MethodReader method) throws IOException {
@@ -164,8 +266,7 @@ public class LLVMRenderer {
         appendable.append("@").append(mangleMethod(method.getReference())).append("(");
         List<String> parameters = new ArrayList<>();
         if (!method.hasModifier(ElementModifier.STATIC)) {
-            parameters.add("i8* %arg0");
-            emitted.add("%0 = bitcast i8* %v0 to i8*");
+            parameters.add("i8* %v0");
         }
         for (int i = 0; i < method.parameterCount(); ++i) {
             String type = renderType(method.parameterType(i));
@@ -177,7 +278,7 @@ public class LLVMRenderer {
         if (program != null && program.basicBlockCount() > 0) {
             typeInferer = new TypeInferer();
             typeInferer.inferTypes(program, method.getReference());
-            temporaryVariable = program.variableCount();
+            temporaryVariable = 0;
             for (int i = 0; i < program.basicBlockCount(); ++i) {
                 BasicBlockReader block = program.basicBlockAt(i);
                 appendable.append("b" + block.getIndex() + ":\n");
@@ -534,9 +635,9 @@ public class LLVMRenderer {
                 second = "null";
             }
 
-            emitted.add("%v" + tmp + " = icmp " + getLLVMOperation(cond) + " " + type
+            emitted.add("%t" + tmp + " = icmp " + getLLVMOperation(cond) + " " + type
                     + " %v" + operand.getIndex() + ", " + second);
-            emitted.add("br i1 %v" + tmp + ", label %b" + consequent.getIndex() + ", label %b"
+            emitted.add("br i1 %t" + tmp + ", label %b" + consequent.getIndex() + ", label %b"
                     + alternative.getIndex());
         }
 
@@ -566,9 +667,9 @@ public class LLVMRenderer {
                     throw new IllegalArgumentException("Unknown condition: " + cond);
             }
 
-            emitted.add("%v" + tmp + " = icmp " + op + " " + type + " %v" + first.getIndex()
+            emitted.add("%t" + tmp + " = icmp " + op + " " + type + " %v" + first.getIndex()
                     + ", %v" + second.getIndex());
-            emitted.add("br i1 %v" + tmp + ", label %b" + consequent.getIndex() + ", label %b"
+            emitted.add("br i1 %t" + tmp + ", label %b" + consequent.getIndex() + ", label %b"
                     + alternative.getIndex());
         }
 
@@ -617,26 +718,58 @@ public class LLVMRenderer {
 
         @Override
         public void create(VariableReader receiver, String type) {
-            String typeRef = "%class." + type + "*";
-            String sizeOf = "ptrtoint " + typeRef + " (getelementptr " + typeRef + " null, i32 1) to i32";
-            emitted.add("%v" + receiver.getIndex() + " = call i8* malloc(i32 " + sizeOf + ")");
+            int temporaryPointer = temporaryVariable++;
+            int sizeOfVar = temporaryVariable++;
+            String typeRef = "%class." + type;
+            emitted.add("%t" + temporaryPointer + " = getelementptr " + typeRef + ", " + typeRef + "* null, i32 1");
+            emitted.add("%t" + sizeOfVar + " = ptrtoint " + typeRef + "* %t" + temporaryPointer + " to i32");
+            emitted.add("%v" + receiver.getIndex() + " = call i8* @malloc(i32 %t" + sizeOfVar + ")");
 
-            String objectRef = "bitcast i8* %v" + receiver.getIndex() + " to %teavm.Object*";
-            String headerRef = "getelementptr inbounds i8*, %teavm.Object* %v" + receiver.getIndex()
-                    + ", i32 0, i32 0";
-            String vtableRef = "bitcast %vtable." + type + " (" + objectRef + ") @vtable." + type + "* to i8*";
-            emitted.add("store i8*" + vtableRef + ", (" + headerRef + ")");
+            int objectRef = temporaryVariable++;
+            int headerFieldRef = temporaryVariable++;
+            int vtableRef = temporaryVariable++;
+            emitted.add("%t" + objectRef + " = bitcast i8* %v" + receiver.getIndex() + " to %teavm.Object*");
+            emitted.add("%t" + headerFieldRef + " = getelementptr inbounds %teavm.Object, %teavm.Object* %t"
+                    + objectRef + ", i32 0, i32 0");
+            emitted.add("%t" + vtableRef + " = bitcast %vtable." + type + "* @vtable." + type + " to i8*");
+            emitted.add("store i8* %t" + vtableRef + ", i8** %t" + headerFieldRef);
         }
 
         @Override
         public void getField(VariableReader receiver, VariableReader instance, FieldReference field,
                 ValueType fieldType) {
-
+            String valueTypeRef = renderType(fieldType);
+            if (instance == null) {
+                emitted.add("%v" + receiver.getIndex() + " = load " + valueTypeRef + ", "
+                        + valueTypeRef + "* @" + mangleField(field));
+            } else {
+                int typedInstance = temporaryVariable++;
+                int pointer = temporaryVariable++;
+                String typeRef = "%class." + field.getClassName();
+                emitted.add("%t" + typedInstance + " = bitcast i8* %v" + instance.getIndex() + " to " + typeRef + "*");
+                emitted.add("%t" + pointer + " = getelementptr " + typeRef + ", " + typeRef + "* "
+                        + "%t" + typedInstance + ", i32 0, i32 " + layoutProvider.getIndex(field));
+                emitted.add("%v" + receiver.getIndex() + " = load " + valueTypeRef + ", "
+                        + valueTypeRef + "* %t" + pointer);
+            }
         }
 
         @Override
         public void putField(VariableReader instance, FieldReference field, VariableReader value, ValueType fieldType) {
-
+            String valueTypeRef = renderType(fieldType);
+            if (instance == null) {
+                emitted.add("store " + valueTypeRef + " %v" + value.getIndex() + ", "
+                        + valueTypeRef + "* @" + mangleField(field));
+            } else {
+                int typedInstance = temporaryVariable++;
+                int pointer = temporaryVariable++;
+                String typeRef = "%class." + field.getClassName();
+                emitted.add("%t" + typedInstance + " = bitcast i8* %v" + instance.getIndex() + " to " + typeRef + "*");
+                emitted.add("%t" + pointer + " = getelementptr " + typeRef + ", " + typeRef + "* "
+                        + "%t" + typedInstance + ", i32 0, i32 " + layoutProvider.getIndex(field));
+                emitted.add("store " + valueTypeRef + " %v" + value.getIndex() + ", "
+                        + valueTypeRef + "* %t" + pointer);
+            }
         }
 
         @Override
@@ -668,24 +801,47 @@ public class LLVMRenderer {
         @Override
         public void invoke(VariableReader receiver, VariableReader instance, MethodReference method,
                 List<? extends VariableReader> arguments, InvocationType type) {
+            StringBuilder sb = new StringBuilder();
+            if (receiver != null) {
+                sb.append("%v" + receiver.getIndex() + " = ");
+            }
+
             if (type == InvocationType.SPECIAL) {
-                StringBuilder sb = new StringBuilder();
                 if (receiver != null) {
                     sb.append("%v" + receiver.getIndex() + " = ");
                 }
                 sb.append("call " + renderType(method.getReturnType()) + " @" + mangleMethod(method) + "(");
+            } else {
+                VirtualTableEntry entry = vtableProvider.lookup(method);
+                String className = entry.getVirtualTable().getClassName();
+                String typeRef = "%vtable." + className;
+                int objectRef = temporaryVariable++;
+                int headerFieldRef = temporaryVariable++;
+                int vtableRef = temporaryVariable++;
+                int vtableTypedRef = temporaryVariable++;
+                emitted.add("%t" + objectRef + " = bitcast i8* %v" + receiver.getIndex() + " to %teavm.Object*");
+                emitted.add("%t" + headerFieldRef + " = getelementptr inbounds %teavm.Object, %teavm.Object* %t"
+                        + objectRef + ", i32 0, i32 0");
+                emitted.add("%t" + vtableRef + " = load i8*, i8** %t" + headerFieldRef);
+                emitted.add("%t" + vtableTypedRef + " = bitcast i8* %t" + vtableRef + " to " + typeRef + "*");
 
-                List<String> argumentStrings = new ArrayList<>();
-                if (instance != null) {
-                    argumentStrings.add("i8* %v" + instance.getIndex());
-                }
-                for (int i = 0; i < arguments.size(); ++i) {
-                    argumentStrings.add(renderType(method.parameterType(i)) + " %v" + arguments.get(i).getIndex());
-                }
-                sb.append(argumentStrings.stream().collect(Collectors.joining(", ")) + ")");
+                int functionRef = temporaryVariable++;
+                emitted.add("%t" + functionRef + " = getelementptr inbounds " + typeRef + ", "
+                        + typeRef + "* %t" + vtableTypedRef + ", i32 0, i32 " + (entry.getIndex() + 1));
 
-                emitted.add(sb.toString());
+                sb.append("call " + renderType(method.getReturnType()) + " %t" + functionRef + "(");
             }
+
+            List<String> argumentStrings = new ArrayList<>();
+            if (instance != null) {
+                argumentStrings.add("i8* %v" + instance.getIndex());
+            }
+            for (int i = 0; i < arguments.size(); ++i) {
+                argumentStrings.add(renderType(method.parameterType(i)) + " %v" + arguments.get(i).getIndex());
+            }
+            sb.append(argumentStrings.stream().collect(Collectors.joining(", ")) + ")");
+
+            emitted.add(sb.toString());
         }
 
         @Override
@@ -770,12 +926,49 @@ public class LLVMRenderer {
     }
 
     public static String mangleMethod(MethodReference method) {
-        StringBuilder sb = new StringBuilder(method.getClassName() + ".");
+        StringBuilder sb = new StringBuilder("method$" + method.getClassName() + ".");
+        String name = mangleString(method.getName());
         sb.append(mangleType(method.getReturnType()));
-        sb.append(method.getName().length()).append(method.getName());
+        sb.append(name.length() + "_" + name);
         sb.append(Arrays.stream(method.getParameterTypes())
                 .map(LLVMRenderer::mangleType)
                 .collect(Collectors.joining()));
+        return sb.toString();
+    }
+
+    private static String mangleField(FieldReference field) {
+        StringBuilder sb = new StringBuilder("field$" + field.getClassName() + ".");
+        String name = mangleString(field.getFieldName());
+        sb.append(name.length() + "_" + name);
+        return sb.toString();
+    }
+
+    private static String mangleString(String string) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < string.length(); ++i) {
+            char c = string.charAt(i);
+            switch (c) {
+                case '$':
+                case '.':
+                case '-':
+                    sb.append(c);
+                    break;
+                case '_':
+                    sb.append("__");
+                    break;
+                default:
+                    if (c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9') {
+                        sb.append(c);
+                    } else {
+                        sb.append('_')
+                                .append(Character.forDigit(c >>> 12, 16))
+                                .append(Character.forDigit((c >>> 8) & 0xF, 16))
+                                .append(Character.forDigit((c >>> 4) & 0xF, 16))
+                                .append(Character.forDigit(c & 0xF, 16));
+                    }
+                    break;
+            }
+        }
         return sb.toString();
     }
 
@@ -805,7 +998,7 @@ public class LLVMRenderer {
             return "A" + mangleType(((ValueType.Array) type).getItemType());
         } else if (type instanceof ValueType.Object) {
             String className = ((ValueType.Object) type).getClassName();
-            return "L" + className.length() + className;
+            return "L" + className.length() + "_" + className;
         }
         throw new IllegalArgumentException("Don't know how to mangle " + type);
     }

@@ -16,6 +16,7 @@
 package org.teavm.llvm;
 
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import org.teavm.parsing.ClasspathClassHolderSource;
 import org.teavm.tooling.TeaVMProblemRenderer;
 import org.teavm.tooling.TeaVMToolLog;
@@ -30,7 +31,9 @@ public final class TeaVMLLVMCommandLine {
         TeaVMLLVMEmitter emitter = new TeaVMLLVMEmitter(classLoader, classSource);
         emitter.installPlugins();
         emitter.setMainClassName(TestClass.class.getName());
-        emitter.build(System.out);
+        OutputStreamWriter writer = new OutputStreamWriter(System.out, "UTF-8");
+        emitter.build(writer);
+        writer.flush();
 
         if (!emitter.getDiagnostics().getSevereProblems().isEmpty()) {
             System.out.println("/*");

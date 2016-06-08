@@ -13,30 +13,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package org.teavm.llvm.virtual;
+package org.teavm.llvm.layout;
 
-import org.teavm.model.MethodReference;
+import org.teavm.model.FieldReference;
 
-public class VirtualTableEntry {
-    private VirtualTable virtualTable;
-    private MethodReference method;
-    private int index;
-
-    VirtualTableEntry(VirtualTable virtualTable, MethodReference method, int index) {
-        this.virtualTable = virtualTable;
-        this.method = method;
-        this.index = index;
-    }
-
-    public VirtualTable getVirtualTable() {
-        return virtualTable;
-    }
-
-    public MethodReference getMethod() {
-        return method;
-    }
-
-    public int getIndex() {
-        return index;
-    }
+public interface LayoutProvider {
+    int getIndex(FieldReference field);
 }

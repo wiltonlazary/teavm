@@ -19,6 +19,26 @@ public class TestClass {
     private TestClass() {
     }
 
+    abstract static class Base {
+        abstract int getX();
+    }
+
+    static class A extends Base {
+        int x = 23;
+
+        @Override
+        int getX() {
+            return x;
+        }
+    }
+
+    static class B extends Base {
+        @Override
+        int getX() {
+            return 42;
+        }
+    }
+
     public static void main(String[] args) {
         int a = 0;
         int b = 1;
@@ -28,6 +48,14 @@ public class TestClass {
             a = b;
             b = c;
         }
+
+        A aa = new A();
+        printf(getX(aa));
+        printf(getX(new B()));
+    }
+
+    private static int getX(Base a) {
+        return a.getX();
     }
 
     private static native void printf(int a);

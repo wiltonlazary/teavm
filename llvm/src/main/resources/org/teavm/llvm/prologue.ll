@@ -1,7 +1,7 @@
 @teavm.printf.format = private constant [4 x i8] c"%d\0A\00", align 1
 
 %teavm.Object = type {
-    i8 *             ; header
+    i8*              ; header
 }
 
 %teavm.Array = type {
@@ -35,10 +35,11 @@ whenEq:
     ret i32 0
 }
 
-define void @org.teavm.llvm.TestClass.V6printfI(i32 %value) {
+define void @method$org.teavm.llvm.TestClass.V6_printfI(i32 %value) {
     call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @teavm.printf.format, i32 0, i32 0), i32 %value)
     ret void
 }
 
 declare void @exit(i32)
 declare i32 @printf(i8*, ...)
+declare i8* @malloc(i32)

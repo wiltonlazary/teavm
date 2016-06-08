@@ -41,6 +41,9 @@ public class VirtualTableRegistry implements VirtualTableProvider {
     }
 
     public void fillClass(String className) {
+        if (!virtualTables.containsKey(className)) {
+            virtualTables.put(className, new VirtualTable(className));
+        }
         ClassReader cls = classSource.get(className);
         if (cls == null) {
             return;
@@ -83,7 +86,7 @@ public class VirtualTableRegistry implements VirtualTableProvider {
             throw new IllegalArgumentException("Method has already corresponding vtable entry: " + method);
         }
         VirtualTable vtable = virtualTables.computeIfAbsent(method.getClassName(), VirtualTable::new);
-        VirtualTableEntry entry = new VirtualTableEntry(method, vtable.entries.size());
+        VirtualTableEntry entry = new VirtualTableEntry(vtable, method, vtable.entries.size());
         vtable.entries.add(entry);
         entryMap.put(method, entry);
     }
@@ -92,7 +95,7 @@ public class VirtualTableRegistry implements VirtualTableProvider {
         if (entryMap.containsKey(method)) {
             throw new IllegalArgumentException("Method has already corresponding vtable entry: " + method);
         }
-        VirtualTableEntry entry = new VirtualTableEntry(method, interfaceTable.entries.size());
+        VirtualTableEntry entry = new VirtualTableEntry(interfaceTable, method, interfaceTable.entries.size());
         interfaceTable.entries.add(entry);
         entryMap.put(method, entry);
     }
