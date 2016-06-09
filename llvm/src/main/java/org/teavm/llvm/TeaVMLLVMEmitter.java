@@ -34,8 +34,8 @@ import org.teavm.diagnostics.AccumulationDiagnostics;
 import org.teavm.diagnostics.ProblemProvider;
 import org.teavm.javascript.spi.Generator;
 import org.teavm.javascript.spi.Injector;
-import org.teavm.llvm.layout.LayoutRegistry;
-import org.teavm.llvm.virtual.VirtualTableRegistry;
+import org.teavm.llvm.context.LayoutRegistry;
+import org.teavm.llvm.context.VirtualTableRegistry;
 import org.teavm.model.ClassHolder;
 import org.teavm.model.ClassHolderTransformer;
 import org.teavm.model.ClassReaderSource;
@@ -175,6 +175,7 @@ public class TeaVMLLVMEmitter implements TeaVMHost, ServiceRepository {
         renderer.renderInterfaceTable();
         renderer.renderClasses(classSet.getClassNames());
         renderer.renderMain(mainMethod.getMethod().getReference());
+        renderer.renderStringPool();
         renderer.renderEpilogue();
     }
 

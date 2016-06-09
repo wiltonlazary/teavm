@@ -22,12 +22,14 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
-import org.teavm.llvm.layout.LayoutProvider;
-import org.teavm.llvm.virtual.VirtualTable;
-import org.teavm.llvm.virtual.VirtualTableEntry;
-import org.teavm.llvm.virtual.VirtualTableProvider;
+import org.teavm.llvm.context.LayoutProvider;
+import org.teavm.llvm.context.VirtualTable;
+import org.teavm.llvm.context.VirtualTableEntry;
+import org.teavm.llvm.context.VirtualTableProvider;
 import org.teavm.model.BasicBlockReader;
 import org.teavm.model.ClassReader;
 import org.teavm.model.ClassReaderSource;
@@ -63,6 +65,8 @@ public class LLVMRenderer {
     private VirtualTableProvider vtableProvider;
     private LayoutProvider layoutProvider;
     private Appendable appendable;
+    private Map<String, Integer> stringIndexes = new HashMap<>();
+    private List<String> stringPool = new ArrayList<>();
 
     public LLVMRenderer(ClassReaderSource classSource, VirtualTableProvider vtableProvider,
             LayoutProvider layoutProvider, Appendable appendable) {
@@ -263,8 +267,47 @@ public class LLVMRenderer {
     public void renderMain(MethodReference method) throws IOException {
         appendable.append("define i32 @main() {\n");
         appendable.append("    call void @teavm.init()\n");
+        appendable.append("    call void @teavm.initStringPool()\n");
         appendable.append("    call void @\"" + mangleMethod(method) + "\"(i8 *null)\n");
         appendable.append("    ret i32 0\n");
+        appendable.append("}\n");
+    }
+
+    public void renderStringPool() throws IOException {
+        if (!stringPool.isEmpty()) {
+            for (int i = 0; i < stringPool.size(); ++i) {
+                String str = stringPool.get(i);
+                appendable.append("@teavm.str." + i + " = private global %class.java.lang.String zeroinitializer\n");
+                appendable.append("@teavm.strdata." + i + " = private global %teavm.Array { "
+                        + "%teavm.Object zeroinitializer, i32 " + str.length() + ", %itable* null }\n");
+                appendable.append("@teavm.strdata._." + i + " = private global [ " + (str.length() + 1) + " x i16 "
+                         + "] [ i16 0");
+                for (int j = 0; j < str.length(); ++j) {
+                    appendable.append(", i16 " + (int) str.charAt(j));
+                }
+                appendable.append(" ]\n");
+            }
+
+
+            appendable.append("define void @teavm.tagString(%class.java.lang.String* %str, %teavm.Array* %data) {\n");
+            appendable.append("    %tag = bitcast %vtable.java.lang.String* @vtable.java.lang.String to i8*\n");
+            appendable.append("    %header = bitcast %class.java.lang.String* %str to %teavm.Object*\n");
+            appendable.append("    %tagRef = getelementptr %teavm.Object, %teavm.Object* %header, i32 0, i32 0\n");
+            appendable.append("    store i8* %tag, i8** %tagRef\n");
+            appendable.append("    %dataRef = getelementptr %class.java.lang.String, "
+                    + "%class.java.lang.String* %str, i32 0, i32 1\n");
+            appendable.append("    %rawData = bitcast %teavm.Array* %data to i8*\n");
+            appendable.append("    store i8* %rawData, i8** %dataRef\n");
+            appendable.append("    ret void\n");
+            appendable.append("}\n");
+        }
+
+        appendable.append("define void @teavm.initStringPool() {\n");
+        for (int i = 0; i < stringPool.size(); ++i) {
+            appendable.append("    call void @teavm.tagString(%class.java.lang.String* @teavm.str." + i + ","
+                    + "%teavm.Array* @teavm.strdata." + i + ")\n");
+        }
+        appendable.append("    ret void\n");
         appendable.append("}\n");
     }
 
@@ -330,6 +373,7 @@ public class LLVMRenderer {
             typeInferer = new TypeInferer();
             typeInferer.inferTypes(program, method.getReference());
             temporaryVariable = 0;
+            currentReturnType = method.getResultType();
             for (int i = 0; i < program.basicBlockCount(); ++i) {
                 BasicBlockReader block = program.basicBlockAt(i);
                 appendable.append("b" + block.getIndex() + ":\n");
@@ -464,6 +508,7 @@ public class LLVMRenderer {
     private List<String> emitted = new ArrayList<>();
     private int temporaryVariable;
     private TypeInferer typeInferer;
+    private ValueType currentReturnType;
 
     private InstructionReader reader = new InstructionReader() {
         @Override
@@ -497,17 +542,32 @@ public class LLVMRenderer {
 
         @Override
         public void floatConstant(VariableReader receiver, float cst) {
-            emitted.add("%v" + receiver.getIndex() + " = add float " + cst + ", 0");
+            String constantString = String.valueOf(cst);
+            if (constantString.indexOf('.') < 0) {
+                constantString += ".0";
+            }
+            emitted.add("%v" + receiver.getIndex() + " = fadd float " + constantString + ", 0.0");
         }
 
         @Override
         public void doubleConstant(VariableReader receiver, double cst) {
-            emitted.add("%v" + receiver.getIndex() + " = add double " + cst + ", 0");
+            String constantString = String.valueOf(cst);
+            if (constantString.indexOf('.') < 0) {
+                constantString += ".0";
+            }
+            emitted.add("%v" + receiver.getIndex() + " = fadd double " + constantString + ", 0.0");
         }
 
         @Override
         public void stringConstant(VariableReader receiver, String cst) {
-            emitted.add("%v" + receiver.getIndex() + " = bitcast i8* null to i8*");
+            int index = stringIndexes.computeIfAbsent(cst, key -> {
+                int result = stringPool.size();
+                stringPool.add(key);
+                return result;
+            });
+
+            emitted.add("%v" + receiver.getIndex() + " = bitcast %class.java.lang.String* @teavm.str."
+                    + index + " to i8*");
         }
 
         @Override
@@ -653,15 +713,15 @@ public class LLVMRenderer {
                     switch (type) {
                         case BYTE:
                             emitted.add("%t" + tmp + " = trunc i32 %v" + value.getIndex() + " to i8");
-                            emitted.add("%v" + receiver.getIndex() + " = sext i8 %v" + tmp + " to i32");
+                            emitted.add("%v" + receiver.getIndex() + " = sext i8 %t" + tmp + " to i32");
                             break;
                         case SHORT:
-                            emitted.add("%t" + tmp + " = trunc i32 %v" + value.getIndex() + " to 16");
-                            emitted.add("%v" + receiver.getIndex() + " = sext i16 %v" + tmp + " to i32");
+                            emitted.add("%t" + tmp + " = trunc i32 %v" + value.getIndex() + " to i16");
+                            emitted.add("%v" + receiver.getIndex() + " = sext i16 %t" + tmp + " to i32");
                             break;
                         case CHARACTER:
-                            emitted.add("%t" + tmp + " = trunc i32 %v" + value.getIndex() + " to 16");
-                            emitted.add("%v" + receiver.getIndex() + " = zext i16 %v" + tmp + " to i32");
+                            emitted.add("%t" + tmp + " = trunc i32 %v" + value.getIndex() + " to i16");
+                            emitted.add("%v" + receiver.getIndex() + " = zext i16 %t" + tmp + " to i32");
                             break;
                     }
                     break;
@@ -763,6 +823,11 @@ public class LLVMRenderer {
         @Override
         public void raise(VariableReader exception) {
             emitted.add("call void @exit(i32 255)");
+            if (currentReturnType == ValueType.VOID) {
+                emitted.add("ret void");
+            } else {
+                emitted.add("ret " + renderType(currentReturnType) + " " + defaultValue(currentReturnType));
+            }
         }
 
         @Override
@@ -921,9 +986,9 @@ public class LLVMRenderer {
             if (type == InvocationType.SPECIAL) {
                 sb.append("call " + renderType(method.getReturnType()) + " @" + mangleMethod(method) + "(");
             } else {
-                VirtualTableEntry entry = vtableProvider.lookup(method);
+                VirtualTableEntry entry = resolve(method);
                 String className = entry.getVirtualTable().getClassName();
-                String typeRef = "%vtable." + className;
+                String typeRef = className != null ? "%vtable." + className : "%itable";
                 int objectRef = temporaryVariable++;
                 int headerFieldRef = temporaryVariable++;
                 int vtableRef = temporaryVariable++;
@@ -954,6 +1019,21 @@ public class LLVMRenderer {
             sb.append(argumentStrings.stream().collect(Collectors.joining(", ")) + ")");
 
             emitted.add(sb.toString());
+        }
+
+        private VirtualTableEntry resolve(MethodReference method) {
+            while (true) {
+                VirtualTableEntry entry = vtableProvider.lookup(method);
+                if (entry != null) {
+                    return entry;
+                }
+                ClassReader cls = classSource.get(method.getClassName());
+                if (cls == null || cls.getParent() == null || cls.getParent().equals(cls.getName())) {
+                    break;
+                }
+                method = new MethodReference(cls.getParent(), method.getDescriptor());
+            }
+            return null;
         }
 
         @Override

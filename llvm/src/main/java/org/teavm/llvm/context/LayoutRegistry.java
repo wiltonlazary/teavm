@@ -13,7 +13,7 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package org.teavm.llvm.layout;
+package org.teavm.llvm.context;
 
 import java.util.HashMap;
 import java.util.Map;

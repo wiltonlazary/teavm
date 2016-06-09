@@ -24,6 +24,20 @@ whenEq:
     ret i32 0
 }
 
+define i32 @teavm.cmp.float(float %a, float %b) {
+    %less = fcmp olt float %a, %b
+    br i1 %less, label %whenLess, label %checkGreater
+whenLess:
+    ret i32 -1
+checkGreater:
+    %greater = fcmp ogt float %a, %b
+    br i1 %less, label %whenGreater, label %whenEq
+whenGreater:
+    ret i32 1
+whenEq:
+    ret i32 0
+}
+
 define void @method$org.teavm.llvm.runtime.LLVM.V7_printlnI(i32 %value) {
     call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @teavm.printf.format, i32 0, i32 0), i32 %value)
     ret void

@@ -218,7 +218,7 @@ public class TypeInferer {
     InstructionReader reader = new InstructionReader() {
         @Override
         public void unwrapArray(VariableReader receiver, VariableReader array, ArrayElementType elementType) {
-            types[receiver.getIndex()] = convert(elementType);
+            builder.addEdge(array.getIndex(), receiver.getIndex());
         }
 
         @Override

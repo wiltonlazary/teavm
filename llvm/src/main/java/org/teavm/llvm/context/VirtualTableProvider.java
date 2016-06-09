@@ -13,10 +13,14 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package org.teavm.llvm.layout;
+package org.teavm.llvm.context;
 
-import org.teavm.model.FieldReference;
+import org.teavm.model.MethodReference;
 
-public interface LayoutProvider {
-    int getIndex(FieldReference field);
+public interface VirtualTableProvider {
+    VirtualTableEntry lookup(MethodReference method);
+
+    VirtualTable lookup(String className);
+
+    VirtualTable getInterfaceTable();
 }

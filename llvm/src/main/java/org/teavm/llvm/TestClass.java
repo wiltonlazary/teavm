@@ -35,7 +35,7 @@ public class TestClass {
         LLVM.println(getX(new C()));
         LLVM.println(A.zzz);
 
-        int[] array = new int[] { 12, 13, 7, 8 };
+        int[] array = { 12, 13, 7, 8 };
         LLVM.println(array.length);
         for (int i = 0; i < array.length; ++i) {
             LLVM.println(i);
@@ -46,6 +46,14 @@ public class TestClass {
         LLVM.println(aa.hashCode());
         LLVM.println(new C().hashCode());
         LLVM.println(array.hashCode());
+
+        I[] iarray = { new C(), () -> 55 };
+        LLVM.println(iarray.length);
+        for (I i : iarray) {
+            LLVM.println(i.foo());
+        }
+
+        LLVM.println("foobarbaz".length());
     }
 
     private static int getX(A a) {
@@ -76,10 +84,19 @@ public class TestClass {
         }
     }
 
-    static class C extends A {
+    static class C extends A implements I {
         @Override
         int getX() {
             return 42;
         }
+
+        @Override
+        public int foo() {
+            return getX();
+        }
+    }
+
+    interface I {
+        int foo();
     }
 }
