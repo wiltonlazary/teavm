@@ -12,7 +12,8 @@
 }
 
 %teavm.Class = type {
-    i32              ; size
+    i32,             ; size
+    i32              ; vtable
 }
 
 %teavm.PrimitiveArray = type {

@@ -31,16 +31,23 @@ public class TestClass {
 
         printf(getX(new B(23)));
         printf(getX(new C()));
+        printf(A.zzz);
     }
 
     private static int getX(A a) {
         return a.getX();
     }
 
-    private static native void printf(int a);
+    static native void printf(int a);
 }
 
 abstract class A {
+    static int zzz = 555;
+
+    static {
+        TestClass.printf(678);
+    }
+
     abstract int getX();
 }
 
