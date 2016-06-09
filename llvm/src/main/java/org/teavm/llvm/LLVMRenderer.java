@@ -232,9 +232,9 @@ public class LLVMRenderer {
             appendable.append("    %initialized = trunc i32 %flag to i1\n");
             appendable.append("    br i1 %initialized, label %skip, label %proceed\n");
             appendable.append("proceed:\n");
-            appendable.append("    call void @" + mangleMethod(clinitMethod.getReference()) + "()\n");
             appendable.append("    %newFlags = or i32 %flags, " + (1 << 31) + "\n");
             appendable.append("    store i32 %newFlags, i32* %flagsPtr\n");
+            appendable.append("    call void @" + mangleMethod(clinitMethod.getReference()) + "()\n");
             appendable.append("    br label %skip\n");
             appendable.append("skip:");
         }
@@ -643,6 +643,7 @@ public class LLVMRenderer {
             boolean isFloat = type == NumericOperandType.FLOAT || type == NumericOperandType.DOUBLE;
             String typeStr = getLLVMType(type);
 
+            String secondString = "%v" + second.getIndex();
             switch (op) {
                 case ADD:
                     sb.append(isFloat ? "fadd" : "add");
@@ -684,8 +685,20 @@ public class LLVMRenderer {
                     emitted.add(sb.toString());
                     return;
             }
+            if (type == NumericOperandType.LONG) {
+                switch (op) {
+                    case SHIFT_LEFT:
+                    case SHIFT_RIGHT:
+                    case SHIFT_RIGHT_UNSIGNED: {
+                        int tmp = temporaryVariable++;
+                        emitted.add("%t" + tmp + " = sext i32 " + secondString + " to i64");
+                        secondString = "%t" + tmp;
+                        break;
+                    }
+                }
+            }
 
-            sb.append(" ").append(typeStr).append(" %v" + first.getIndex() + ", %v" + second.getIndex());
+            sb.append(" ").append(typeStr).append(" %v" + first.getIndex() + ", " + secondString);
             emitted.add(sb.toString());
         }
 

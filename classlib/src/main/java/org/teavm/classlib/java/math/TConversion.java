@@ -74,7 +74,9 @@ class TConversion {
         int resDigit;
         if (radix != 16) {
             int[] temp = new int[numberLength];
-            System.arraycopy(digits, 0, temp, 0, numberLength);
+            for (int j = 0; j < numberLength; ++j) {
+                temp[j] = digits[j];
+            }
             int tempLen = numberLength;
             int charsPerInt = digitFitInInt[radix];
             int i;
@@ -192,7 +194,9 @@ class TConversion {
         } else {
             int[] temp = new int[numberLength];
             int tempLen = numberLength;
-            System.arraycopy(digits, 0, temp, 0, tempLen);
+            for (int j = 0; j < temp.length; ++j) {
+                temp[j] = digits[j];
+            }
             BIG_LOOP: while (true) {
                 // divide the array of digits by bigRadix and convert
                 // remainders

@@ -3,6 +3,8 @@
 @teavm.debug.text.1 = private constant [9 x i8] c"debug 1\0A\00"
 @teavm.debug.text.2 = private constant [9 x i8] c"debug 2\0A\00"
 @teavm.debug.text.3 = private constant [9 x i8] c"debug 3\0A\00"
+@teavm.buffer = private global [4096 x i8] zeroinitializer
+@teavm.bufferPos = private global i32 0
 
 %teavm.Object = type {
     i8*              ; header
@@ -14,6 +16,8 @@
     %itable *        ; reference to class
 }
 
+%timespec = type { i32, i64 }
+
 define i32 @teavm.cmp.i32(i32 %a, i32 %b) {
     %less = icmp slt i32 %a, %b
     br i1 %less, label %whenLess, label %checkGreater
@@ -21,6 +25,20 @@ whenLess:
     ret i32 -1
 checkGreater:
     %greater = icmp sgt i32 %a, %b
+    br i1 %greater, label %whenGreater, label %whenEq
+whenGreater:
+    ret i32 1
+whenEq:
+    ret i32 0
+}
+
+define i32 @teavm.cmp.i64(i64 %a, i64 %b) {
+    %less = icmp slt i64 %a, %b
+    br i1 %less, label %whenLess, label %checkGreater
+whenLess:
+    ret i32 -1
+checkGreater:
+    %greater = icmp sgt i64 %a, %b
     br i1 %greater, label %whenGreater, label %whenEq
 whenGreater:
     ret i32 1
@@ -54,6 +72,9 @@ define i32 @method$java.lang.Object.I8_identity(i8* %object) {
 define i8* @method$java.lang.Class.L15_java.lang.Class9_charClass() {
     ret i8* null
 }
+define i8* @method$java.lang.Class.L15_java.lang.Class8_intClass() {
+    ret i8* null
+}
 define void @method$org.teavm.llvm.runtime.LLVM.V4_putsABI(i8* %buffer, i32 %offset) {
     %array = bitcast i8* %buffer to %teavm.Array*
     %arrayData = getelementptr %teavm.Array, %teavm.Array* %array, i32 1
@@ -64,8 +85,24 @@ define void @method$org.teavm.llvm.runtime.LLVM.V4_putsABI(i8* %buffer, i32 %off
     ret void
 }
 define void @method$org.teavm.llvm.runtime.LLVM.V7_putCharB(i32 %char) {
-    ;call i32 @putchar(i32 %char)
+    call i32 @putchar(i32 %char)
     ret void
+}
+define void @method$java.lang.ConsoleOutputStreamStderr.V5_writeI(i8* %this, i32 %char) {
+    call i32 @putchar(i32 %char)
+    ret void
+}
+define void @method$java.lang.ConsoleOutputStreamStdout.V5_writeI(i8* %this, i32 %char) {
+    call i32 @putchar(i32 %char)
+    ret void
+}
+define i64 @method$java.lang.System.L17_currentTimeMillis() {
+    %ts = alloca %timespec
+    call i32 @clock_gettime(i32 0, %timespec* %ts)
+    %nanoPtr = getelementptr %timespec, %timespec* %ts, i32 0, i32 1
+    %nano = load i64, i64* %nanoPtr
+    %milli = udiv i64 %nano, 1000000
+    ret i64 %milli
 }
 
 define void @teavm.debug.1() {
@@ -136,3 +173,4 @@ declare i32 @puts(i8*)
 declare i32 @putchar(i32)
 declare i32 @setjmp(%teavm.ExceptionBuffer*)
 declare void @longjmp(%teavm.ExceptionBuffer*, i32)
+declare i32 @clock_gettime(i32, %timespec*);
