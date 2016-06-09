@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.teavm.llvm.context.LayoutProvider;
+import org.teavm.llvm.context.TagRegistry;
 import org.teavm.llvm.context.VirtualTable;
 import org.teavm.llvm.context.VirtualTableEntry;
 import org.teavm.llvm.context.VirtualTableProvider;
@@ -66,15 +67,17 @@ public class LLVMRenderer {
     private ClassReaderSource classSource;
     private VirtualTableProvider vtableProvider;
     private LayoutProvider layoutProvider;
+    private TagRegistry tagRegistry;
     private Appendable appendable;
     private Map<String, Integer> stringIndexes = new HashMap<>();
     private List<String> stringPool = new ArrayList<>();
 
     public LLVMRenderer(ClassReaderSource classSource, VirtualTableProvider vtableProvider,
-            LayoutProvider layoutProvider, Appendable appendable) {
+            LayoutProvider layoutProvider, TagRegistry tagRegistry, Appendable appendable) {
         this.classSource = classSource;
         this.vtableProvider = vtableProvider;
         this.layoutProvider = layoutProvider;
+        this.tagRegistry = tagRegistry;
         this.appendable = appendable;
     }
 
@@ -144,7 +147,7 @@ public class LLVMRenderer {
 
             VirtualTable vtable = vtableProvider.lookup(cls.getName());
             appendable.append("@vtable." + className + " = private global ");
-            renderVirtualTableValues(cls, vtable, 1);
+            renderVirtualTableValues(cls, vtable, 0);
             appendable.append("\n");
 
             for (FieldReader field : cls.getFields()) {
@@ -161,19 +164,19 @@ public class LLVMRenderer {
 
     private void renderVirtualTableValues(ClassReader cls, VirtualTable vtable, int level) throws IOException {
         ClassReader vtableCls = classSource.get(vtable.getClassName());
-        indent(level);
         appendable.append("%vtable." + vtable.getClassName() + " {\n");
 
         boolean top = true;
         if (vtableCls.getParent() != null && !vtableCls.getParent().equals(vtableCls.getName())) {
             VirtualTable parentVtable = vtableProvider.lookup(vtableCls.getParent());
             if (parentVtable != null) {
+                indent(level + 1);
                 renderVirtualTableValues(cls, parentVtable, level + 1);
                 top = false;
             }
         }
         if (top) {
-            appendable.append("%itable ");
+            indent(level + 1);
             renderInterfaceTableValues(cls, level + 1);
         }
 
@@ -196,10 +199,14 @@ public class LLVMRenderer {
     }
 
     private void renderInterfaceTableValues(ClassReader cls, int level) throws IOException {
-        appendable.append("{\n");
+        appendable.append("%itable {\n");
+
+        int tag = tagRegistry.getRanges(cls.getName()).stream().map(range -> range.lower).findAny().orElse(-1);
 
         indent(level + 1);
-        appendable.append("i32 0");
+        appendable.append("i32 0,\n");
+        indent(level + 1);
+        appendable.append("i32 " + tag);
 
         for (VirtualTableEntry entry : vtableProvider.getInterfaceTable().getEntries()) {
             appendable.append(",\n");
@@ -318,10 +325,8 @@ public class LLVMRenderer {
     public void renderInterfaceTable() throws IOException {
         Structure structure = new Structure("itable");
         structure.fields.add(new Field("i32", "size"));
+        structure.fields.add(new Field("i32", "tag"));
         emitVirtualTableEntries(vtableProvider.getInterfaceTable(), true, structure);
-        if (structure.fields.isEmpty()) {
-            structure.fields.add(new Field("i8*", "<stub>"));
-        }
         renderStructure(structure);
         appendable.append("\n");
     }
@@ -387,6 +392,7 @@ public class LLVMRenderer {
 
             for (int i = 0; i < program.basicBlockCount(); ++i) {
                 BasicBlockReader block = program.basicBlockAt(i);
+                currentBlock = block;
                 appendable.append("b" + block.getIndex() + ":\n");
 
                 joints = new HashMap<>();
@@ -581,6 +587,7 @@ public class LLVMRenderer {
     private boolean expectingException;
     private int methodNameSize;
     private String methodNameVar;
+    private BasicBlockReader currentBlock;
 
     private InstructionReader reader = new InstructionReader() {
         @Override
@@ -695,6 +702,8 @@ public class LLVMRenderer {
                         secondString = "%t" + tmp;
                         break;
                     }
+                    default:
+                        break;
                 }
             }
 
@@ -1109,8 +1118,9 @@ public class LLVMRenderer {
                 sb.append("%v" + receiver.getIndex() + " = ");
             }
 
+            String functionText;
             if (type == InvocationType.SPECIAL) {
-                sb.append("call " + renderType(method.getReturnType()) + " @" + mangleMethod(method) + "(");
+                functionText = "@" + mangleMethod(method);
             } else {
                 VirtualTableEntry entry = resolve(method);
                 String className = entry.getVirtualTable().getClassName();
@@ -1126,14 +1136,20 @@ public class LLVMRenderer {
                 emitted.add("%t" + vtableTypedRef + " = bitcast i8* %t" + vtableRef + " to " + typeRef + "*");
 
                 int functionRef = temporaryVariable++;
+                int vtableIndex = entry.getIndex() + 1;
+                if (className == null) {
+                    ++vtableIndex;
+                }
                 emitted.add("%t" + functionRef + " = getelementptr inbounds " + typeRef + ", "
-                        + typeRef + "* %t" + vtableTypedRef + ", i32 0, i32 " + (entry.getIndex() + 1));
+                        + typeRef + "* %t" + vtableTypedRef + ", i32 0, i32 " + vtableIndex);
                 int function = temporaryVariable++;
                 String methodType = methodType(method.getDescriptor());
                 emitted.add("%t" + function + " = load " + methodType + ", " + methodType + "* %t" + functionRef);
 
-                sb.append("call " + renderType(method.getReturnType()) + " %t" + function + "(");
+                functionText = "%t" + function;
             }
+
+            sb.append("call " + renderType(method.getReturnType()) + " " + functionText + "(");
 
             List<String> argumentStrings = new ArrayList<>();
             if (instance != null) {
@@ -1171,7 +1187,61 @@ public class LLVMRenderer {
 
         @Override
         public void isInstance(VariableReader receiver, VariableReader value, ValueType type) {
-            emitted.add("%v" + receiver.getIndex() + " = add i32 1, 0");
+            if (type instanceof ValueType.Object) {
+                String className = ((ValueType.Object) type).getClassName();
+                List<TagRegistry.Range> ranges = tagRegistry.getRanges(className);
+
+                if (!ranges.isEmpty()) {
+                    String headerRef = "%t" + temporaryVariable++;
+                    emitted.add(headerRef + " = bitcast i8* %v" + value.getIndex() + " to %teavm.Object*");
+                    String vtableRefRef = "%t" + temporaryVariable++;
+                    emitted.add(vtableRefRef + " = getelementptr %teavm.Object, %teavm.Object* " + headerRef + ", "
+                            + "i32 0, i32 0");
+                    String vtableRef = "%t" + temporaryVariable++;
+                    emitted.add(vtableRef + " = load i8*, i8** " + vtableRefRef);
+                    String typedVtableRef = "%t" + temporaryVariable++;
+                    emitted.add(typedVtableRef + " = bitcast i8* " + vtableRef + " to %itable*");
+                    String tagRef = "%t" + temporaryVariable++;
+                    emitted.add(tagRef + " = getelementptr %itable, %itable* " + typedVtableRef + ", i32 0, i32 1");
+                    String tag = "%t" + temporaryVariable++;
+                    emitted.add(tag + " = load i32, i32* " + tagRef);
+
+                    String trueLabel = "tb" + temporaryVariable++;
+                    String finalLabel = "tb" + temporaryVariable++;
+                    String next = null;
+                    for (TagRegistry.Range range : ranges) {
+                        String tmpLabel = "tb" + temporaryVariable++;
+                        next = "tb" + temporaryVariable++;
+                        String tmpLower = "%t" + temporaryVariable++;
+                        String tmpUpper = "%t" + temporaryVariable++;
+                        emitted.add(tmpLower + " = icmp slt i32 " + tag + ", " + range.lower);
+                        emitted.add("br i1 " + tmpLower + ", label %" + next + ", label %" + tmpLabel);
+                        emitted.add(tmpLabel + ":");
+                        emitted.add(tmpUpper + " = icmp sge i32 " + tag + ", " + range.upper);
+                        emitted.add("br i1 " + tmpUpper + ", label %" + next + ", label %" + trueLabel);
+                        emitted.add(next + ":");
+                    }
+
+                    String falseVar = "%t" + temporaryVariable++;
+                    emitted.add(falseVar + " = add i32 0, 0");
+                    emitted.add("br label %" + finalLabel);
+
+                    String trueVar = "%t" + temporaryVariable++;
+                    emitted.add(trueLabel + ":");
+                    emitted.add(trueVar + " = add i32 1, 0");
+                    emitted.add("br label %" + finalLabel);
+
+                    String phiVar = "%t" + temporaryVariable++;
+                    emitted.add(finalLabel + ":");
+                    emitted.add(phiVar + " = phi i32 [ " + trueVar + ", "
+                            + "%" + trueLabel + " ], [ " + falseVar + ", %" + next + "]");
+                    emitted.add("%v" + receiver.getIndex() + " = add i32 0, " + phiVar);
+                } else {
+                    emitted.add("%v" + receiver.getIndex() + " = add i32 0, 0");
+                }
+            } else {
+                emitted.add("%v" + receiver.getIndex() + " = add i32 1, 0");
+            }
         }
 
         @Override

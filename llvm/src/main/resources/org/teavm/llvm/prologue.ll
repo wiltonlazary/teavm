@@ -75,6 +75,9 @@ define i8* @method$java.lang.Class.L15_java.lang.Class9_charClass() {
 define i8* @method$java.lang.Class.L15_java.lang.Class8_intClass() {
     ret i8* null
 }
+define i8* @method$java.lang.Class.L15_java.lang.Class9_longClass() {
+    ret i8* null
+}
 define void @method$org.teavm.llvm.runtime.LLVM.V4_putsABI(i8* %buffer, i32 %offset) {
     %array = bitcast i8* %buffer to %teavm.Array*
     %arrayData = getelementptr %teavm.Array, %teavm.Array* %array, i32 1

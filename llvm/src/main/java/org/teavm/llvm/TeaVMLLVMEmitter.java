@@ -35,6 +35,7 @@ import org.teavm.diagnostics.ProblemProvider;
 import org.teavm.javascript.spi.Generator;
 import org.teavm.javascript.spi.Injector;
 import org.teavm.llvm.context.LayoutRegistry;
+import org.teavm.llvm.context.TagRegistry;
 import org.teavm.llvm.context.VirtualTableRegistry;
 import org.teavm.model.ClassHolder;
 import org.teavm.model.ClassHolderTransformer;
@@ -170,7 +171,8 @@ public class TeaVMLLVMEmitter implements TeaVMHost, ServiceRepository {
 
         VirtualTableRegistry vtableRegistry = buildVirtualTables(classSet);
         LayoutRegistry layoutRegistry = buildLayouts(classSet);
-        LLVMRenderer renderer = new LLVMRenderer(classSet, vtableRegistry, layoutRegistry, writer);
+        TagRegistry tagRegistry = new TagRegistry(classSet);
+        LLVMRenderer renderer = new LLVMRenderer(classSet, vtableRegistry, layoutRegistry, tagRegistry, writer);
         renderer.renderPrologue();
         renderer.renderInterfaceTable();
         renderer.renderClasses(classSet.getClassNames());
