@@ -15,6 +15,8 @@
  */
 package org.teavm.llvm;
 
+import org.teavm.llvm.runtime.LLVM;
+
 public class TestClass {
     private TestClass() {
     }
@@ -23,50 +25,61 @@ public class TestClass {
         int a = 0;
         int b = 1;
         for (int i = 0; i < 20; ++i) {
-            printf(a);
+            LLVM.println(a);
             int c = a + b;
             a = b;
             b = c;
         }
 
-        printf(getX(new B(23)));
-        printf(getX(new C()));
-        printf(A.zzz);
+        LLVM.println(getX(new B(23)));
+        LLVM.println(getX(new C()));
+        LLVM.println(A.zzz);
+
+        int[] array = new int[] { 12, 13, 7, 8 };
+        LLVM.println(array.length);
+        for (int i = 0; i < array.length; ++i) {
+            LLVM.println(i);
+            LLVM.println(array[i]);
+        }
+
+        A aa = new B(8888);
+        LLVM.println(aa.hashCode());
+        LLVM.println(new C().hashCode());
+        LLVM.println(array.hashCode());
     }
 
     private static int getX(A a) {
         return a.getX();
     }
 
-    static native void printf(int a);
-}
 
-abstract class A {
-    static int zzz = 555;
+    static abstract class A {
+        static int zzz = 555;
 
-    static {
-        TestClass.printf(678);
+        static {
+            LLVM.println(678);
+        }
+
+        abstract int getX();
     }
 
-    abstract int getX();
-}
+    static class B extends A {
+        private int x;
 
-class B extends A {
-    private int x;
+        public B(int x) {
+            this.x = x;
+        }
 
-    public B(int x) {
-        this.x = x;
+        @Override
+        public int getX() {
+            return x;
+        }
     }
 
-    @Override
-    public int getX() {
-        return x;
-    }
-}
-
-class C extends A {
-    @Override
-    int getX() {
-        return 42;
+    static class C extends A {
+        @Override
+        int getX() {
+            return 42;
+        }
     }
 }

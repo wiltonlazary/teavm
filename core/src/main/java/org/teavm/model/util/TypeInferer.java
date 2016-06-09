@@ -65,7 +65,7 @@ public class TypeInferer {
 
         IntegerStack stack = new IntegerStack(sz);
         Graph graph = builder.build();
-        Graph arrayElemGraph = builder.build();
+        Graph arrayElemGraph = arrayElemBuilder.build();
         for (int i = 0; i < sz; ++i) {
             if ((i >= graph.size() || graph.incomingEdgesCount(i) == 0)
                     && (i >= arrayElemGraph.size() || arrayElemGraph.incomingEdgesCount(i) == 0)) {

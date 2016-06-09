@@ -7,19 +7,12 @@
 %teavm.Array = type {
     %teavm.Object,   ; parent
     i32,             ; size
-    i8,              ; degree
     %teavm.Class *   ; reference to class
 }
 
 %teavm.Class = type {
     i32,             ; size
     i32              ; vtable
-}
-
-%teavm.PrimitiveArray = type {
-    %teavm.Object,   ; parent
-    i32,             ; size
-    i8               ; degree
 }
 
 define i32 @teavm.cmp.i32(i32 %a, i32 %b) {
@@ -36,11 +29,19 @@ whenEq:
     ret i32 0
 }
 
-define void @method$org.teavm.llvm.TestClass.V6_printfI(i32 %value) {
+define void @method$org.teavm.llvm.runtime.LLVM.V7_printlnI(i32 %value) {
     call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @teavm.printf.format, i32 0, i32 0), i32 %value)
     ret void
 }
 
+define i32 @method$java.lang.Object.I8_identity(i8* %object) {
+    %identity = ptrtoint i8* %object to i32
+    ret i32 %identity
+}
+
+@teavm.Array = global { i32, %teavm.Array } zeroinitializer
+
 declare void @exit(i32)
 declare i32 @printf(i8*, ...)
 declare i8* @malloc(i32)
+declare i8* @memcpy(i8*, i8*, i32)

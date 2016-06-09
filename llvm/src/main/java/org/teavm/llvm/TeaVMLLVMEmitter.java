@@ -53,10 +53,7 @@ import org.teavm.optimization.GlobalValueNumbering;
 import org.teavm.optimization.LoopInvariantMotion;
 import org.teavm.optimization.MethodOptimization;
 import org.teavm.optimization.UnusedVariableElimination;
-import org.teavm.vm.TeaVMPhase;
 import org.teavm.vm.TeaVMPluginLoader;
-import org.teavm.vm.TeaVMProgressFeedback;
-import org.teavm.vm.TeaVMProgressListener;
 import org.teavm.vm.spi.RendererListener;
 import org.teavm.vm.spi.TeaVMHost;
 import org.teavm.vm.spi.TeaVMPlugin;
@@ -65,24 +62,14 @@ public class TeaVMLLVMEmitter implements TeaVMHost, ServiceRepository {
     private final ClassLoader classLoader;
     private final DependencyChecker dependencyChecker;
     private final AccumulationDiagnostics diagnostics = new AccumulationDiagnostics();
-    private final Map<MethodReference, Generator> methodGenerators = new HashMap<>();
-    private final Map<MethodReference, Injector> methodInjectors = new HashMap<>();
     private final Map<Class<?>, Object> services = new HashMap<>();
     private final Properties properties = new Properties();
-    private TeaVMProgressListener progressListener;
     private String mainClassName;
 
     public TeaVMLLVMEmitter(ClassLoader classLoader, ClassReaderSource classSource) {
         this.classLoader = classLoader;
         dependencyChecker = new DependencyChecker(classSource, classLoader, this, diagnostics);
-        progressListener = new TeaVMProgressListener() {
-            @Override public TeaVMProgressFeedback progressReached(int progress) {
-                return TeaVMProgressFeedback.CONTINUE;
-            }
-            @Override public TeaVMProgressFeedback phaseStarted(TeaVMPhase phase, int count) {
-                return TeaVMProgressFeedback.CONTINUE;
-            }
-        };
+        dependencyChecker.addClassTransformer(new LLVMClassTransformer());
     }
 
     @Override
@@ -188,6 +175,7 @@ public class TeaVMLLVMEmitter implements TeaVMHost, ServiceRepository {
         renderer.renderInterfaceTable();
         renderer.renderClasses(classSet.getClassNames());
         renderer.renderMain(mainMethod.getMethod().getReference());
+        renderer.renderEpilogue();
     }
 
     private ListableClassHolderSource link(DependencyInfo dependency) {

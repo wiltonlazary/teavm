@@ -20,6 +20,7 @@ import org.teavm.javascript.spi.Rename;
 import org.teavm.javascript.spi.Superclass;
 import org.teavm.javascript.spi.Sync;
 import org.teavm.jso.browser.TimerHandler;
+import org.teavm.llvm.annotations.LLVMNative;
 import org.teavm.platform.Platform;
 import org.teavm.platform.PlatformObject;
 import org.teavm.platform.PlatformQueue;
@@ -191,6 +192,7 @@ public class TObject {
         return getClass().getName() + "@" + TInteger.toHexString(identity());
     }
 
+    @LLVMNative
     int identity() {
         PlatformObject platformThis = Platform.getPlatformObject(this);
         if (platformThis.getId() == 0) {
