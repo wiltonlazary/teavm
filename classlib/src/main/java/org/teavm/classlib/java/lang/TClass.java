@@ -21,6 +21,7 @@ import java.util.Map;
 import org.teavm.classlib.impl.DeclaringClassMetadataGenerator;
 import org.teavm.classlib.java.lang.annotation.TAnnotation;
 import org.teavm.classlib.java.lang.reflect.TAnnotatedElement;
+import org.teavm.llvm.annotations.LLVMNative;
 import org.teavm.platform.Platform;
 import org.teavm.platform.PlatformClass;
 import org.teavm.platform.metadata.ClassResource;
@@ -121,46 +122,55 @@ public class TClass<T> extends TObject implements TAnnotatedElement {
     }
 
     @SuppressWarnings("unchecked")
+    @LLVMNative
     static TClass<TVoid> voidClass() {
         return (TClass<TVoid>) getClass(Platform.getPrimitives().getVoidClass());
     }
 
     @SuppressWarnings("unchecked")
+    @LLVMNative
     static TClass<TBoolean> booleanClass() {
         return (TClass<TBoolean>) getClass(Platform.getPrimitives().getBooleanClass());
     }
 
     @SuppressWarnings("unchecked")
+    @LLVMNative
     static TClass<TCharacter> charClass() {
         return (TClass<TCharacter>) getClass(Platform.getPrimitives().getCharClass());
     }
 
     @SuppressWarnings("unchecked")
+    @LLVMNative
     static TClass<TByte> byteClass() {
         return (TClass<TByte>) getClass(Platform.getPrimitives().getByteClass());
     }
 
     @SuppressWarnings("unchecked")
+    @LLVMNative
     static TClass<TShort> shortClass() {
         return (TClass<TShort>) getClass(Platform.getPrimitives().getShortClass());
     }
 
     @SuppressWarnings("unchecked")
+    @LLVMNative
     static TClass<TInteger> intClass() {
         return (TClass<TInteger>) getClass(Platform.getPrimitives().getIntClass());
     }
 
     @SuppressWarnings("unchecked")
+    @LLVMNative
     static TClass<TLong> longClass() {
         return (TClass<TLong>) getClass(Platform.getPrimitives().getLongClass());
     }
 
     @SuppressWarnings("unchecked")
+    @LLVMNative
     static TClass<TFloat> floatClass() {
         return (TClass<TFloat>) getClass(Platform.getPrimitives().getFloatClass());
     }
 
     @SuppressWarnings("unchecked")
+    @LLVMNative
     static TClass<TDouble> doubleClass() {
         return (TClass<TDouble>) getClass(Platform.getPrimitives().getDoubleClass());
     }

@@ -20,4 +20,37 @@ public final class LLVM {
     }
 
     public static native void println(int number);
+
+    public static void print(String string) {
+        byte[] bytes = string.getBytes();
+        for (int i = 0; i < string.length(); ++i) {
+            bytes[i] = (byte) string.charAt(i);
+        }
+        byte[] zeroTerminated = new byte[bytes.length + 1];
+        for (int i = 0; i < bytes.length; ++i) {
+            zeroTerminated[i] = bytes[i];
+        }
+        putChars(zeroTerminated);
+    }
+
+    public static void println(String string) {
+        print(string);
+        print("\n");
+    }
+
+    private static void putChars(byte[] data) {
+        int last = 0;
+        for (int i = 0; i < data.length - 1; ++i) {
+            if (data[i] == 0) {
+                puts(data, last);
+                putChar((byte) 0);
+                last = i + 1;
+            }
+        }
+        puts(data, last);
+    }
+
+    private static native void puts(byte[] data, int start);
+
+    private static native void putChar(byte c);
 }

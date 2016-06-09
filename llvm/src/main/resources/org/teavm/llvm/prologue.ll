@@ -1,4 +1,8 @@
 @teavm.printf.format = private constant [4 x i8] c"%d\0A\00", align 1
+@teavm.exceptionOccurred = private constant [26 x i8] c"Exception occurred in %s\0A\00", align 1
+@teavm.debug.text.1 = private constant [9 x i8] c"debug 1\0A\00"
+@teavm.debug.text.2 = private constant [9 x i8] c"debug 2\0A\00"
+@teavm.debug.text.3 = private constant [9 x i8] c"debug 3\0A\00"
 
 %teavm.Object = type {
     i8*              ; header
@@ -17,7 +21,7 @@ whenLess:
     ret i32 -1
 checkGreater:
     %greater = icmp sgt i32 %a, %b
-    br i1 %less, label %whenGreater, label %whenEq
+    br i1 %greater, label %whenGreater, label %whenEq
 whenGreater:
     ret i32 1
 whenEq:
@@ -31,7 +35,7 @@ whenLess:
     ret i32 -1
 checkGreater:
     %greater = fcmp ogt float %a, %b
-    br i1 %less, label %whenGreater, label %whenEq
+    br i1 %greater, label %whenGreater, label %whenEq
 whenGreater:
     ret i32 1
 whenEq:
@@ -47,10 +51,88 @@ define i32 @method$java.lang.Object.I8_identity(i8* %object) {
     %identity = ptrtoint i8* %object to i32
     ret i32 %identity
 }
+define i8* @method$java.lang.Class.L15_java.lang.Class9_charClass() {
+    ret i8* null
+}
+define void @method$org.teavm.llvm.runtime.LLVM.V4_putsABI(i8* %buffer, i32 %offset) {
+    %array = bitcast i8* %buffer to %teavm.Array*
+    %arrayData = getelementptr %teavm.Array, %teavm.Array* %array, i32 1
+    %arrayBytes = bitcast %teavm.Array* %arrayData to i8*
+    %adjustedOffset = add i32 %offset, 1
+    %start = getelementptr i8, i8* %arrayBytes, i32 %adjustedOffset
+    call i32 @puts(i8* %start)
+    ret void
+}
+define void @method$org.teavm.llvm.runtime.LLVM.V7_putCharB(i32 %char) {
+    ;call i32 @putchar(i32 %char)
+    ret void
+}
+
+define void @teavm.debug.1() {
+    %buffer = bitcast [9 x i8]* @teavm.debug.text.1 to i8*
+    call i32 @puts(i8* %buffer)
+    ret void
+}
+define void @teavm.debug.2() {
+    %buffer = bitcast [9 x i8]* @teavm.debug.text.2 to i8*
+    call i32 @puts(i8* %buffer)
+    ret void
+}
+define void @teavm.debug.3() {
+    %buffer = bitcast [9 x i8]* @teavm.debug.text.3 to i8*
+    call i32 @puts(i8* %buffer)
+    ret void
+}
+
+define i1 @teavm.instanceOf(i8* %object, %itable* %type) {
+    ret i1 1
+}
 
 @teavm.Array = global %teavm.Array zeroinitializer
+
+%teavm.ExceptionBuffer = type { [ 16 x i32 ], i8* }
+
+@teavm.exceptionTable = global [ 32 x %teavm.ExceptionBuffer ] zeroinitializer
+@teavm.exceptionDepth = global i32 0
+
+define i32 @teavm.enterException() {
+    %current = load i32, i32* @teavm.exceptionDepth
+    %next = add i32 %current, 1
+    store i32 %next, i32* @teavm.exceptionDepth
+    ret i32 %current
+}
+define void @teavm.leaveException() {
+    %current = load i32, i32* @teavm.exceptionDepth
+    %next = sub i32 %current, 1
+    store i32 %next, i32* @teavm.exceptionDepth
+    ret void
+}
+define void @teavm.throwException() {
+    %current = load i32, i32* @teavm.exceptionDepth
+    %buffer = getelementptr [32 x %teavm.ExceptionBuffer], [32 x %teavm.ExceptionBuffer]* @teavm.exceptionTable, i32 0, i32 %current
+    call void @longjmp(%teavm.ExceptionBuffer* %buffer, i32 1)
+    ret void
+}
+define i8* @teavm.catchException() {
+    %current = call i32 @teavm.enterException()
+    %buffer = getelementptr [32 x %teavm.ExceptionBuffer], [32 x %teavm.ExceptionBuffer]* @teavm.exceptionTable, i32 0, i32 %current
+    %result = call i32 @setjmp(%teavm.ExceptionBuffer* %buffer)
+    %caught = icmp ne i32 %result, 0
+    br i1 %caught, label %throw, label %continue
+throw:
+    %exceptionPtr = getelementptr %teavm.ExceptionBuffer, %teavm.ExceptionBuffer* %buffer, i32 0, i32 1
+    %exception = load i8*, i8** %exceptionPtr
+    ret i8* %exception
+continue:
+    ret i8* null
+}
 
 declare void @exit(i32)
 declare i32 @printf(i8*, ...)
 declare i8* @malloc(i32)
 declare i8* @memcpy(i8*, i8*, i32)
+declare i8* @memset(i8*, i32, i32);
+declare i32 @puts(i8*)
+declare i32 @putchar(i32)
+declare i32 @setjmp(%teavm.ExceptionBuffer*)
+declare void @longjmp(%teavm.ExceptionBuffer*, i32)

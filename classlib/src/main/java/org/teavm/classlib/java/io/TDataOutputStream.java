@@ -14,6 +14,8 @@
  *  limitations under the License.
  */
 package org.teavm.classlib.java.io;
+
+import org.teavm.classlib.impl.unicode.UnicodeHelper;
 import org.teavm.classlib.java.lang.*;
 
 public class TDataOutputStream extends TFilterOutputStream implements TDataOutput {
@@ -162,48 +164,14 @@ public class TDataOutputStream extends TFilterOutputStream implements TDataOutpu
 
     @Override
     public final void writeUTF(TString str) throws TIOException {
-        long utfCount = countUTFBytes(str);
+        long utfCount = UnicodeHelper.countUTFBytes((String) (Object) str);
         if (utfCount > 65535) {
             throw new TIOException(TString.wrap("UTF Error"));
         }
         byte[] buffer = new byte[(int) utfCount + 2];
         int offset = 0;
         offset = writeShortToBuffer((int) utfCount, buffer, offset);
-        offset = writeUTFBytesToBuffer(str, buffer, offset);
+        offset = UnicodeHelper.writeUTFBytesToBuffer((String) (Object) str, buffer, offset);
         write(buffer, 0, offset);
-    }
-
-    long countUTFBytes(TString str) {
-        int utfCount = 0;
-        int length = str.length();
-        for (int i = 0; i < length; i++) {
-            int charValue = str.charAt(i);
-            if (charValue > 0 && charValue <= 127) {
-                utfCount++;
-            } else if (charValue <= 2047) {
-                utfCount += 2;
-            } else {
-                utfCount += 3;
-            }
-        }
-        return utfCount;
-    }
-
-    int writeUTFBytesToBuffer(TString str, byte[] buffer, int offset) throws TIOException {
-        int length = str.length();
-        for (int i = 0; i < length; i++) {
-            int charValue = str.charAt(i);
-            if (charValue > 0 && charValue <= 127) {
-                buffer[offset++] = (byte) charValue;
-            } else if (charValue <= 2047) {
-                buffer[offset++] = (byte) (0xc0 | (0x1f & (charValue >> 6)));
-                buffer[offset++] = (byte) (0x80 | (0x3f & charValue));
-            } else {
-                buffer[offset++] = (byte) (0xe0 | (0x0f & (charValue >> 12)));
-                buffer[offset++] = (byte) (0x80 | (0x3f & (charValue >> 6)));
-                buffer[offset++] = (byte) (0x80 | (0x3f & charValue));
-             }
-        }
-        return offset;
     }
 }

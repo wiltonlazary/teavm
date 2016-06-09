@@ -22,6 +22,10 @@ public class TestClass {
     }
 
     public static void main(String[] args) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Hello, ").append("world!").append(111);
+        LLVM.println(sb.toString());
+
         int a = 0;
         int b = 1;
         for (int i = 0; i < 20; ++i) {
@@ -53,7 +57,11 @@ public class TestClass {
             LLVM.println(i.foo());
         }
 
-        LLVM.println("foobarbaz".length());
+        String str = "foobarbaz";
+        LLVM.println(str.length());
+        for (int i = 0; i < str.length(); ++i) {
+            LLVM.println(str.charAt(i));
+        }
     }
 
     private static int getX(A a) {

@@ -19,6 +19,8 @@ import java.util.Arrays;
 
 import org.teavm.classlib.impl.Base46;
 import org.teavm.classlib.impl.CharFlow;
+import org.teavm.classlib.java.io.TIOException;
+import org.teavm.classlib.java.lang.TString;
 
 /**
  *
@@ -157,5 +159,39 @@ public final class UnicodeHelper {
             }
         }
         return Arrays.copyOf(ranges, rangeIndex);
+    }
+
+    public static long countUTFBytes(String str) {
+        int utfCount = 0;
+        int length = str.length();
+        for (int i = 0; i < length; i++) {
+            int charValue = str.charAt(i);
+            if (charValue > 0 && charValue <= 127) {
+                utfCount++;
+            } else if (charValue <= 2047) {
+                utfCount += 2;
+            } else {
+                utfCount += 3;
+            }
+        }
+        return utfCount;
+    }
+
+    public static int writeUTFBytesToBuffer(String str, byte[] buffer, int offset) {
+        int length = str.length();
+        for (int i = 0; i < length; i++) {
+            int charValue = str.charAt(i);
+            if (charValue > 0 && charValue <= 127) {
+                buffer[offset++] = (byte) charValue;
+            } else if (charValue <= 2047) {
+                buffer[offset++] = (byte) (0xc0 | (0x1f & (charValue >> 6)));
+                buffer[offset++] = (byte) (0x80 | (0x3f & charValue));
+            } else {
+                buffer[offset++] = (byte) (0xe0 | (0x0f & (charValue >> 12)));
+                buffer[offset++] = (byte) (0x80 | (0x3f & (charValue >> 6)));
+                buffer[offset++] = (byte) (0x80 | (0x3f & charValue));
+            }
+        }
+        return offset;
     }
 }

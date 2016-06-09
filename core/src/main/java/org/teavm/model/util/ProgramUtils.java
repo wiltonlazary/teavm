@@ -171,4 +171,20 @@ public final class ProgramUtils {
 
         return outputs;
     }
+
+    public static List<List<TryCatchJointReader>> getOutputJoints(ProgramReader program) {
+        List<List<TryCatchJointReader>> outputs = new ArrayList<>(program.basicBlockCount());
+        for (int i = 0; i < program.basicBlockCount(); ++i) {
+            outputs.add(new ArrayList<>());
+        }
+
+        for (int i = 0; i < program.basicBlockCount(); ++i) {
+            BasicBlockReader block = program.basicBlockAt(i);
+            for (TryCatchJointReader joint : block.readTryCatchJoints()) {
+                outputs.get(joint.getSource().getIndex()).add(joint);
+            }
+        }
+
+        return outputs;
+    }
 }
