@@ -7,12 +7,7 @@
 %teavm.Array = type {
     %teavm.Object,   ; parent
     i32,             ; size
-    %teavm.Class *   ; reference to class
-}
-
-%teavm.Class = type {
-    i32,             ; size
-    i32              ; vtable
+    %itable *        ; reference to class
 }
 
 define i32 @teavm.cmp.i32(i32 %a, i32 %b) {
@@ -39,7 +34,7 @@ define i32 @method$java.lang.Object.I8_identity(i8* %object) {
     ret i32 %identity
 }
 
-@teavm.Array = global { i32, %teavm.Array } zeroinitializer
+@teavm.Array = global %teavm.Array zeroinitializer
 
 declare void @exit(i32)
 declare i32 @printf(i8*, ...)

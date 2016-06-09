@@ -137,11 +137,9 @@ public class LLVMRenderer {
             ClassReader cls = classSource.get(className);
 
             VirtualTable vtable = vtableProvider.lookup(cls.getName());
-            appendable.append("@vtable." + className + " = private global { i32, %vtable."
-                    + className + " } {\n");
-            appendable.append("    i32 0,\n");
+            appendable.append("@vtable." + className + " = private global ");
             renderVirtualTableValues(cls, vtable, 1);
-            appendable.append("\n}\n");
+            appendable.append("\n");
 
             for (FieldReader field : cls.getFields()) {
                 if (field.hasModifier(ElementModifier.STATIC)) {
@@ -193,12 +191,12 @@ public class LLVMRenderer {
 
     private void renderInterfaceTableValues(ClassReader cls, int level) throws IOException {
         appendable.append("{\n");
-        boolean first = true;
+
+        indent(level + 1);
+        appendable.append("i32 0");
+
         for (VirtualTableEntry entry : vtableProvider.getInterfaceTable().getEntries()) {
-            if (!first) {
-                appendable.append(",\n");
-            }
-            first = false;
+            appendable.append(",\n");
             MethodReference implementation = findImplementation(new MethodReference(cls.getName(),
                     entry.getMethod().getDescriptor()));
             indent(level + 1);
@@ -210,11 +208,6 @@ public class LLVMRenderer {
             }
         }
 
-        if (first) {
-            indent(level + 1);
-            appendable.append("i8* null");
-        }
-
         appendable.append("\n");
         indent(level);
         appendable.append("}");
@@ -224,9 +217,10 @@ public class LLVMRenderer {
         appendable.append("define void @initializer$" + cls.getName() + "() {\n");
         MethodReader clinitMethod = cls.getMethod(new MethodDescriptor("<clinit>", ValueType.VOID));
         if (clinitMethod != null) {
-            String structType = "{ i32, %vtable." + cls.getName() + " }";
-            appendable.append("    %flagsPtr = " + "getelementptr " + structType + ", " + structType + "* "
-                    + "@vtable." + cls.getName() + ", i32 0, i32 0\n");
+            String structType = "%vtable." + cls.getName();
+            appendable.append("    %itableRef = bitcast " + structType + "* @vtable." + cls.getName()
+                    + " to %itable*\n");
+            appendable.append("    %flagsPtr = " + "getelementptr %itable, %itable* %itableRef, i32 0, i32 0\n");
             appendable.append("    %flags = load i32, i32* %flagsPtr\n");
             appendable.append("    %flag = lshr i32 %flags, 31\n");
             appendable.append("    %initialized = trunc i32 %flag to i1\n");
@@ -276,6 +270,7 @@ public class LLVMRenderer {
 
     public void renderInterfaceTable() throws IOException {
         Structure structure = new Structure("itable");
+        structure.fields.add(new Field("i32", "size"));
         emitVirtualTableEntries(vtableProvider.getInterfaceTable(), true, structure);
         if (structure.fields.isEmpty()) {
             structure.fields.add(new Field("i8*", "<stub>"));
@@ -822,7 +817,7 @@ public class LLVMRenderer {
             emitted.add("%t" + objectRef + " = bitcast i8* %v" + object.getIndex() + " to %teavm.Object*");
             emitted.add("%t" + headerFieldRef + " = getelementptr inbounds %teavm.Object, %teavm.Object* %t"
                     + objectRef + ", i32 0, i32 0");
-            String headerType = "{ i32, %" + type + " }";
+            String headerType = "%" + type;
             emitted.add("%t" + vtableRef + " = bitcast " + headerType + "* @" + type + " to i8*");
             emitted.add("store i8* %t" + vtableRef + ", i8** %t" + headerFieldRef);
         }
@@ -928,7 +923,7 @@ public class LLVMRenderer {
             } else {
                 VirtualTableEntry entry = vtableProvider.lookup(method);
                 String className = entry.getVirtualTable().getClassName();
-                String typeRef = "{ i32, %vtable." + className + " }";
+                String typeRef = "%vtable." + className;
                 int objectRef = temporaryVariable++;
                 int headerFieldRef = temporaryVariable++;
                 int vtableRef = temporaryVariable++;
@@ -941,7 +936,7 @@ public class LLVMRenderer {
 
                 int functionRef = temporaryVariable++;
                 emitted.add("%t" + functionRef + " = getelementptr inbounds " + typeRef + ", "
-                        + typeRef + "* %t" + vtableTypedRef + ", i32 0, i32 1, i32 " + (entry.getIndex() + 1));
+                        + typeRef + "* %t" + vtableTypedRef + ", i32 0, i32 " + (entry.getIndex() + 1));
                 int function = temporaryVariable++;
                 String methodType = methodType(method.getDescriptor());
                 emitted.add("%t" + function + " = load " + methodType + ", " + methodType + "* %t" + functionRef);
