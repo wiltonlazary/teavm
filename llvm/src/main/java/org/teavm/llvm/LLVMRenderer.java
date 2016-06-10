@@ -155,7 +155,7 @@ public class LLVMRenderer {
                     Object initialValue = field.getInitialValue();
                     String initialValueStr = initialValue != null ? initialValue.toString()
                             : defaultValue(field.getType());
-                    appendable.append("@" + mangleField(field.getReference()) + " = global "
+                    appendable.append("@" + mangleField(field.getReference()) + " = private global "
                             + renderType(field.getType()) + " " + initialValueStr + "\n");
                 }
             }
@@ -227,7 +227,7 @@ public class LLVMRenderer {
     }
 
     private void renderClassInitializer(ClassReader cls) throws IOException {
-        appendable.append("define void @initializer$" + cls.getName() + "() {\n");
+        appendable.append("define private void @initializer$" + cls.getName() + "() {\n");
         MethodReader clinitMethod = cls.getMethod(new MethodDescriptor("<clinit>", ValueType.VOID));
         if (clinitMethod != null) {
             String structType = "%vtable." + cls.getName();
@@ -297,7 +297,8 @@ public class LLVMRenderer {
                 appendable.append(" ] }\n");
             }
 
-            appendable.append("define void @teavm.tagString(%class.java.lang.String* %str, %teavm.Array* %data) {\n");
+            appendable.append("define private void @teavm.tagString(%class.java.lang.String* %str, "
+                    + "%teavm.Array* %data) {\n");
             appendable.append("    %tag = bitcast %vtable.java.lang.String* @vtable.java.lang.String to i8*\n");
             appendable.append("    %header = bitcast %class.java.lang.String* %str to %teavm.Object*\n");
             appendable.append("    %tagRef = getelementptr %teavm.Object, %teavm.Object* %header, i32 0, i32 0\n");
@@ -310,7 +311,7 @@ public class LLVMRenderer {
             appendable.append("}\n");
         }
 
-        appendable.append("define void @teavm.initStringPool() {\n");
+        appendable.append("define private void @teavm.initStringPool() {\n");
         for (int i = 0; i < stringPool.size(); ++i) {
             String str = stringPool.get(i);
             appendable.append("    %t" + i + " = bitcast { %teavm.Array, [ " + (str.length() + 1) + " x i16 ] }* "
@@ -362,9 +363,10 @@ public class LLVMRenderer {
         String methodName = method.getReference().toString();
         methodNameSize = methodName.length() + 1;
         methodNameVar = "@name$" + mangleMethod(method.getReference());
-        appendable.append(methodNameVar + " = constant [" + methodNameSize + " x i8] c\"" + methodName + "\\00\"\n");
+        appendable.append(methodNameVar + " = private constant [" + methodNameSize + " x i8] c\""
+                + methodName + "\\00\"\n");
 
-        appendable.append("define ").append(renderType(method.getResultType())).append(" ");
+        appendable.append("define private ").append(renderType(method.getResultType())).append(" ");
         appendable.append("@").append(mangleMethod(method.getReference())).append("(");
         List<String> parameters = new ArrayList<>();
         if (!method.hasModifier(ElementModifier.STATIC)) {
