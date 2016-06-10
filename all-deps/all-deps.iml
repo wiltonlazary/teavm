@@ -21,6 +21,7 @@
     <orderEntry type="module" module-name="teavm-samples-scala" exported="" />
     <orderEntry type="module" module-name="teavm-samples-storage" exported="" />
     <orderEntry type="module" module-name="teavm-samples-video" exported="" />
-    <orderEntry type="module" module-name="llvm" exported="" />
+    <orderEntry type="module" module-name="teavm-llvm" exported="" />
+    <orderEntry type="module" module-name="teavm-samples-llvm" exported="" />
   </component>
 </module>

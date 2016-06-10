@@ -47,6 +47,7 @@
         <module name="teavm-samples-benchmark" />
         <module name="teavm-samples-hello" />
         <module name="teavm-samples-kotlin" />
+        <module name="teavm-samples-llvm" />
         <module name="teavm-samples-scala" />
         <module name="teavm-samples-storage" />
         <module name="teavm-samples-video" />
@@ -56,7 +57,7 @@
     </annotationProcessing>
     <bytecodeTargetLevel>
       <module name="impl" target="1.8" />
-      <module name="llvm" target="1.8" />
+      <module name="llvm" target="1.5" />
       <module name="teavm" target="1.5" />
       <module name="teavm-chrome-rdp" target="1.8" />
       <module name="teavm-classlib" target="1.8" />
@@ -79,6 +80,7 @@
       <module name="teavm-samples-benchmark" target="1.8" />
       <module name="teavm-samples-hello" target="1.8" />
       <module name="teavm-samples-kotlin" target="1.8" />
+      <module name="teavm-samples-llvm" target="1.5" />
       <module name="teavm-samples-scala" target="1.8" />
       <module name="teavm-samples-storage" target="1.8" />
       <module name="teavm-samples-video" target="1.8" />

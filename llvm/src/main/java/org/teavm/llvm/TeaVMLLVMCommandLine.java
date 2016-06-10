@@ -26,11 +26,17 @@ public final class TeaVMLLVMCommandLine {
     }
 
     public static void main(String[] args) throws IOException {
+        if (args.length == 0) {
+            System.err.println("Main class not specified");
+            System.exit(1);
+            return;
+        }
+
         ClassLoader classLoader = TeaVMLLVMCommandLine.class.getClassLoader();
         ClasspathClassHolderSource classSource = new ClasspathClassHolderSource(classLoader);
         TeaVMLLVMEmitter emitter = new TeaVMLLVMEmitter(classLoader, classSource);
         emitter.installPlugins();
-        emitter.setMainClassName(TestClass.class.getName());
+        emitter.setMainClassName(args[0]);
         OutputStreamWriter writer = new OutputStreamWriter(System.out, "UTF-8");
         emitter.build(writer);
         writer.flush();

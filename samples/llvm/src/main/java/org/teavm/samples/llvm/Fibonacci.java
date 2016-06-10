@@ -13,21 +13,21 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package org.teavm.llvm;
+package org.teavm.samples.llvm;
 
 import java.math.BigInteger;
 
-public class TestClass {
-    private TestClass() {
+public class Fibonacci {
+    private Fibonacci() {
     }
 
     public static void main(String[] args) {
         long start = System.currentTimeMillis();
-        System.out.println("Hello, world!");
+        System.out.println("Fibonacci numbers:");
 
         BigInteger a = BigInteger.ZERO;
         BigInteger b = BigInteger.ONE;
-        for (int i = 0; i < 200; ++i) {
+        for (int i = 0; i < 1000; ++i) {
             System.out.println(a);
             BigInteger c = a.add(b);
             a = b;
