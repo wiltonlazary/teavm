@@ -41,9 +41,11 @@ import org.teavm.model.TryCatchBlock;
 import org.teavm.model.TryCatchJoint;
 import org.teavm.model.Variable;
 import org.teavm.model.util.BasicBlockMapper;
+import org.teavm.model.util.DefinitionExtractor;
 import org.teavm.model.util.InstructionCopyReader;
 import org.teavm.model.util.PhiUpdater;
 import org.teavm.model.util.ProgramUtils;
+import org.teavm.model.util.UsageExtractor;
 
 /**
  * Transforms loop in form:
@@ -82,13 +84,16 @@ class LoopInversionImpl {
     private DominatorTree dom;
     private boolean postponed;
     private boolean changed;
+    private BasicBlock[] definitionPlaces;
+    private boolean affected;
 
     LoopInversionImpl(Program program, int parameterCount) {
         this.program = program;
         this.parameterCount = parameterCount;
+        definitionPlaces = ProgramUtils.getVariableDefinitionPlaces(program);
     }
 
-    void apply() {
+    boolean apply() {
         do {
             cfg = ProgramUtils.buildControlFlowGraph(program);
             LoopGraph loopGraph = new LoopGraph(cfg);
@@ -101,6 +106,7 @@ class LoopInversionImpl {
                     loop.invert();
                 }
                 if (changed) {
+                    affected = true;
                     Variable[] inputs = new Variable[parameterCount];
                     for (int i = 0; i < inputs.length; ++i) {
                         inputs[i] = program.variableAt(i);
@@ -109,6 +115,7 @@ class LoopInversionImpl {
                 }
             }
         } while (postponed);
+        return affected;
     }
 
     private List<LoopWithExits> getLoopsWithExits(LoopGraph cfg) {
@@ -141,10 +148,14 @@ class LoopInversionImpl {
     }
 
     private LoopWithExits getLoopWithExits(Map<Loop, LoopWithExits> cache, Loop loop) {
-        return cache.computeIfAbsent(loop, key ->
-                new LoopWithExits(key.getHead(), key.getParent() != null
-                        ? getLoopWithExits(cache, key.getParent())
-                        : null));
+        LoopWithExits result = cache.get(loop);
+        if (result == null) {
+            result = new LoopWithExits(loop.getHead(), loop.getParent() != null
+                    ? getLoopWithExits(cache, loop.getParent())
+                    : null);
+            cache.put(loop, result);
+        }
+        return result;
     }
 
     private void sortLoops(LoopWithExits loop, Set<LoopWithExits> visited, List<LoopWithExits> target) {
@@ -194,7 +205,12 @@ class LoopInversionImpl {
                 return false;
             }
 
-            collectNodesToCopy();
+            IntSet nodesToCopy = nodesToCopy();
+            if (!isInversionProfitable(nodesToCopy)) {
+                return false;
+            }
+            copyBasicBlocks(nodesToCopy);
+
             copyCondition();
             moveBackEdges();
             removeInternalPhiInputsFromCondition();
@@ -202,6 +218,44 @@ class LoopInversionImpl {
 
             changed = true;
             return true;
+        }
+
+        private boolean isInversionProfitable(IntSet nodesToCopy) {
+            UsageExtractor useExtractor = new UsageExtractor();
+            DefinitionExtractor defExtractor = new DefinitionExtractor();
+            LoopInvariantAnalyzer invariantAnalyzer = new LoopInvariantAnalyzer();
+            for (int node : nodes.toArray()) {
+                if (nodesToCopy.contains(node)) {
+                    continue;
+                }
+                BasicBlock block = program.basicBlockAt(node);
+                Set<Variable> currentInvariants = new HashSet<>();
+                for (Instruction insn : block.getInstructions()) {
+                    invariantAnalyzer.reset();
+                    insn.acceptVisitor(invariantAnalyzer);
+                    if (!invariantAnalyzer.canMove && !invariantAnalyzer.constant) {
+                        continue;
+                    }
+                    insn.acceptVisitor(useExtractor);
+                    boolean invariant = Arrays.stream(useExtractor.getUsedVariables()).allMatch(var -> {
+                        if (currentInvariants.contains(var)) {
+                            return true;
+                        }
+                        BasicBlock definedAt = var.getIndex() < definitionPlaces.length
+                                ? definitionPlaces[var.getIndex()]
+                                : null;
+                        return definedAt == null || dom.dominates(definedAt.getIndex(), head);
+                    });
+                    if (invariant) {
+                        if (invariantAnalyzer.sideEffect) {
+                            return true;
+                        }
+                        insn.acceptVisitor(defExtractor);
+                        currentInvariants.addAll(Arrays.asList(defExtractor.getDefinedVariables()));
+                    }
+                }
+            }
+            return false;
         }
 
         private boolean findCondition() {
@@ -226,12 +280,12 @@ class LoopInversionImpl {
             return candidate != bodyStart;
         }
 
-        private void collectNodesToCopy() {
+        private void copyBasicBlocks(IntSet nodesToCopy) {
             int[] nodes = this.nodes.toArray();
             Arrays.sort(nodes);
             for (int node : nodes) {
                 nodesAndCopies.add(node);
-                if (node == head || (node != bodyStart && !dom.dominates(bodyStart, node))) {
+                if (nodesToCopy.contains(node)) {
                     int copy = program.createBasicBlock().getIndex();
                     if (head == node) {
                         headCopy = copy;
@@ -240,6 +294,16 @@ class LoopInversionImpl {
                     nodesAndCopies.add(copy);
                 }
             }
+        }
+
+        private IntSet nodesToCopy() {
+            IntSet result = new IntOpenHashSet();
+            for (int node : nodes.toArray()) {
+                if (node == head || (node != bodyStart && !dom.dominates(bodyStart, node))) {
+                    result.add(node);
+                }
+            }
+            return result;
         }
 
         private void copyCondition() {
