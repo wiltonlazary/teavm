@@ -177,3 +177,4 @@ declare i32 @putchar(i32)
 declare i32 @setjmp(%teavm.ExceptionBuffer*)
 declare void @longjmp(%teavm.ExceptionBuffer*, i32)
 declare i32 @clock_gettime(i32, %timespec*);
+declare void @llvm.experimental.stackmap(i64, i32, ...)
