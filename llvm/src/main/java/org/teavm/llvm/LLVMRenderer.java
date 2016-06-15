@@ -287,7 +287,6 @@ public class LLVMRenderer {
     public void renderMain(MethodReference method) throws IOException {
         appendable.append("define i32 @main() {\n");
         appendable.append("    call void @teavm.init()\n");
-        appendable.append("    call void @teavm.initStringPool()\n");
         appendable.append("    call void @\"" + mangleMethod(method) + "\"(i8 *null)\n");
         appendable.append("    ret i32 0\n");
         appendable.append("}\n");
@@ -298,40 +297,24 @@ public class LLVMRenderer {
             for (int i = 0; i < stringPool.size(); ++i) {
                 String str = stringPool.get(i);
                 String charsType = "[ " + (str.length() + 1) + " x i16 ]";
-                appendable.append("@teavm.str." + i + " = private global %class.java.lang.String zeroinitializer\n");
-                appendable.append("@teavm.strdata." + i + " = private global { %teavm.Array, "
-                        + charsType + " } { %teavm.Array { %teavm.Object zeroinitializer, i32 "
-                        + str.length() + ", %itable* null }, " + charsType  + " [ i16 0");
+                String dataType = "{ %teavm.Array, " + charsType + " }";
+                String stringTag = "%vtable.java.lang.String* @vtable.java.lang.String";
+                String stringObjectHeader = "%teavm.Object { i8* bitcast (" + stringTag + " to i8*) }";
+                String stringObjectContent = "%class.java.lang.String { %class.java.lang.Object { "
+                        + stringObjectHeader + " }, "
+                        + "i8* bitcast (" + dataType + "* @teavm.strdata." + i + " to i8*), i32 0 }";
+                appendable.append("@teavm.str." + i + " = private global " + stringObjectContent + "\n");
+
+                appendable.append("@teavm.strdata." + i + " = private global " + dataType + " "
+                        + "{ %teavm.Array { %teavm.Object { i8* bitcast (%teavm.Array* @teavm.Array to i8*) }, i32 "
+                        + str.length() + ", %itable* bitcast (" + stringTag + " to %itable*) }, "
+                        + charsType  + " [ i16 0");
                 for (int j = 0; j < str.length(); ++j) {
                     appendable.append(", i16 " + (int) str.charAt(j));
                 }
                 appendable.append(" ] }\n");
             }
-
-            appendable.append("define private void @teavm.tagString(%class.java.lang.String* %str, "
-                    + "%teavm.Array* %data) {\n");
-            appendable.append("    %tag = bitcast %vtable.java.lang.String* @vtable.java.lang.String to i8*\n");
-            appendable.append("    %header = bitcast %class.java.lang.String* %str to %teavm.Object*\n");
-            appendable.append("    %tagRef = getelementptr %teavm.Object, %teavm.Object* %header, i32 0, i32 0\n");
-            appendable.append("    store i8* %tag, i8** %tagRef\n");
-            appendable.append("    %dataRef = getelementptr %class.java.lang.String, "
-                    + "%class.java.lang.String* %str, i32 0, i32 1\n");
-            appendable.append("    %rawData = bitcast %teavm.Array* %data to i8*\n");
-            appendable.append("    store i8* %rawData, i8** %dataRef\n");
-            appendable.append("    ret void\n");
-            appendable.append("}\n");
         }
-
-        appendable.append("define private void @teavm.initStringPool() {\n");
-        for (int i = 0; i < stringPool.size(); ++i) {
-            String str = stringPool.get(i);
-            appendable.append("    %t" + i + " = bitcast { %teavm.Array, [ " + (str.length() + 1) + " x i16 ] }* "
-                    + "@teavm.strdata." + i + " to %teavm.Array*\n");
-            appendable.append("    call void @teavm.tagString(%class.java.lang.String* @teavm.str." + i + ","
-                    + "%teavm.Array* %t" + i + ")\n");
-        }
-        appendable.append("    ret void\n");
-        appendable.append("}\n");
     }
 
     public void renderInterfaceTable() throws IOException {

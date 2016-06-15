@@ -13,7 +13,7 @@
 %teavm.Array = type {
     %teavm.Object,   ; parent
     i32,             ; size
-    %itable *        ; reference to class
+    %itable*         ; reference to class
 }
 
 %timespec = type { i32, i64 }
