@@ -18,9 +18,10 @@ package org.teavm.optimization;
 import org.teavm.model.MethodReader;
 import org.teavm.model.Program;
 
-public class LoopInversion implements MethodOptimization {
+public class UnreachableBasicBlockElimination implements MethodOptimization {
     @Override
     public boolean optimize(MethodReader method, Program program) {
-        return new LoopInversionImpl(method, program, method.parameterCount() + 1).apply();
+        new UnreachableBasicBlockEliminator().optimize(program);
+        return false;
     }
 }

@@ -93,11 +93,14 @@ import org.teavm.model.util.ProgramUtils;
 import org.teavm.model.util.RegisterAllocator;
 import org.teavm.optimization.ArrayUnwrapMotion;
 import org.teavm.optimization.ClassInitElimination;
+import org.teavm.optimization.ConstantConditionElimination;
 import org.teavm.optimization.Devirtualization;
 import org.teavm.optimization.GlobalValueNumbering;
+import org.teavm.optimization.Inlining;
 import org.teavm.optimization.LoopInvariantMotion;
 import org.teavm.optimization.LoopInversion;
 import org.teavm.optimization.MethodOptimization;
+import org.teavm.optimization.UnreachableBasicBlockElimination;
 import org.teavm.optimization.UnusedVariableElimination;
 import org.teavm.vm.spi.RendererListener;
 import org.teavm.vm.spi.TeaVMHost;
@@ -607,6 +610,20 @@ public class TeaVM implements TeaVMHost, ServiceRepository {
                 return;
             }
         }
+
+        final Inlining inlining = new Inlining();
+        for (String className : classes.getClassNames()) {
+            ClassHolder cls = classes.get(className);
+            for (final MethodHolder method : cls.getMethods()) {
+                if (method.getProgram() != null) {
+                    inlining.apply(method.getProgram(), classes);
+                }
+            }
+            reportProgress(++index);
+            if (wasCancelled()) {
+                return;
+            }
+        }
     }
 
     private List<ClassNode> modelToAst(ListableClassHolderSource classes) {
@@ -718,7 +735,8 @@ public class TeaVM implements TeaVMHost, ServiceRepository {
 
     private List<MethodOptimization> getOptimizations() {
         return Arrays.asList(new ArrayUnwrapMotion(), new LoopInversion(), new LoopInvariantMotion(),
-                new GlobalValueNumbering(), new UnusedVariableElimination(), new ClassInitElimination());
+                new GlobalValueNumbering(), new ConstantConditionElimination(), new UnusedVariableElimination(),
+                new ClassInitElimination(), new UnreachableBasicBlockElimination());
     }
 
     private void logMethodBytecode(PrintWriter writer, MethodHolder method) {
