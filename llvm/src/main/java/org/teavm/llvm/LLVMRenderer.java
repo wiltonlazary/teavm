@@ -17,6 +17,7 @@ package org.teavm.llvm;
 
 import com.carrotsearch.hppc.IntObjectMap;
 import com.carrotsearch.hppc.IntObjectOpenHashMap;
+import com.carrotsearch.hppc.cursors.ObjectCursor;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -254,7 +255,7 @@ public class LLVMRenderer {
             appendable.append("    store i32 %newFlags, i32* %flagsPtr\n");
             appendable.append("    call void @" + mangleMethod(clinitMethod.getReference()) + "()\n");
             appendable.append("    br label %skip\n");
-            appendable.append("skip:");
+            appendable.append("skip:\n");
         }
         appendable.append("    ret void;\n");
         appendable.append("}\n");
@@ -388,18 +389,39 @@ public class LLVMRenderer {
         }
         appendable.append(parameters.stream().collect(Collectors.joining(", "))).append(") {\n");
 
-        List<IntObjectMap<BitSet>> callSiteLiveIns = findCallSiteLiveIns(method);
-
         ProgramReader program = method.getProgram();
         if (program != null && program.basicBlockCount() > 0) {
+            typeInferer = new TypeInferer();
+            typeInferer.inferTypes(program, method.getReference());
+
+            List<IntObjectMap<BitSet>> callSiteLiveIns = findCallSiteLiveIns(method);
+            stackFrameSize = getStackFrameSize(callSiteLiveIns);
+            returnBlocks.clear();
+            returnVariables.clear();
+
+            if (stackFrameSize > 0) {
+                String stackType = "{ %teavm.stackFrame, [" + stackFrameSize + " x i8*] }";
+                appendable.append("    %stack = alloca " + stackType + "\n");
+                appendable.append("    %stackHeader = getelementptr " + stackType + ", " + stackType + "* %stack, "
+                        + "i32 0, i32 0\n");
+                appendable.append("    %stackNext = getelementptr %teavm.stackFrame, "
+                        + "%teavm.stackFrame* %stackHeader, i32 0, i32 2\n");
+                appendable.append("    %stackTop = load %teavm.stackFrame*, %teavm.stackFrame** @teavm.stackTop\n");
+                appendable.append("    store %teavm.stackFrame* %stackTop, %teavm.stackFrame** %stackNext\n");
+                appendable.append("    store %teavm.stackFrame* %stackHeader, %teavm.stackFrame** @teavm.stackTop\n");
+                appendable.append("    %sizePtr = getelementptr %teavm.stackFrame, %teavm.stackFrame* %stackHeader, "
+                        + "i32 0, i32 0\n");
+                appendable.append("    store i32 " + stackFrameSize + ", i32* %sizePtr\n");
+                appendable.append("    %stackData = getelementptr " + stackType + ", " + stackType + "* %stack, "
+                        + "i32 0, i32 1\n");
+            }
+
             if (method.hasModifier(ElementModifier.STATIC) && !method.getName().equals("<clinit>")
                     || method.getName().equals("<init>")) {
                 appendable.append("    call void @initializer$" + method.getOwnerName() + "()\n");
-                appendable.append("    br label %b0\n");
             }
+            appendable.append("    br label %b0\n");
 
-            typeInferer = new TypeInferer();
-            typeInferer.inferTypes(program, method.getReference());
             temporaryVariable = 0;
             currentReturnType = method.getResultType();
             List<List<TryCatchJointReader>> outputJoints = ProgramUtils.getOutputJoints(program);
@@ -407,7 +429,8 @@ public class LLVMRenderer {
             for (int i = 0; i < program.basicBlockCount(); ++i) {
                 IntObjectMap<BitSet> blockLiveIns = callSiteLiveIns.get(i);
                 BasicBlockReader block = program.basicBlockAt(i);
-                appendable.append("b" + block.getIndex() + ":\n");
+                currentLlvmBlock = "b" + block.getIndex();
+                appendable.append(currentLlvmBlock + ":\n");
 
                 joints = new HashMap<>();
                 for (TryCatchJointReader joint : outputJoints.get(i)) {
@@ -444,9 +467,38 @@ public class LLVMRenderer {
                 }
                 if (expectingException) {
                     appendable.append("lp" + i + ":\n");
-                    /*for (TryCatchBlockReader tryCatch : block.readTryCatchBlocks()) {
+                }
+            }
 
-                    }*/
+            if (stackFrameSize > 0 && !returnBlocks.isEmpty()) {
+                appendable.append("exit:\n");
+                String returnType = renderType(method.getResultType());
+                String returnVariable;
+                if (!returnVariables.isEmpty()) {
+                    if (returnVariables.size() == 1) {
+                        returnVariable = returnVariables.get(0);
+                    } else {
+                        returnVariable = "%return";
+                        StringBuilder sb = new StringBuilder();
+                        sb.append("%return = phi " + returnType + " ");
+                        for (int i = 0; i < returnVariables.size(); ++i) {
+                            if (i > 0) {
+                                sb.append(", ");
+                            }
+                            sb.append("[" + returnVariables.get(i) + ", %" + returnBlocks.get(i) + "]");
+                        }
+                        appendable.append("    " + sb + "\n");
+                    }
+                } else {
+                    returnVariable = null;
+                }
+                appendable.append("    %stackRestore = load %teavm.stackFrame*, %teavm.stackFrame** %stackNext\n");
+                appendable.append("    store %teavm.stackFrame* %stackRestore, "
+                        + "%teavm.stackFrame** @teavm.stackTop;\n");
+                if (method.getResultType() == ValueType.VOID) {
+                    appendable.append("    ret void\n");
+                } else {
+                    appendable.append("    ret " + returnType + " " + returnVariable + "\n");
                 }
             }
         }
@@ -478,12 +530,47 @@ public class LLVMRenderer {
                     currentLiveOut.clear(definedVar.getIndex());
                 }
                 if (insn instanceof InvokeInstruction) {
-                    blockLiveOut.put(j, (BitSet) currentLiveOut.clone());
+                    BitSet csLiveOut = (BitSet) currentLiveOut.clone();
+                    for (int v = csLiveOut.nextSetBit(0); v >= 0; v = csLiveOut.nextSetBit(v + 1)) {
+                        if (!isReference(v)) {
+                            csLiveOut.clear(v);
+                        }
+                    }
+                    blockLiveOut.put(j, csLiveOut);
                 }
             }
         }
 
         return liveOut;
+    }
+
+    private boolean isReference(int var) {
+        VariableType liveType = typeInferer.typeOf(var);
+        switch (liveType) {
+            case BYTE_ARRAY:
+            case CHAR_ARRAY:
+            case SHORT_ARRAY:
+            case INT_ARRAY:
+            case FLOAT_ARRAY:
+            case LONG_ARRAY:
+            case DOUBLE_ARRAY:
+            case OBJECT_ARRAY:
+            case OBJECT:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private int getStackFrameSize(List<IntObjectMap<BitSet>> liveIn) {
+        int max = 0;
+        for (IntObjectMap<BitSet> blockLiveOut : liveIn) {
+            for (ObjectCursor<BitSet> callSiteLiveOutCursor : blockLiveOut.values()) {
+                BitSet callSiteLiveOut = callSiteLiveOutCursor.value;
+                max = Math.max(max, callSiteLiveOut.cardinality());
+            }
+        }
+        return max;
     }
 
     private void flushInstructions() throws IOException {
@@ -635,6 +722,10 @@ public class LLVMRenderer {
     private int methodNameSize;
     private String methodNameVar;
     private BitSet callSiteLiveIns;
+    private int stackFrameSize;
+    private List<String> returnVariables = new ArrayList<>();
+    private List<String> returnBlocks = new ArrayList<>();
+    private String currentLlvmBlock;
 
     private InstructionReader reader = new InstructionReader() {
         @Override
@@ -946,10 +1037,23 @@ public class LLVMRenderer {
                 emitted.add("call void @teavm.leaveException()");
             }
             if (valueToReturn == null) {
-                emitted.add("ret void");
+                if (stackFrameSize == 0) {
+                    emitted.add("ret void");
+                } else {
+                    emitted.add("br label %exit");
+                }
             } else {
                 VariableType type = typeInferer.typeOf(valueToReturn.getIndex());
-                emitted.add("ret " +  renderType(type) + " %v" + valueToReturn.getIndex());
+                String returnVar = "%v" + valueToReturn.getIndex();
+                if (stackFrameSize == 0) {
+                    emitted.add("ret " + renderType(type) + " " + returnVar);
+                } else {
+                    returnVariables.add(returnVar);
+                    emitted.add("br label %exit");
+                }
+            }
+            if (stackFrameSize > 0) {
+                returnBlocks.add(currentLlvmBlock);
             }
         }
 
@@ -1164,32 +1268,20 @@ public class LLVMRenderer {
         @Override
         public void invoke(VariableReader receiver, VariableReader instance, MethodReference method,
                 List<? extends VariableReader> arguments, InvocationType type) {
-            if (callSiteLiveIns != null) {
-                StringBuilder sb = new StringBuilder("call void (i64, i32, ...) "
-                        + "@llvm.experimental.stackmap(i64 123456, i32 0");
-                boolean hasLive = false;
+            if (callSiteLiveIns != null && stackFrameSize > 0) {
+                String stackType = "[" + stackFrameSize + " x i8*]";
+                int cellIndex = 0;
                 for (int i = callSiteLiveIns.nextSetBit(0); i >= 0; i = callSiteLiveIns.nextSetBit(i + 1)) {
-                    VariableType liveType = typeInferer.typeOf(i);
-                    switch (liveType) {
-                        case BYTE_ARRAY:
-                        case CHAR_ARRAY:
-                        case SHORT_ARRAY:
-                        case INT_ARRAY:
-                        case FLOAT_ARRAY:
-                        case LONG_ARRAY:
-                        case DOUBLE_ARRAY:
-                        case OBJECT_ARRAY:
-                        case OBJECT:
-                            break;
-                        default:
-                            continue;
-                    }
-                    sb.append(", i8* %v" + i);
-                    hasLive = true;
+                    String stackCell = "%t" + temporaryVariable++;
+                    emitted.add(stackCell + " = getelementptr " + stackType + ", " + stackType + "* %stackData, "
+                            + "i32 0, i32 " + cellIndex++);
+                    emitted.add("store i8* %v" + i + ", i8**" + stackCell);
                 }
-                sb.append(")");
-                if (hasLive) {
-                    emitted.add(sb.toString());
+                while (cellIndex < stackFrameSize) {
+                    String stackCell = "%t" + temporaryVariable++;
+                    emitted.add(stackCell + " = getelementptr " + stackType + ", " + stackType + "* %stackData, "
+                            + "i32 0, i32 " + cellIndex++);
+                    emitted.add("store i8* null, i8**" + stackCell);
                 }
             }
 
@@ -1320,6 +1412,8 @@ public class LLVMRenderer {
                     emitted.add(phiVar + " = phi i32 [ " + trueVar + ", "
                             + "%" + trueLabel + " ], [ " + falseVar + ", %" + next + "]");
                     emitted.add("%v" + receiver.getIndex() + " = add i32 0, " + phiVar);
+
+                    currentLlvmBlock = finalLabel;
                 } else {
                     emitted.add("%v" + receiver.getIndex() + " = add i32 0, 0");
                 }

@@ -60,6 +60,9 @@ whenEq:
     ret i32 0
 }
 
+%teavm.stackFrame = type { i32, i32, %teavm.stackFrame* }
+@teavm.stackTop = global %teavm.stackFrame* null
+
 define void @method$org.teavm.llvm.runtime.LLVM.V7_printlnI(i32 %value) {
     call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @teavm.printf.format, i32 0, i32 0), i32 %value)
     ret void
