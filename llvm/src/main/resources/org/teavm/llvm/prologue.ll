@@ -100,6 +100,7 @@ define void @method$java.lang.ConsoleOutputStreamStdout.V5_writeI(i8* %this, i32
     ret void
 }
 define i64 @method$java.lang.System.L17_currentTimeMillis() {
+    call void @initializer$java.lang.System()
     %ts = alloca %timespec
     call i32 @clock_gettime(i32 0, %timespec* %ts)
     %nanoPtr = getelementptr %timespec, %timespec* %ts, i32 0, i32 1
