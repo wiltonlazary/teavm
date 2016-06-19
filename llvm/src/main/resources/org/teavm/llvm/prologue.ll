@@ -16,9 +16,14 @@
     %itable*         ; reference to class
 }
 
+%teavm.Fields = type {
+    i64,             ; number of fields
+    i32*             ; pointer to array of offsets
+}
+
 %timespec = type { i32, i64 }
 
-define i32 @teavm.cmp.i32(i32 %a, i32 %b) {
+define private i32 @teavm.cmp.i32(i32 %a, i32 %b) {
     %less = icmp slt i32 %a, %b
     br i1 %less, label %whenLess, label %checkGreater
 whenLess:
@@ -32,7 +37,7 @@ whenEq:
     ret i32 0
 }
 
-define i32 @teavm.cmp.i64(i64 %a, i64 %b) {
+define private i32 @teavm.cmp.i64(i64 %a, i64 %b) {
     %less = icmp slt i64 %a, %b
     br i1 %less, label %whenLess, label %checkGreater
 whenLess:
@@ -46,13 +51,27 @@ whenEq:
     ret i32 0
 }
 
-define i32 @teavm.cmp.float(float %a, float %b) {
+define private i32 @teavm.cmp.float(float %a, float %b) {
     %less = fcmp olt float %a, %b
     br i1 %less, label %whenLess, label %checkGreater
 whenLess:
     ret i32 -1
 checkGreater:
     %greater = fcmp ogt float %a, %b
+    br i1 %greater, label %whenGreater, label %whenEq
+whenGreater:
+    ret i32 1
+whenEq:
+    ret i32 0
+}
+
+define private i32 @teavm.cmp.double(double %a, double %b) {
+    %less = fcmp olt double %a, %b
+    br i1 %less, label %whenLess, label %checkGreater
+whenLess:
+    ret i32 -1
+checkGreater:
+    %greater = fcmp ogt double %a, %b
     br i1 %greater, label %whenGreater, label %whenEq
 whenGreater:
     ret i32 1
@@ -142,6 +161,14 @@ define i1 @teavm.instanceOf(i8* %object, %itable* %type) {
 }
 
 @teavm.Array = global %teavm.Array zeroinitializer, align 8
+@teavm.booleanArray = global %itable zeroinitializer, align 8
+@teavm.byteArray = global %itable zeroinitializer, align 8
+@teavm.shortArray = global %itable zeroinitializer, align 8
+@teavm.charArray = global %itable zeroinitializer, align 8
+@teavm.intArray = global %itable zeroinitializer, align 8
+@teavm.longArray = global %itable zeroinitializer, align 8
+@teavm.floatArray = global %itable zeroinitializer, align 8
+@teavm.doubleArray = global %itable zeroinitializer, align 8
 
 %teavm.ExceptionBuffer = type { [ 16 x i32 ], i8* }
 

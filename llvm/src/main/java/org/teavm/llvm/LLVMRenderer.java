@@ -76,6 +76,7 @@ import org.teavm.model.util.TypeInferer;
 import org.teavm.model.util.VariableType;
 
 public class LLVMRenderer {
+    public static final long GC_BLACK = 1L << 31;
     private ClassReaderSource classSource;
     private VirtualTableProvider vtableProvider;
     private LayoutProvider layoutProvider;
@@ -115,8 +116,19 @@ public class LLVMRenderer {
         }
     }
 
+    private static class ObjectLayout {
+        String className;
+        List<String> fields;
+
+        public ObjectLayout(String className, List<String> fields) {
+            this.className = className;
+            this.fields = fields;
+        }
+    }
+
     public void renderClasses(Collection<String> classNames) throws IOException {
         List<String> stackRoots = new ArrayList<>();
+        List<ObjectLayout> layouts = new ArrayList<>();
         for (String className : classNames) {
             appendable.append("; class ").append(className).append("\n");
 
@@ -137,12 +149,22 @@ public class LLVMRenderer {
             structure = new Structure("class." + className);
             structure.fields.add(new Field(!isTop ? "%class." + cls.getParent() : "%teavm.Object"));
 
+            List<String> gcFields = new ArrayList<>();
             for (FieldReader field : cls.getFields()) {
                 if (!field.hasModifier(ElementModifier.STATIC)) {
+                    if (isReference(field.getType())) {
+                        gcFields.add("i32 ptrtoint (i8** getelementptr (%class." + className + ", "
+                                + "%class." + className + "* null, i32 0, i32 " + structure.fields.size() + ") "
+                                + "to i32)");
+                    }
                     structure.fields.add(new Field(renderType(field.getType()), field.getName()));
                 }
             }
             renderStructure(structure);
+
+            if (!gcFields.isEmpty()) {
+                layouts.add(new ObjectLayout(className, gcFields));
+            }
         }
 
         for (String className : classNames) {
@@ -174,6 +196,18 @@ public class LLVMRenderer {
                     stackRoots.add(fieldRef);
                 }
             }
+        }
+
+        for (ObjectLayout layout : layouts) {
+            String className = layout.className;
+            appendable.append("@fields." + className + " = private constant [" + layout.fields.size() + " x i32] [\n");
+            for (int i = 0; i < layout.fields.size(); ++i) {
+                if (i > 0) {
+                    appendable.append(",\n");
+                }
+                appendable.append("    " + layout.fields.get(i));
+            }
+            appendable.append("\n]\n");
         }
 
         String stackRootDataType = "[" + stackRoots.size() + " x i8**]";
@@ -226,14 +260,31 @@ public class LLVMRenderer {
     }
 
     private void renderInterfaceTableValues(ClassReader cls, int level) throws IOException {
+        int fieldCount = (int) cls.getFields().stream()
+                .filter(field -> !field.hasModifier(ElementModifier.STATIC) && isReference(field.getType()))
+                .count();
         appendable.append("%itable {\n");
 
         int tag = tagRegistry.getRanges(cls.getName()).stream().map(range -> range.lower).findAny().orElse(-1);
 
         indent(level + 1);
-        appendable.append("i32 0,\n");
+        String dataType = "%class." + cls.getName();
+        appendable.append("i32 ptrtoint (" + dataType + "* getelementptr (" + dataType + ", "
+                + dataType + "* null, i32 1) to i32),\n");
         indent(level + 1);
-        appendable.append("i32 " + tag);
+        appendable.append("i32 " + tag + ",\n");
+        indent(level + 1);
+        appendable.append("%teavm.Fields {\n");
+        indent(level + 2);
+        appendable.append("i64 " + fieldCount + ",\n");
+        indent(level + 2);
+        if (fieldCount > 0) {
+            appendable.append("i32* bitcast ([" + fieldCount + " x i32]* @fields." + cls.getName() + " to i32*)\n");
+        } else {
+            appendable.append("i32* null\n");
+        }
+        indent(level + 1);
+        appendable.append("}");
 
         for (VirtualTableEntry entry : vtableProvider.getInterfaceTable().getEntries()) {
             appendable.append(",\n");
@@ -251,6 +302,10 @@ public class LLVMRenderer {
         appendable.append("\n");
         indent(level);
         appendable.append("}");
+    }
+
+    private boolean isReference(ValueType type) {
+        return type instanceof ValueType.Object || type instanceof ValueType.Array;
     }
 
     private void renderClassInitializer(ClassReader cls) throws IOException {
@@ -333,26 +388,28 @@ public class LLVMRenderer {
         }
 
         appendable.append("define private void @teavm.initStringPool() {\n");
+        appendable.append("    %stringTag = " + tagConstant("%vtable.java.lang.String* @vtable.java.lang.String")
+                + "\n");
         for (int i = 0; i < stringPool.size(); ++i) {
             appendable.append("    %str." + i + " = bitcast %class.java.lang.String* @teavm.str." + i
                     + " to %teavm.Object*\n");
             appendable.append("    %str.tagPtr." + i + " = getelementptr %teavm.Object, "
                     + "%teavm.Object* %str." + i + ", i32 0, i32 0\n");
-            appendable.append("store i32 " + tagConstant("%vtable.java.lang.String* @vtable.java.lang.String")
-                    + ", i32* %str.tagPtr." + i + "\n");
+            appendable.append("    store i32 %stringTag, i32* %str.tagPtr." + i + "\n");
         }
         appendable.append("    ret void\n");
         appendable.append("}\n");
     }
 
     private static String tagConstant(String tag) {
-        return "lshr (i32 ptrtoint (i8* bitcast (" + tag + " to i8*) to i32), i32 3)";
+        return "or i32 lshr (i32 ptrtoint (i8* bitcast (" + tag + " to i8*) to i32), i32 3), " + GC_BLACK;
     }
 
     public void renderInterfaceTable() throws IOException {
         Structure structure = new Structure("itable");
         structure.fields.add(new Field("i32", "size"));
         structure.fields.add(new Field("i32", "tag"));
+        structure.fields.add(new Field("%teavm.Fields", "fieldLayout"));
         emitVirtualTableEntries(vtableProvider.getInterfaceTable(), true, structure);
         renderStructure(structure);
         appendable.append("\n");
@@ -1327,7 +1384,7 @@ public class LLVMRenderer {
                 int functionRef = temporaryVariable++;
                 int vtableIndex = entry.getIndex() + 1;
                 if (className == null) {
-                    ++vtableIndex;
+                    vtableIndex += 2;
                 }
                 emitted.add("%t" + functionRef + " = getelementptr inbounds " + typeRef + ", "
                         + typeRef + "* %t" + vtableTypedRef + ", i32 0, i32 " + vtableIndex);
