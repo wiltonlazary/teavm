@@ -116,6 +116,7 @@ public class LLVMRenderer {
     }
 
     public void renderClasses(Collection<String> classNames) throws IOException {
+        List<String> stackRoots = new ArrayList<>();
         for (String className : classNames) {
             appendable.append("; class ").append(className).append("\n");
 
@@ -164,14 +165,28 @@ public class LLVMRenderer {
 
             for (FieldReader field : cls.getFields()) {
                 if (field.hasModifier(ElementModifier.STATIC)) {
+                    String fieldRef = "@" + mangleField(field.getReference());
                     Object initialValue = field.getInitialValue();
                     String initialValueStr = initialValue != null ? initialValue.toString()
                             : defaultValue(field.getType());
-                    appendable.append("@" + mangleField(field.getReference()) + " = private global "
-                            + renderType(field.getType()) + " " + initialValueStr + "\n");
+                    appendable.append(fieldRef + " = private global " + renderType(field.getType()) + " "
+                            + initialValueStr + "\n");
+                    stackRoots.add(fieldRef);
                 }
             }
         }
+
+        String stackRootDataType = "[" + stackRoots.size() + " x i8**]";
+        appendable.append("@teavm.stackRoots = constant %teavm.stackRoots { i64 " + stackRoots.size() + ", "
+                + " i8*** bitcast (" + stackRootDataType + "* @teavm.stackRootsData to i8***) }\n");
+        appendable.append("@teavm.stackRootsData = private constant " + stackRootDataType + " [");
+        for (int i = 0; i < stackRoots.size(); ++i) {
+            if (i > 0) {
+                appendable.append(",");
+            }
+            appendable.append("\n    i8** " + stackRoots.get(i));
+        }
+        appendable.append("]\n");
     }
 
     private void renderVirtualTableValues(ClassReader cls, VirtualTable vtable, int level) throws IOException {

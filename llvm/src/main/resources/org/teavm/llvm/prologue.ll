@@ -61,7 +61,16 @@ whenEq:
 }
 
 %teavm.stackFrame = type { i32, i32, %teavm.stackFrame* }
+%teavm.stackRoots = type { i64, i8*** }
 @teavm.stackTop = global %teavm.stackFrame* null
+
+define %teavm.stackFrame* @teavm_getStackTop() {
+    %ptr = load %teavm.stackFrame*, %teavm.stackFrame** @teavm.stackTop
+    ret %teavm.stackFrame* %ptr
+}
+define %teavm.stackRoots* @teavm_getStackRoots() {
+    ret %teavm.stackRoots* @teavm.stackRoots
+}
 
 define void @method$org.teavm.llvm.runtime.LLVM.V7_printlnI(i32 %value) {
     call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @teavm.printf.format, i32 0, i32 0), i32 %value)
