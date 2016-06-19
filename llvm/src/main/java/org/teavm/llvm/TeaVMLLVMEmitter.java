@@ -42,6 +42,7 @@ import org.teavm.model.ClassHolderTransformer;
 import org.teavm.model.ClassReaderSource;
 import org.teavm.model.ListableClassHolderSource;
 import org.teavm.model.ListableClassReaderSource;
+import org.teavm.model.MethodHolder;
 import org.teavm.model.MethodReference;
 import org.teavm.model.MutableClassHolderSource;
 import org.teavm.model.Program;
@@ -49,10 +50,16 @@ import org.teavm.model.ValueType;
 import org.teavm.model.util.MissingItemsProcessor;
 import org.teavm.model.util.ModelUtils;
 import org.teavm.model.util.ProgramUtils;
+import org.teavm.optimization.ArrayUnwrapMotion;
+import org.teavm.optimization.ClassInitElimination;
+import org.teavm.optimization.ConstantConditionElimination;
 import org.teavm.optimization.Devirtualization;
 import org.teavm.optimization.GlobalValueNumbering;
+import org.teavm.optimization.Inlining;
 import org.teavm.optimization.LoopInvariantMotion;
+import org.teavm.optimization.LoopInversion;
 import org.teavm.optimization.MethodOptimization;
+import org.teavm.optimization.UnreachableBasicBlockElimination;
 import org.teavm.optimization.UnusedVariableElimination;
 import org.teavm.vm.TeaVMPluginLoader;
 import org.teavm.vm.spi.RendererListener;
@@ -206,6 +213,16 @@ public class TeaVMLLVMEmitter implements TeaVMHost, ServiceRepository {
                     .filter(method -> method.getProgram() != null)
                     .forEach(devirtualization::apply);
         }
+
+        final Inlining inlining = new Inlining();
+        for (String className : classes.getClassNames()) {
+            ClassHolder cls = classes.get(className);
+            for (final MethodHolder method : cls.getMethods()) {
+                if (method.getProgram() != null) {
+                    inlining.apply(method.getProgram(), classes);
+                }
+            }
+        }
     }
 
     private void optimize(ListableClassHolderSource classSource) {
@@ -226,7 +243,9 @@ public class TeaVMLLVMEmitter implements TeaVMHost, ServiceRepository {
     }
 
     private List<MethodOptimization> getOptimizations() {
-        return Arrays.asList(new LoopInvariantMotion(), new GlobalValueNumbering(), new UnusedVariableElimination());
+        return Arrays.asList(new ArrayUnwrapMotion(), new LoopInversion(), new LoopInvariantMotion(),
+                new GlobalValueNumbering(), new ConstantConditionElimination(), new UnusedVariableElimination(),
+                new ClassInitElimination(), new UnreachableBasicBlockElimination());
     }
 
     private VirtualTableRegistry buildVirtualTables(ListableClassReaderSource classSource) {
