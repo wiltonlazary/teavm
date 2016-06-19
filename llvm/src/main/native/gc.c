@@ -202,7 +202,51 @@ static void mark() {
     free(traversalStack);
 }
 
+static int compareFreeChunks(const void* first, const void *second) {
+    Object **a = (Object **) first;
+    Object **b = (Object **) second;
+    return (*b)->size - (*a)->size;
+}
+
 static void sweep() {
+    objects = objectsStart;
+    objectCount = 0;
+    Object *object = getPool();
+    Object *lastFreeSpace = NULL;
+    int freeSize = 0;
+    while (object->tag != END_TAG) {
+        int size = objectSize(object);
+        int free = 0;
+        if (object->tag == 0) {
+            free = 1;
+        } else {
+            free = (object->tag & GC_MARK) == 0;
+            object->tag = object->tag & (-1 ^ GC_MARK);
+        }
+        if (free) {
+            if (lastFreeSpace == NULL) {
+                lastFreeSpace = object;
+                freeSize = size;
+            } else {
+                freeSize += size;
+            }
+        } else {
+            if (lastFreeSpace != NULL) {
+                lastFreeSpace->size = freeSize;
+                objects[objectCount] = lastFreeSpace;
+                lastFreeSpace = NULL;
+            }
+        }
+        char *address = (char *) object + size;
+        object = (Object *) address;
+    }
+
+    if (lastFreeSpace != NULL) {
+        lastFreeSpace->size = freeSize;
+        objects[objectCount] = lastFreeSpace;
+    }
+
+    qsort(objects, objectCount, sizeof(Object *), &compareFreeChunks);
 }
 
 static int collectGarbage() {
