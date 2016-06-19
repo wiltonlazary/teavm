@@ -170,6 +170,16 @@ define i1 @teavm.instanceOf(i8* %object, %itable* %type) {
 @teavm.floatArray = global %itable zeroinitializer, align 8
 @teavm.doubleArray = global %itable zeroinitializer, align 8
 
+@teavm_Array = alias %teavm.Array* @teavm.Array
+@teavm_booleanArray = alias %itable* @teavm.booleanArray
+@teavm_byteArray = alias %itable* @teavm.byteArray
+@teavm_shortArray = alias %itable* @teavm.shortArray
+@teavm_charArray = alias %itable* @teavm.charArray
+@teavm_intArray = alias %itable* @teavm.intArray
+@teavm_longArray = alias %itable* @teavm.longArray
+@teavm_floatArray = alias %itable* @teavm.floatArray
+@teavm_doubleArray = alias %itable* @teavm.doubleArray
+
 %teavm.ExceptionBuffer = type { [ 16 x i32 ], i8* }
 
 @teavm.exceptionTable = global [ 32 x %teavm.ExceptionBuffer ] zeroinitializer
