@@ -15,22 +15,27 @@
  */
 package org.teavm.llvm;
 
+import com.carrotsearch.hppc.IntObjectMap;
+import com.carrotsearch.hppc.IntObjectOpenHashMap;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.BitSet;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.teavm.common.Graph;
 import org.teavm.llvm.context.LayoutProvider;
 import org.teavm.llvm.context.TagRegistry;
 import org.teavm.llvm.context.VirtualTable;
 import org.teavm.llvm.context.VirtualTableEntry;
 import org.teavm.llvm.context.VirtualTableProvider;
+import org.teavm.model.BasicBlock;
 import org.teavm.model.BasicBlockReader;
 import org.teavm.model.ClassReader;
 import org.teavm.model.ClassReaderSource;
@@ -38,16 +43,19 @@ import org.teavm.model.ElementModifier;
 import org.teavm.model.FieldReader;
 import org.teavm.model.FieldReference;
 import org.teavm.model.IncomingReader;
+import org.teavm.model.Instruction;
 import org.teavm.model.InstructionLocation;
 import org.teavm.model.MethodDescriptor;
 import org.teavm.model.MethodHandle;
 import org.teavm.model.MethodReader;
 import org.teavm.model.MethodReference;
 import org.teavm.model.PhiReader;
+import org.teavm.model.Program;
 import org.teavm.model.ProgramReader;
 import org.teavm.model.RuntimeConstant;
 import org.teavm.model.TryCatchJointReader;
 import org.teavm.model.ValueType;
+import org.teavm.model.Variable;
 import org.teavm.model.VariableReader;
 import org.teavm.model.instructions.ArrayElementType;
 import org.teavm.model.instructions.BinaryBranchingCondition;
@@ -57,8 +65,11 @@ import org.teavm.model.instructions.CastIntegerDirection;
 import org.teavm.model.instructions.InstructionReader;
 import org.teavm.model.instructions.IntegerSubtype;
 import org.teavm.model.instructions.InvocationType;
+import org.teavm.model.instructions.InvokeInstruction;
 import org.teavm.model.instructions.NumericOperandType;
 import org.teavm.model.instructions.SwitchTableEntryReader;
+import org.teavm.model.util.DefinitionExtractor;
+import org.teavm.model.util.LivenessAnalyzer;
 import org.teavm.model.util.ProgramUtils;
 import org.teavm.model.util.TypeInferer;
 import org.teavm.model.util.VariableType;
@@ -276,7 +287,6 @@ public class LLVMRenderer {
     public void renderMain(MethodReference method) throws IOException {
         appendable.append("define i32 @main() {\n");
         appendable.append("    call void @teavm.init()\n");
-        appendable.append("    call void @teavm.initStringPool()\n");
         appendable.append("    call void @\"" + mangleMethod(method) + "\"(i8 *null)\n");
         appendable.append("    ret i32 0\n");
         appendable.append("}\n");
@@ -287,40 +297,24 @@ public class LLVMRenderer {
             for (int i = 0; i < stringPool.size(); ++i) {
                 String str = stringPool.get(i);
                 String charsType = "[ " + (str.length() + 1) + " x i16 ]";
-                appendable.append("@teavm.str." + i + " = private global %class.java.lang.String zeroinitializer\n");
-                appendable.append("@teavm.strdata." + i + " = private global { %teavm.Array, "
-                        + charsType + " } { %teavm.Array { %teavm.Object zeroinitializer, i32 "
-                        + str.length() + ", %itable* null }, " + charsType  + " [ i16 0");
+                String dataType = "{ %teavm.Array, " + charsType + " }";
+                String stringTag = "%vtable.java.lang.String* @vtable.java.lang.String";
+                String stringObjectHeader = "%teavm.Object { i8* bitcast (" + stringTag + " to i8*) }";
+                String stringObjectContent = "%class.java.lang.String { %class.java.lang.Object { "
+                        + stringObjectHeader + " }, "
+                        + "i8* bitcast (" + dataType + "* @teavm.strdata." + i + " to i8*), i32 0 }";
+                appendable.append("@teavm.str." + i + " = private global " + stringObjectContent + "\n");
+
+                appendable.append("@teavm.strdata." + i + " = private global " + dataType + " "
+                        + "{ %teavm.Array { %teavm.Object { i8* bitcast (%teavm.Array* @teavm.Array to i8*) }, i32 "
+                        + str.length() + ", %itable* bitcast (" + stringTag + " to %itable*) }, "
+                        + charsType  + " [ i16 0");
                 for (int j = 0; j < str.length(); ++j) {
                     appendable.append(", i16 " + (int) str.charAt(j));
                 }
                 appendable.append(" ] }\n");
             }
-
-            appendable.append("define private void @teavm.tagString(%class.java.lang.String* %str, "
-                    + "%teavm.Array* %data) {\n");
-            appendable.append("    %tag = bitcast %vtable.java.lang.String* @vtable.java.lang.String to i8*\n");
-            appendable.append("    %header = bitcast %class.java.lang.String* %str to %teavm.Object*\n");
-            appendable.append("    %tagRef = getelementptr %teavm.Object, %teavm.Object* %header, i32 0, i32 0\n");
-            appendable.append("    store i8* %tag, i8** %tagRef\n");
-            appendable.append("    %dataRef = getelementptr %class.java.lang.String, "
-                    + "%class.java.lang.String* %str, i32 0, i32 1\n");
-            appendable.append("    %rawData = bitcast %teavm.Array* %data to i8*\n");
-            appendable.append("    store i8* %rawData, i8** %dataRef\n");
-            appendable.append("    ret void\n");
-            appendable.append("}\n");
         }
-
-        appendable.append("define private void @teavm.initStringPool() {\n");
-        for (int i = 0; i < stringPool.size(); ++i) {
-            String str = stringPool.get(i);
-            appendable.append("    %t" + i + " = bitcast { %teavm.Array, [ " + (str.length() + 1) + " x i16 ] }* "
-                    + "@teavm.strdata." + i + " to %teavm.Array*\n");
-            appendable.append("    call void @teavm.tagString(%class.java.lang.String* @teavm.str." + i + ","
-                    + "%teavm.Array* %t" + i + ")\n");
-        }
-        appendable.append("    ret void\n");
-        appendable.append("}\n");
     }
 
     public void renderInterfaceTable() throws IOException {
@@ -378,6 +372,8 @@ public class LLVMRenderer {
         }
         appendable.append(parameters.stream().collect(Collectors.joining(", "))).append(") {\n");
 
+        List<IntObjectMap<BitSet>> callSiteLiveIns = findCallSiteLiveIns(method);
+
         ProgramReader program = method.getProgram();
         if (program != null && program.basicBlockCount() > 0) {
             if (method.hasModifier(ElementModifier.STATIC) && !method.getName().equals("<clinit>")
@@ -393,8 +389,8 @@ public class LLVMRenderer {
             List<List<TryCatchJointReader>> outputJoints = ProgramUtils.getOutputJoints(program);
 
             for (int i = 0; i < program.basicBlockCount(); ++i) {
+                IntObjectMap<BitSet> blockLiveIns = callSiteLiveIns.get(i);
                 BasicBlockReader block = program.basicBlockAt(i);
-                currentBlock = block;
                 appendable.append("b" + block.getIndex() + ":\n");
 
                 joints = new HashMap<>();
@@ -426,6 +422,7 @@ public class LLVMRenderer {
                     appendable.append("    br i1 %caught" + i + ", label %lp" + i + ", label %b" + i + "\n");
                 }
                 for (int j = 0; j < block.instructionCount(); ++j) {
+                    this.callSiteLiveIns = blockLiveIns.get(j);
                     block.readInstruction(j, reader);
                     flushInstructions();
                 }
@@ -439,6 +436,38 @@ public class LLVMRenderer {
         }
 
         appendable.append("}\n");
+    }
+
+    private List<IntObjectMap<BitSet>> findCallSiteLiveIns(MethodReader method) {
+        List<IntObjectMap<BitSet>> liveOut = new ArrayList<>();
+
+        Program program = ProgramUtils.copy(method.getProgram());
+        LivenessAnalyzer livenessAnalyzer = new LivenessAnalyzer();
+        livenessAnalyzer.analyze(program);
+        Graph cfg = ProgramUtils.buildControlFlowGraph(program);
+        DefinitionExtractor defExtractor = new DefinitionExtractor();
+
+        for (int i = 0; i < program.basicBlockCount(); ++i) {
+            BasicBlock block = program.basicBlockAt(i);
+            IntObjectMap<BitSet> blockLiveOut = new IntObjectOpenHashMap<>();
+            liveOut.add(blockLiveOut);
+            BitSet currentLiveOut = new BitSet();
+            for (int successor : cfg.outgoingEdges(i)) {
+                currentLiveOut.or(livenessAnalyzer.liveIn(successor));
+            }
+            for (int j = block.getInstructions().size() - 1; j >= 0; --j) {
+                Instruction insn = block.getInstructions().get(j);
+                insn.acceptVisitor(defExtractor);
+                for (Variable definedVar : defExtractor.getDefinedVariables()) {
+                    currentLiveOut.clear(definedVar.getIndex());
+                }
+                if (insn instanceof InvokeInstruction) {
+                    blockLiveOut.put(j, (BitSet) currentLiveOut.clone());
+                }
+            }
+        }
+
+        return liveOut;
     }
 
     private void flushInstructions() throws IOException {
@@ -589,7 +618,7 @@ public class LLVMRenderer {
     private boolean expectingException;
     private int methodNameSize;
     private String methodNameVar;
-    private BasicBlockReader currentBlock;
+    private BitSet callSiteLiveIns;
 
     private InstructionReader reader = new InstructionReader() {
         @Override
@@ -1115,6 +1144,35 @@ public class LLVMRenderer {
         @Override
         public void invoke(VariableReader receiver, VariableReader instance, MethodReference method,
                 List<? extends VariableReader> arguments, InvocationType type) {
+            if (callSiteLiveIns != null) {
+                StringBuilder sb = new StringBuilder("call void (i64, i32, ...) "
+                        + "@llvm.experimental.stackmap(i64 123456, i32 0");
+                boolean hasLive = false;
+                for (int i = callSiteLiveIns.nextSetBit(0); i >= 0; i = callSiteLiveIns.nextSetBit(i + 1)) {
+                    VariableType liveType = typeInferer.typeOf(i);
+                    switch (liveType) {
+                        case BYTE_ARRAY:
+                        case CHAR_ARRAY:
+                        case SHORT_ARRAY:
+                        case INT_ARRAY:
+                        case FLOAT_ARRAY:
+                        case LONG_ARRAY:
+                        case DOUBLE_ARRAY:
+                        case OBJECT_ARRAY:
+                        case OBJECT:
+                            break;
+                        default:
+                            continue;
+                    }
+                    sb.append(", i8* %v" + i);
+                    hasLive = true;
+                }
+                sb.append(")");
+                if (hasLive) {
+                    emitted.add(sb.toString());
+                }
+            }
+
             StringBuilder sb = new StringBuilder();
             if (receiver != null) {
                 sb.append("%v" + receiver.getIndex() + " = ");
