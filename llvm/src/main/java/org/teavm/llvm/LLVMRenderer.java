@@ -159,7 +159,7 @@ public class LLVMRenderer {
             VirtualTable vtable = vtableProvider.lookup(cls.getName());
             appendable.append("@vtable." + className + " = private global ");
             renderVirtualTableValues(cls, vtable, 0);
-            appendable.append("\n");
+            appendable.append(", align 8\n");
 
             for (FieldReader field : cls.getFields()) {
                 if (field.hasModifier(ElementModifier.STATIC)) {
@@ -287,6 +287,7 @@ public class LLVMRenderer {
     public void renderMain(MethodReference method) throws IOException {
         appendable.append("define i32 @main() {\n");
         appendable.append("    call void @teavm.init()\n");
+        appendable.append("    call void @teavm.initStringPool()\n");
         appendable.append("    call void @\"" + mangleMethod(method) + "\"(i8 *null)\n");
         appendable.append("    ret i32 0\n");
         appendable.append("}\n");
@@ -298,16 +299,15 @@ public class LLVMRenderer {
                 String str = stringPool.get(i);
                 String charsType = "[ " + (str.length() + 1) + " x i16 ]";
                 String dataType = "{ %teavm.Array, " + charsType + " }";
-                String stringTag = "%vtable.java.lang.String* @vtable.java.lang.String";
-                String stringObjectHeader = "%teavm.Object { i8* bitcast (" + stringTag + " to i8*) }";
+                String stringObjectHeader = "%teavm.Object { i32 0 }";
                 String stringObjectContent = "%class.java.lang.String { %class.java.lang.Object { "
                         + stringObjectHeader + " }, "
                         + "i8* bitcast (" + dataType + "* @teavm.strdata." + i + " to i8*), i32 0 }";
                 appendable.append("@teavm.str." + i + " = private global " + stringObjectContent + "\n");
 
                 appendable.append("@teavm.strdata." + i + " = private global " + dataType + " "
-                        + "{ %teavm.Array { %teavm.Object { i8* bitcast (%teavm.Array* @teavm.Array to i8*) }, i32 "
-                        + str.length() + ", %itable* bitcast (" + stringTag + " to %itable*) }, "
+                        + "{ %teavm.Array { %teavm.Object { i32 0 }"
+                        + ", i32 " + str.length() + ", %itable* null }, "
                         + charsType  + " [ i16 0");
                 for (int j = 0; j < str.length(); ++j) {
                     appendable.append(", i16 " + (int) str.charAt(j));
@@ -315,6 +315,22 @@ public class LLVMRenderer {
                 appendable.append(" ] }\n");
             }
         }
+
+        appendable.append("define private void @teavm.initStringPool() {\n");
+        for (int i = 0; i < stringPool.size(); ++i) {
+            appendable.append("    %str." + i + " = bitcast %class.java.lang.String* @teavm.str." + i
+                    + " to %teavm.Object*\n");
+            appendable.append("    %str.tagPtr." + i + " = getelementptr %teavm.Object, "
+                    + "%teavm.Object* %str." + i + ", i32 0, i32 0\n");
+            appendable.append("store i32 " + tagConstant("%vtable.java.lang.String* @vtable.java.lang.String")
+                    + ", i32* %str.tagPtr." + i + "\n");
+        }
+        appendable.append("    ret void\n");
+        appendable.append("}\n");
+    }
+
+    private static String tagConstant(String tag) {
+        return "lshr (i32 ptrtoint (i8* bitcast (" + tag + " to i8*) to i32), i32 3)";
     }
 
     public void renderInterfaceTable() throws IOException {
@@ -1007,12 +1023,16 @@ public class LLVMRenderer {
             int objectRef = temporaryVariable++;
             int headerFieldRef = temporaryVariable++;
             int vtableRef = temporaryVariable++;
+            int vtableTagLong = temporaryVariable++;
+            int vtableTag = temporaryVariable++;
             emitted.add("%t" + objectRef + " = bitcast i8* %v" + object.getIndex() + " to %teavm.Object*");
             emitted.add("%t" + headerFieldRef + " = getelementptr inbounds %teavm.Object, %teavm.Object* %t"
                     + objectRef + ", i32 0, i32 0");
             String headerType = "%" + type;
-            emitted.add("%t" + vtableRef + " = bitcast " + headerType + "* @" + type + " to i8*");
-            emitted.add("store i8* %t" + vtableRef + ", i8** %t" + headerFieldRef);
+            emitted.add("%t" + vtableRef + " = ptrtoint " + headerType + "* @" + type + " to i64");
+            emitted.add("%t" + vtableTagLong + " = lshr i64 %t" + vtableRef + ", 3");
+            emitted.add("%t" + vtableTag + " = trunc i64 %t" + vtableTagLong + " to i32");
+            emitted.add("store i32 %t" + vtableTag + ", i32* %t" + headerFieldRef);
         }
 
         @Override
@@ -1187,13 +1207,15 @@ public class LLVMRenderer {
                 String typeRef = className != null ? "%vtable." + className : "%itable";
                 int objectRef = temporaryVariable++;
                 int headerFieldRef = temporaryVariable++;
+                int vtableTag = temporaryVariable++;
                 int vtableRef = temporaryVariable++;
                 int vtableTypedRef = temporaryVariable++;
                 emitted.add("%t" + objectRef + " = bitcast i8* %v" + instance.getIndex() + " to %teavm.Object*");
                 emitted.add("%t" + headerFieldRef + " = getelementptr inbounds %teavm.Object, %teavm.Object* %t"
                         + objectRef + ", i32 0, i32 0");
-                emitted.add("%t" + vtableRef + " = load i8*, i8** %t" + headerFieldRef);
-                emitted.add("%t" + vtableTypedRef + " = bitcast i8* %t" + vtableRef + " to " + typeRef + "*");
+                emitted.add("%t" + vtableTag + " = load i32, i32* %t" + headerFieldRef);
+                emitted.add("%t" + vtableRef + " = shl i32 %t" + vtableTag + ", 3");
+                emitted.add("%t" + vtableTypedRef + " = inttoptr i32 %t" + vtableRef + " to " + typeRef + "*");
 
                 int functionRef = temporaryVariable++;
                 int vtableIndex = entry.getIndex() + 1;
@@ -1257,10 +1279,12 @@ public class LLVMRenderer {
                     String vtableRefRef = "%t" + temporaryVariable++;
                     emitted.add(vtableRefRef + " = getelementptr %teavm.Object, %teavm.Object* " + headerRef + ", "
                             + "i32 0, i32 0");
+                    String vtableTag = "%t" + temporaryVariable++;
+                    emitted.add(vtableTag + " = load i32, i32* " + vtableRefRef);
                     String vtableRef = "%t" + temporaryVariable++;
-                    emitted.add(vtableRef + " = load i8*, i8** " + vtableRefRef);
+                    emitted.add(vtableRef + " = shl i32 " + vtableTag + ", 3");
                     String typedVtableRef = "%t" + temporaryVariable++;
-                    emitted.add(typedVtableRef + " = bitcast i8* " + vtableRef + " to %itable*");
+                    emitted.add(typedVtableRef + " = inttoptr i32 " + vtableRef + " to %itable*");
                     String tagRef = "%t" + temporaryVariable++;
                     emitted.add(tagRef + " = getelementptr %itable, %itable* " + typedVtableRef + ", i32 0, i32 1");
                     String tag = "%t" + temporaryVariable++;

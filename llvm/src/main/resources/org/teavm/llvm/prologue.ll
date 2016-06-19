@@ -7,7 +7,7 @@
 @teavm.bufferPos = private global i32 0
 
 %teavm.Object = type {
-    i8*              ; header
+    i32              ; header
 }
 
 %teavm.Array = type {
@@ -129,7 +129,7 @@ define i1 @teavm.instanceOf(i8* %object, %itable* %type) {
     ret i1 1
 }
 
-@teavm.Array = global %teavm.Array zeroinitializer
+@teavm.Array = global %teavm.Array zeroinitializer, align 8
 
 %teavm.ExceptionBuffer = type { [ 16 x i32 ], i8* }
 
