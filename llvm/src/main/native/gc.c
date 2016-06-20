@@ -58,13 +58,14 @@ static int objectsCapacity = 1024;
 static int EMPTY_TAG = 0;
 static int END_TAG = -1;
 static int GC_MARK = 1 << 31;
+static int CLASS_SIZE_MASK = -1 ^ (1 << 31);
 static Object** objectsStart = NULL;
 static Object** objects = NULL;
 static TraversalStack* traversalStack;
 
 static void* getPool() {
     if (pool == NULL) {
-        int poolSize = 1024 * 1024 * 16;
+        int poolSize = 1024 * 1024 * 2;
         pool = malloc(poolSize);
 
         Object *root = (Object *) pool;
@@ -79,11 +80,13 @@ static void* getPool() {
         objectsStart = malloc(sizeof(Object *) * objectsCapacity);
         objects = &objectsStart[0];
         objects[0] = root;
+        objectCount = 1;
     }
     return pool;
 }
 
 static int objectSize(Object *object) {
+    printf("GC: tag %d\n", object->tag);
     if (object->tag == EMPTY_TAG) {
         return object->size;
     } else {
@@ -112,13 +115,13 @@ static int objectSize(Object *object) {
             }
             return elementCount * sizeof(Object *);
         } else {
-            return cls->size;
+            return cls->size & CLASS_SIZE_MASK;
         }
     }
 }
 
 static void clearMarks() {
-    Object *object = getPool();
+    Object *object = (Object *) getPool();
     while (object->tag != END_TAG) {
         object->tag = object->tag & (-1 ^ GC_MARK);
         int size = objectSize(object);
@@ -250,13 +253,16 @@ static void sweep() {
 }
 
 static int collectGarbage() {
+    printf("GC: starting GC\n");
     clearMarks();
     mark();
     sweep();
+    printf("GC: GC complete\n");
     return 1;
 }
 
 static Object* findAvailableChunk(int size) {
+    getPool();
     while (objectCount > 0) {
         Object* chunk = *objects;
         if (chunk->size - 8 >= size || chunk->size == size) {
@@ -287,12 +293,13 @@ static Object* getAvailableChunk(int size) {
 
 Object *teavm_alloc(int tag) {
     Class* cls = (Class *) ((long) tag << 3);
-    int size = cls->size;
+    int size = cls->size & CLASS_SIZE_MASK;
     Object* chunk = getAvailableChunk(size);
     if (chunk->size > size) {
         Object* next = (Object *) ((char *) chunk + size);
         next->size = chunk->size - size;
         next->tag = EMPTY_TAG;
+        objects[0] = next;
     }
     memset(chunk, 0, size);
     chunk->tag = tag;
@@ -306,6 +313,7 @@ static Array *teavm_arrayAlloc(Class* cls, unsigned char depth, int arraySize, i
         Object* next = (Object *) ((char *) chunk + size);
         next->size = chunk->size - size;
         next->tag = 0;
+        objects[0] = next;
     }
 
     memset(chunk, 0, size);

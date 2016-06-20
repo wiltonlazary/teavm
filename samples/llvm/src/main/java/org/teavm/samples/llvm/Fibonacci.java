@@ -22,19 +22,20 @@ public class Fibonacci {
     }
 
     public static void main(String[] args) {
-        long start = System.currentTimeMillis();
-        System.out.println("Fibonacci numbers:");
+        for (int j = 0; j < 1000; ++j) {
+            long start = System.currentTimeMillis();
 
-        BigInteger a = BigInteger.ZERO;
-        BigInteger b = BigInteger.ONE;
-        for (int i = 0; i < 1000; ++i) {
-            System.out.println(a);
-            BigInteger c = a.add(b);
-            a = b;
-            b = c;
+            BigInteger a = BigInteger.ZERO;
+            BigInteger b = BigInteger.ONE;
+            for (int i = 0; i < 1000; ++i) {
+                BigInteger c = a.add(b);
+                a = b;
+                b = c;
+            }
+
+            long end = System.currentTimeMillis();
+            System.out.println(a.bitCount());
+            System.out.println("Operation took " + (end - start) + " milliseconds");
         }
-
-        long end = System.currentTimeMillis();
-        System.out.println("Operation took " + (end - start) + " milliseconds");
     }
 }

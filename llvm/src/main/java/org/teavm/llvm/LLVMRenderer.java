@@ -51,6 +51,7 @@ import org.teavm.model.MethodHandle;
 import org.teavm.model.MethodReader;
 import org.teavm.model.MethodReference;
 import org.teavm.model.PhiReader;
+import org.teavm.model.PrimitiveType;
 import org.teavm.model.Program;
 import org.teavm.model.ProgramReader;
 import org.teavm.model.RuntimeConstant;
@@ -1147,18 +1148,34 @@ public class LLVMRenderer {
 
         @Override
         public void createArray(VariableReader receiver, ValueType itemType, VariableReader size) {
-            String type = renderTypeForArray(itemType);
-            int byteCount = arraySizeInBytes("%v" + size.getIndex(), type);
-            emitted.add("%v" + receiver.getIndex() + " = call i8* @malloc(i32 %t" + byteCount + ")");
-            emitted.add("call i8* @memset(i8* %v" + receiver.getIndex() + ", i32 0, i32 %t" + byteCount + ")");
-            putTag(receiver, "teavm.Array");
+            if (itemType instanceof ValueType.Primitive) {
+                String functionName = getJavaTypeName(((ValueType.Primitive) itemType).getKind());
+                functionName = "@teavm_" + functionName + "ArrayAlloc";
+                emitted.add("%v" + receiver.getIndex() + " = call i8* " + functionName
+                        + "(i32 %v" + size.getIndex() + ")");
+                return;
+            }
 
-            int header = temporaryVariable++;
-            int sizePtr = temporaryVariable++;
-            emitted.add("%t" + header + " = bitcast i8* %v" + receiver.getIndex() + " to %teavm.Array*");
-            emitted.add("%t" + sizePtr + " = getelementptr %teavm.Array, %teavm.Array* %t" + header
-                    + ", i32 0, i32 1");
-            emitted.add("store i32 %v" + size.getIndex() + ", i32* %t" + sizePtr);
+            int depth = 0;
+            while (itemType instanceof ValueType.Array) {
+                ++depth;
+                itemType = ((ValueType.Array) itemType).getItemType();
+            }
+
+            String itemTypeRef;
+            if (itemType instanceof ValueType.Object) {
+                String className = ((ValueType.Object) itemType).getClassName();
+                itemTypeRef = "%vtable." + className + "* @vtable." + className;
+            } else if (itemType instanceof ValueType.Primitive) {
+                String primitiveName = getJavaTypeName(((ValueType.Primitive) itemType).getKind());
+                itemTypeRef = "%itable* @teavm." + primitiveName + "Array";
+            } else {
+                throw new AssertionError("Type is not expected here: " + itemType);
+            }
+
+            String tag = "i32 lshr (i32 ptrtoint (" + itemTypeRef + " to i32), i32 3)";
+            emitted.add("%v" + receiver.getIndex() + " = call i8* @teavm_objectArrayAlloc(" + tag
+                    + ", i8 " + depth + ", i32 %v" + size.getIndex() + ")");
         }
 
         @Override
@@ -1179,11 +1196,9 @@ public class LLVMRenderer {
 
         @Override
         public void create(VariableReader receiver, String type) {
-            String typeRef = "%class." + type;
-            int sizeOfVar = sizeOf(typeRef, "1");
-            emitted.add("%v" + receiver.getIndex() + " = call i8* @malloc(i32 %t" + sizeOfVar + ")");
-            emitted.add("call i8* @memset(i8* %v" + receiver.getIndex() + ", i32 0, i32 %t" + sizeOfVar + ")");
-            putTag(receiver, "vtable." + type);
+            String typeRef = "vtable." + type;
+            String tag = "i32 lshr (i32 ptrtoint (%" + typeRef + "* @" + typeRef + " to i32), i32 3)";
+            emitted.add("%v" + receiver.getIndex() + " = call i8* @teavm_alloc(" + tag + ")");
         }
 
         private int sizeOf(String typeRef, String count) {
@@ -1193,22 +1208,6 @@ public class LLVMRenderer {
                     + "* null, i32 " + count);
             emitted.add("%t" + sizeOfVar + " = ptrtoint " + typeRef + "* %t" + temporaryPointer + " to i32");
             return sizeOfVar;
-        }
-
-        private void putTag(VariableReader object, String type) {
-            int objectRef = temporaryVariable++;
-            int headerFieldRef = temporaryVariable++;
-            int vtableRef = temporaryVariable++;
-            int vtableTagLong = temporaryVariable++;
-            int vtableTag = temporaryVariable++;
-            emitted.add("%t" + objectRef + " = bitcast i8* %v" + object.getIndex() + " to %teavm.Object*");
-            emitted.add("%t" + headerFieldRef + " = getelementptr inbounds %teavm.Object, %teavm.Object* %t"
-                    + objectRef + ", i32 0, i32 0");
-            String headerType = "%" + type;
-            emitted.add("%t" + vtableRef + " = ptrtoint " + headerType + "* @" + type + " to i64");
-            emitted.add("%t" + vtableTagLong + " = lshr i64 %t" + vtableRef + ", 3");
-            emitted.add("%t" + vtableTag + " = trunc i64 %t" + vtableTagLong + " to i32");
-            emitted.add("store i32 %t" + vtableTag + ", i32* %t" + headerFieldRef);
         }
 
         @Override
@@ -1629,5 +1628,28 @@ public class LLVMRenderer {
             return "0";
         }
         return "null";
+    }
+
+    private static String getJavaTypeName(PrimitiveType type) {
+        switch (type) {
+            case BOOLEAN:
+                return "boolean";
+            case BYTE:
+                return "byte";
+            case SHORT:
+                return "short";
+            case CHARACTER:
+                return "char";
+            case INTEGER:
+                return "int";
+            case LONG:
+                return "long";
+            case FLOAT:
+                return "float";
+            case DOUBLE:
+                return "double";
+            default:
+                throw new IllegalArgumentException("Unknown primitive type: " + type);
+        }
     }
 }
