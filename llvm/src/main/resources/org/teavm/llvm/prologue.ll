@@ -17,6 +17,7 @@
 }
 
 %teavm.Fields = type {
+    %itable*,        ; parent class
     i64,             ; number of fields
     i32*             ; pointer to array of offsets
 }
@@ -170,15 +171,33 @@ define i1 @teavm.instanceOf(i8* %object, %itable* %type) {
 @teavm.floatArray = global %itable zeroinitializer, align 8
 @teavm.doubleArray = global %itable zeroinitializer, align 8
 
-@teavm_Array = alias %teavm.Array* @teavm.Array
-@teavm_booleanArray = alias %itable* @teavm.booleanArray
-@teavm_byteArray = alias %itable* @teavm.byteArray
-@teavm_shortArray = alias %itable* @teavm.shortArray
-@teavm_charArray = alias %itable* @teavm.charArray
-@teavm_intArray = alias %itable* @teavm.intArray
-@teavm_longArray = alias %itable* @teavm.longArray
-@teavm_floatArray = alias %itable* @teavm.floatArray
-@teavm_doubleArray = alias %itable* @teavm.doubleArray
+define %teavm.Array* @teavm_Array() {
+    ret %teavm.Array* @teavm.Array
+}
+define %itable* @teavm_booleanArray() {
+    ret %itable* @teavm.booleanArray
+}
+define %itable* @teavm_byteArray() {
+    ret %itable* @teavm.byteArray
+}
+define %itable* @teavm_shortArray() {
+    ret %itable* @teavm.shortArray
+}
+define %itable* @teavm_charArray() {
+     ret %itable* @teavm.charArray
+}
+define %itable* @teavm_intArray() {
+    ret %itable* @teavm.intArray
+}
+define %itable* @teavm_longArray() {
+    ret %itable* @teavm.longArray
+}
+define %itable* @teavm_floatArray() {
+    ret %itable* @teavm.floatArray
+}
+define %itable* @teavm_doubleArray() {
+    ret %itable* @teavm.doubleArray
+}
 
 %teavm.ExceptionBuffer = type { [ 16 x i32 ], i8* }
 

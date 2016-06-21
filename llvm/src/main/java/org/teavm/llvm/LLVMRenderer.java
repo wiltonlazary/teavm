@@ -64,6 +64,9 @@ import org.teavm.model.instructions.BinaryBranchingCondition;
 import org.teavm.model.instructions.BinaryOperation;
 import org.teavm.model.instructions.BranchingCondition;
 import org.teavm.model.instructions.CastIntegerDirection;
+import org.teavm.model.instructions.ConstructArrayInstruction;
+import org.teavm.model.instructions.ConstructInstruction;
+import org.teavm.model.instructions.InitClassInstruction;
 import org.teavm.model.instructions.InstructionReader;
 import org.teavm.model.instructions.IntegerSubtype;
 import org.teavm.model.instructions.InvocationType;
@@ -276,6 +279,13 @@ public class LLVMRenderer {
         appendable.append("i32 " + tag + ",\n");
         indent(level + 1);
         appendable.append("%teavm.Fields {\n");
+        indent(level + 2);
+        if (cls.getParent() != null && !cls.getParent().equals(cls.getName())) {
+            String parent = cls.getParent();
+            appendable.append("%itable *bitcast (%vtable." + parent + "* @vtable." + parent + " to %itable*),\n");
+        } else {
+            appendable.append("%itable *null,\n");
+        }
         indent(level + 2);
         appendable.append("i64 " + fieldCount + ",\n");
         indent(level + 2);
@@ -535,6 +545,7 @@ public class LLVMRenderer {
                 }
                 for (int j = 0; j < block.instructionCount(); ++j) {
                     this.callSiteLiveIns = blockLiveIns.get(j);
+                    updateShadowStack();
                     block.readInstruction(j, reader);
                     flushInstructions();
                 }
@@ -590,8 +601,8 @@ public class LLVMRenderer {
 
         for (int i = 0; i < program.basicBlockCount(); ++i) {
             BasicBlock block = program.basicBlockAt(i);
-            IntObjectMap<BitSet> blockLiveOut = new IntObjectOpenHashMap<>();
-            liveOut.add(blockLiveOut);
+            IntObjectMap<BitSet> blockLiveIn = new IntObjectOpenHashMap<>();
+            liveOut.add(blockLiveIn);
             BitSet currentLiveOut = new BitSet();
             for (int successor : cfg.outgoingEdges(i)) {
                 currentLiveOut.or(livenessAnalyzer.liveIn(successor));
@@ -602,14 +613,15 @@ public class LLVMRenderer {
                 for (Variable definedVar : defExtractor.getDefinedVariables()) {
                     currentLiveOut.clear(definedVar.getIndex());
                 }
-                if (insn instanceof InvokeInstruction) {
-                    BitSet csLiveOut = (BitSet) currentLiveOut.clone();
-                    for (int v = csLiveOut.nextSetBit(0); v >= 0; v = csLiveOut.nextSetBit(v + 1)) {
+                if (insn instanceof InvokeInstruction || insn instanceof InitClassInstruction
+                        || insn instanceof ConstructInstruction || insn instanceof ConstructArrayInstruction) {
+                    BitSet csLiveIn = (BitSet) currentLiveOut.clone();
+                    for (int v = csLiveIn.nextSetBit(0); v >= 0; v = csLiveIn.nextSetBit(v + 1)) {
                         if (!isReference(v)) {
-                            csLiveOut.clear(v);
+                            csLiveIn.clear(v);
                         }
                     }
-                    blockLiveOut.put(j, csLiveOut);
+                    blockLiveIn.put(j, csLiveIn);
                 }
             }
         }
@@ -680,22 +692,6 @@ public class LLVMRenderer {
             return "i8*";
         }
         throw new IllegalArgumentException("Unknown type: " + type);
-    }
-
-    private String renderTypeForArray(ValueType type) {
-        if (type instanceof ValueType.Primitive) {
-            switch (((ValueType.Primitive) type).getKind()) {
-                case BOOLEAN:
-                case BYTE:
-                    return "i8";
-                case SHORT:
-                case CHARACTER:
-                    return "i16";
-                default:
-                    break;
-            }
-        }
-        return renderType(type);
     }
 
     private String renderType(VariableType type) {
@@ -783,6 +779,25 @@ public class LLVMRenderer {
 
         Field(String type) {
             this(type, null);
+        }
+    }
+
+    private void updateShadowStack() {
+        if (callSiteLiveIns != null && stackFrameSize > 0) {
+            String stackType = "[" + stackFrameSize + " x i8*]";
+            int cellIndex = 0;
+            for (int i = callSiteLiveIns.nextSetBit(0); i >= 0; i = callSiteLiveIns.nextSetBit(i + 1)) {
+                String stackCell = "%t" + temporaryVariable++;
+                emitted.add(stackCell + " = getelementptr " + stackType + ", " + stackType + "* %stackData, "
+                        + "i32 0, i32 " + cellIndex++);
+                emitted.add("store i8* %v" + i + ", i8**" + stackCell);
+            }
+            while (cellIndex < stackFrameSize) {
+                String stackCell = "%t" + temporaryVariable++;
+                emitted.add(stackCell + " = getelementptr " + stackType + ", " + stackType + "* %stackData, "
+                        + "i32 0, i32 " + cellIndex++);
+                emitted.add("store i8* null, i8**" + stackCell);
+            }
         }
     }
 
@@ -1339,23 +1354,6 @@ public class LLVMRenderer {
         @Override
         public void invoke(VariableReader receiver, VariableReader instance, MethodReference method,
                 List<? extends VariableReader> arguments, InvocationType type) {
-            if (callSiteLiveIns != null && stackFrameSize > 0) {
-                String stackType = "[" + stackFrameSize + " x i8*]";
-                int cellIndex = 0;
-                for (int i = callSiteLiveIns.nextSetBit(0); i >= 0; i = callSiteLiveIns.nextSetBit(i + 1)) {
-                    String stackCell = "%t" + temporaryVariable++;
-                    emitted.add(stackCell + " = getelementptr " + stackType + ", " + stackType + "* %stackData, "
-                            + "i32 0, i32 " + cellIndex++);
-                    emitted.add("store i8* %v" + i + ", i8**" + stackCell);
-                }
-                while (cellIndex < stackFrameSize) {
-                    String stackCell = "%t" + temporaryVariable++;
-                    emitted.add(stackCell + " = getelementptr " + stackType + ", " + stackType + "* %stackData, "
-                            + "i32 0, i32 " + cellIndex++);
-                    emitted.add("store i8* null, i8**" + stackCell);
-                }
-            }
-
             StringBuilder sb = new StringBuilder();
             if (receiver != null) {
                 sb.append("%v" + receiver.getIndex() + " = ");

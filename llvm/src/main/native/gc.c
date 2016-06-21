@@ -7,12 +7,15 @@ typedef struct {
     int size;
 } Object;
 
+struct ClassStruct;
+
 typedef struct {
+    struct ClassStruct* parent;
     long count;
     int *offsets;
 } FieldLayout;
 
-typedef struct {
+typedef struct ClassStruct {
     int size;
     int tag;
     FieldLayout fields;
@@ -31,7 +34,7 @@ typedef struct StackFrameStruct {
 
 typedef struct {
     int size;
-    Object **data;
+    Object ***data;
 } StackRoots;
 
 typedef struct TraversalStackStruct {
@@ -42,15 +45,15 @@ typedef struct TraversalStackStruct {
 
 extern StackFrame *teavm_getStackTop();
 extern StackRoots* teavm_getStackRoots();
-extern Class* teavm_Array;
-extern Class* teavm_booleanArray;
-extern Class* teavm_byteArray;
-extern Class* teavm_shortArray;
-extern Class* teavm_charArray;
-extern Class* teavm_intArray;
-extern Class* teavm_longArray;
-extern Class* teavm_floatArray;
-extern Class* teavm_doubleArray;
+extern Class* teavm_Array();
+extern Class* teavm_booleanArray();
+extern Class* teavm_byteArray();
+extern Class* teavm_shortArray();
+extern Class* teavm_charArray();
+extern Class* teavm_intArray();
+extern Class* teavm_longArray();
+extern Class* teavm_floatArray();
+extern Class* teavm_doubleArray();
 
 static void* pool = NULL;
 static int objectCount = 0;
@@ -62,6 +65,7 @@ static int CLASS_SIZE_MASK = -1 ^ (1 << 31);
 static Object** objectsStart = NULL;
 static Object** objects = NULL;
 static TraversalStack* traversalStack;
+static int objectsRemoved = 0;
 
 static void* getPool() {
     if (pool == NULL) {
@@ -86,47 +90,41 @@ static void* getPool() {
 }
 
 static int objectSize(Object *object) {
-    printf("GC: tag %d\n", object->tag);
     if (object->tag == EMPTY_TAG) {
         return object->size;
     } else {
         char *tagAddress = (char *) (long) (object->tag << 3);
         Class *cls = (Class *) tagAddress;
-        if (cls == teavm_Array) {
+        if (cls == teavm_Array()) {
             Array *array = (Array *) object;
             unsigned char *depthPtr = (unsigned char *) (array + 1);
             int depth = *depthPtr;
             int elementCount = array->object.size;
+            int elemSize;
             if (depth == 0) {
                 Class *elementType = array->elementType;
-                if (elementType == teavm_booleanArray || elementType == teavm_byteArray) {
-                    return elementCount * sizeof(char);
-                } else if (elementType == teavm_shortArray || elementType == teavm_charArray) {
-                    return elementCount * sizeof(short);
-                } else if (elementType == teavm_intArray) {
-                    return elementCount * sizeof(int);
-                } else if (elementType == teavm_longArray) {
-                    return elementCount * sizeof(long);
-                } else if (elementType == teavm_floatArray) {
-                    return elementCount * sizeof(float);
-                } else if (elementType == teavm_floatArray) {
-                    return elementCount * sizeof(double);
+                if (elementType == teavm_booleanArray() || elementType == teavm_byteArray()) {
+                    elemSize = sizeof(char);
+                } else if (elementType == teavm_shortArray() || elementType == teavm_charArray()) {
+                    elemSize = sizeof(short);
+                } else if (elementType == teavm_intArray()) {
+                    elemSize = sizeof(int);
+                } else if (elementType == teavm_longArray()) {
+                    elemSize = sizeof(long);
+                } else if (elementType == teavm_floatArray()) {
+                    elemSize = sizeof(float);
+                } else if (elementType == teavm_doubleArray()) {
+                    elemSize = sizeof(double);
+                } else {
+                    elemSize = sizeof(Object *);
                 }
+            } else {
+                elemSize = sizeof(Object *);
             }
-            return elementCount * sizeof(Object *);
+            return (elementCount + 1) * elemSize + sizeof(Array);
         } else {
             return cls->size & CLASS_SIZE_MASK;
         }
-    }
-}
-
-static void clearMarks() {
-    Object *object = (Object *) getPool();
-    while (object->tag != END_TAG) {
-        object->tag = object->tag & (-1 ^ GC_MARK);
-        int size = objectSize(object);
-        char *address = (char *) object + size;
-        object = (Object *) address;
     }
 }
 
@@ -143,6 +141,7 @@ static Object *popObject() {
     traversalStack->location--;
     if (traversalStack->location < 0) {
         if (traversalStack->next == NULL) {
+            traversalStack->location = 0;
             return NULL;
         }
         TraversalStack *next = traversalStack->next;
@@ -171,14 +170,17 @@ static void markObject(Object *object) {
 
         char *address = (char *) object;
         Class *cls = (Class *) (long) (object->tag << 3);
-        int fieldCount = (int) cls->fields.count;
-        int *offsets = &cls->fields.offsets[0];
-        for (int i = 0; i < fieldCount; ++i) {
-            Object **fieldRef = (Object **) (address + offsets[i]);
-            Object *field = *fieldRef;
-            if (field != NULL && (field->tag & GC_MARK) != 0) {
-                markObject(field);
+        while (cls != NULL) {
+            int fieldCount = (int) cls->fields.count;
+            int *offsets = &cls->fields.offsets[0];
+            for (int i = 0; i < fieldCount; ++i) {
+                Object **fieldRef = (Object **) (address + offsets[i]);
+                Object *field = *fieldRef;
+                if (field != NULL && (field->tag & GC_MARK) == 0) {
+                    markObject(field);
+                }
             }
+            cls = cls->fields.parent;
         }
     }
 }
@@ -190,7 +192,7 @@ static void mark() {
 
     StackRoots *roots = teavm_getStackRoots();
     for (int i = 0; i < roots->size; ++i) {
-        markObject(roots->data[i]);
+        markObject(*roots->data[i]);
     }
 
     StackFrame *stack = teavm_getStackTop();
@@ -208,7 +210,7 @@ static void mark() {
 static int compareFreeChunks(const void* first, const void *second) {
     Object **a = (Object **) first;
     Object **b = (Object **) second;
-    return (*b)->size - (*a)->size;
+    return (*a)->size - (*b)->size;
 }
 
 static void sweep() {
@@ -224,7 +226,12 @@ static void sweep() {
             free = 1;
         } else {
             free = (object->tag & GC_MARK) == 0;
-            object->tag = object->tag & (-1 ^ GC_MARK);
+            if (free) {
+                ++objectsRemoved;
+                object->tag = 0;
+            } else {
+                object->tag = object->tag & (-1 ^ GC_MARK);
+            }
         }
         if (free) {
             if (lastFreeSpace == NULL) {
@@ -236,8 +243,9 @@ static void sweep() {
         } else {
             if (lastFreeSpace != NULL) {
                 lastFreeSpace->size = freeSize;
-                objects[objectCount] = lastFreeSpace;
+                objects[objectCount++] = lastFreeSpace;
                 lastFreeSpace = NULL;
+                freeSize = 0;
             }
         }
         char *address = (char *) object + size;
@@ -246,18 +254,22 @@ static void sweep() {
 
     if (lastFreeSpace != NULL) {
         lastFreeSpace->size = freeSize;
-        objects[objectCount] = lastFreeSpace;
+        objects[objectCount++] = lastFreeSpace;
     }
 
     qsort(objects, objectCount, sizeof(Object *), &compareFreeChunks);
+    printf("GC: free chunks: %d\n", objectCount);
+    for (int i = 0; i < objectCount; ++i) {
+        printf("GC:   chunk %d contains %d bytes\n", i, objects[i]->size);
+    }
 }
 
 static int collectGarbage() {
     printf("GC: starting GC\n");
-    clearMarks();
+    objectsRemoved = 0;
     mark();
     sweep();
-    printf("GC: GC complete\n");
+    printf("GC: GC complete, %d objects removed\n", objectsRemoved);
     return 1;
 }
 
@@ -318,7 +330,7 @@ static Array *teavm_arrayAlloc(Class* cls, unsigned char depth, int arraySize, i
 
     memset(chunk, 0, size);
     Array* array = (Array *) chunk;
-    array->object.tag = (int) teavm_Array >> 3;
+    array->object.tag = (int) teavm_Array() >> 3;
     array->object.size = arraySize;
     array->elementType = cls;
     unsigned char* depthPtr = (unsigned char *) (array + 1);
@@ -332,26 +344,26 @@ Array *teavm_objectArrayAlloc(int tag, unsigned char depth, int size) {
     return teavm_arrayAlloc(cls, depth, size, sizeof(Object *));
 }
 Array *teavm_booleanArrayAlloc(int size) {
-    return teavm_arrayAlloc(teavm_booleanArray, 0, size, sizeof(char));
+    return teavm_arrayAlloc(teavm_booleanArray(), 0, size, sizeof(char));
 }
 Array *teavm_byteArrayAlloc(int size) {
-    return teavm_arrayAlloc(teavm_byteArray, 0, size, sizeof(char));
+    return teavm_arrayAlloc(teavm_byteArray(), 0, size, sizeof(char));
 }
 Array *teavm_shortArrayAlloc(int size) {
-    return teavm_arrayAlloc(teavm_shortArray, 0, size, sizeof(short));
+    return teavm_arrayAlloc(teavm_shortArray(), 0, size, sizeof(short));
 }
 Array *teavm_charArrayAlloc(int size) {
-    return teavm_arrayAlloc(teavm_charArray, 0, size, sizeof(short));
+    return teavm_arrayAlloc(teavm_charArray(), 0, size, sizeof(short));
 }
 Array *teavm_intArrayAlloc(int size) {
-    return teavm_arrayAlloc(teavm_intArray, 0, size, sizeof(int));
+    return teavm_arrayAlloc(teavm_intArray(), 0, size, sizeof(int));
 }
 Array *teavm_longArrayAlloc(int size) {
-    return teavm_arrayAlloc(teavm_longArray, 0, size, sizeof(long));
+    return teavm_arrayAlloc(teavm_longArray(), 0, size, sizeof(long));
 }
 Array *teavm_floatArrayAlloc(int size) {
-    return teavm_arrayAlloc(teavm_floatArray, 0, size, sizeof(float));
+    return teavm_arrayAlloc(teavm_floatArray(), 0, size, sizeof(float));
 }
 Array *teavm_doubleArrayAlloc(int size) {
-    return teavm_arrayAlloc(teavm_doubleArray, 0, size, sizeof(double));
+    return teavm_arrayAlloc(teavm_doubleArray(), 0, size, sizeof(double));
 }
