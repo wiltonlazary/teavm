@@ -4,6 +4,7 @@
 
 typedef struct {
     int tag;
+    int reserved;
     int size;
 } Object;
 
@@ -54,6 +55,7 @@ extern Class* teavm_intArray();
 extern Class* teavm_longArray();
 extern Class* teavm_floatArray();
 extern Class* teavm_doubleArray();
+extern long teavm_currentTimeMillis();
 
 static void* pool = NULL;
 static int objectCount = 0;
@@ -67,15 +69,21 @@ static Object** objectsStart = NULL;
 static Object** objects = NULL;
 static TraversalStack* traversalStack;
 static int objectsRemoved = 0;
+static Object* currentObject;
+static int currentSize = 0;
 
 static void* getPool() {
     if (pool == NULL) {
-        int poolSize = 1024 * 1024 * 1048;
+        int poolSize = 1024 * 1024 * 1024;
         pool = malloc(poolSize);
 
         Object *root = (Object *) pool;
+        int rootSize = poolSize - sizeof(Object);
+        memset(root, 0, rootSize);
         root->tag = EMPTY_TAG;
-        root->size = poolSize - sizeof(Object);
+        root->size = rootSize;
+        currentSize = rootSize;
+        currentObject = root;
 
         char* address = (char *)pool;
         Object *terminator = (Object *) (address + root->size);
@@ -88,6 +96,10 @@ static void* getPool() {
         objectCount = 1;
     }
     return pool;
+}
+
+static int alignSize(int size) {
+    return (((size - 1) >> 3) + 1) << 3;
 }
 
 static int objectSize(Object *object) {
@@ -124,7 +136,7 @@ static int objectSize(Object *object) {
             } else {
                 elemSize = sizeof(Object *);
             }
-            return (elementCount + 1) * elemSize + sizeof(Array);
+            return alignSize((elementCount + 1) * elemSize + sizeof(Array));
         } else {
             return cls->size & CLASS_SIZE_MASK;
         }
@@ -217,6 +229,9 @@ static int compareFreeChunks(const void* first, const void *second) {
 }
 
 static void makeEmpty(Object *object, int size) {
+    if (size == 0) {
+        return;
+    }
     if (size == sizeof(int)) {
         object->tag = EMPTY_SHORT_TAG;
     } else {
@@ -238,12 +253,7 @@ static void sweep() {
             free = 1;
         } else {
             free = (object->tag & GC_MARK) == 0;
-            if (free) {
-                ++objectsRemoved;
-                object->tag = EMPTY_TAG;
-            } else {
-                object->tag = object->tag & (-1 ^ GC_MARK);
-            }
+            object->tag = object->tag & (-1 ^ GC_MARK);
         }
         if (free) {
             if (lastFreeSpace == NULL) {
@@ -252,6 +262,7 @@ static void sweep() {
             freeSize += size;
         } else {
             if (lastFreeSpace != NULL) {
+                memset(lastFreeSpace, 0, freeSize);
                 makeEmpty(lastFreeSpace, freeSize);
                 objects[objectCount++] = lastFreeSpace;
                 lastFreeSpace = NULL;
@@ -263,11 +274,19 @@ static void sweep() {
     }
 
     if (lastFreeSpace != NULL) {
+        memset(lastFreeSpace, 0, freeSize);
         makeEmpty(lastFreeSpace, freeSize);
         objects[objectCount++] = lastFreeSpace;
     }
 
     qsort(objects, objectCount, sizeof(Object *), &compareFreeChunks);
+    if (objectCount > 0) {
+        currentObject = objects[0];
+        currentSize = currentObject->size;
+    } else {
+        currentObject = NULL;
+        currentSize = 0;
+    }
     //printf("GC: free chunks: %d\n", objectCount);
     for (int i = 0; i < objectCount; ++i) {
         //printf("GC:   chunk %d contains %d bytes\n", i, objects[i]->size);
@@ -275,26 +294,33 @@ static void sweep() {
 }
 
 static int collectGarbage() {
-    //printf("GC: starting GC\n");
+    long start = teavm_currentTimeMillis();
+    printf("GC: starting GC\n");
     objectsRemoved = 0;
     mark();
     sweep();
-    //printf("GC: GC complete, %d objects removed\n", objectsRemoved);
+    long end = teavm_currentTimeMillis();
+    printf("GC: GC complete, in %ld ms\n", end - start);
     return 1;
 }
 
 static Object* findAvailableChunk(int size) {
     getPool();
-    while (objectCount > 0) {
-        Object* chunk = *objects;
-        int chunkSize = chunk->tag == EMPTY_TAG ? chunk->size : sizeof(4);
-        if (chunkSize >= size + sizeof(Object) || chunkSize == size) {
-            return chunk;
+    while (1) {
+        if (currentSize >= size + sizeof(Object) || currentSize == size) {
+            return currentObject;
         }
+        makeEmpty(currentObject, currentSize);
         --objectCount;
         ++objects;
+        if (objectCount > 0) {
+            currentObject = objects[0];
+            currentSize = currentObject->size;
+            currentObject->size = 0;
+        } else {
+            return NULL;
+        }
     }
-    return NULL;
 }
 
 static Object* getAvailableChunk(int size) {
@@ -317,28 +343,20 @@ static Object* getAvailableChunk(int size) {
 Object *teavm_alloc(int tag) {
     Class* cls = (Class *) ((long) tag << 3);
     int size = cls->size & CLASS_SIZE_MASK;
-    Object* chunk = getAvailableChunk(size);
-    if (chunk->size > size) {
-        Object* next = (Object *) ((char *) chunk + size);
-        makeEmpty(next, chunk->size - size);
-        objects[0] = next;
-    }
-    memset(chunk, 0, size);
+    Object* chunk = size + sizeof(Object) < currentSize ? currentObject : getAvailableChunk(size);
+    currentObject = (Object *) ((char *) chunk + size);
+    currentSize -= size;
+
     chunk->tag = tag;
     return chunk;
 }
 
 static Array *teavm_arrayAlloc(Class* cls, unsigned char depth, int arraySize, int elemSize) {
-    int size = sizeof(Array) + elemSize * (arraySize + 1);
-    Object* chunk = getAvailableChunk(size);
-    if (chunk->size > size) {
-        Object* next = (Object *) ((char *) chunk + size);
-        int nextSize = chunk->size - size;
-        makeEmpty(next, chunk->size - size);
-        objects[0] = next;
-    }
+    int size = alignSize(sizeof(Array) + elemSize * (arraySize + 1));
+    Object* chunk = size + sizeof(Object) < currentSize ? currentObject : getAvailableChunk(size);
+    currentObject = (Object *) ((char *) chunk + size);
+    currentSize -= size;
 
-    memset(chunk, 0, size);
     Array* array = (Array *) chunk;
     array->object.tag = (int) teavm_Array() >> 3;
     array->object.size = arraySize;

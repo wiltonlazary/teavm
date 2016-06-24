@@ -144,6 +144,11 @@ class LLVMMethodRenderer {
             returnBlocks.clear();
             returnVariables.clear();
 
+            if (method.hasModifier(ElementModifier.STATIC) && !method.getName().equals("<clinit>")
+                    || method.getName().equals("<init>")) {
+                appendable.append("    call void @initializer$" + method.getOwnerName() + "()\n");
+            }
+
             if (stackFrameSize > 0) {
                 String stackType = "{ %teavm.stackFrame, [" + stackFrameSize + " x i8*] }";
                 appendable.append("    %stack = alloca " + stackType + "\n");
@@ -161,10 +166,6 @@ class LLVMMethodRenderer {
                         + "i32 0, i32 1\n");
             }
 
-            if (method.hasModifier(ElementModifier.STATIC) && !method.getName().equals("<clinit>")
-                    || method.getName().equals("<init>")) {
-                appendable.append("    call void @initializer$" + method.getOwnerName() + "()\n");
-            }
             appendable.append("    br label %b0\n");
 
             temporaryVariable = 0;
@@ -199,21 +200,21 @@ class LLVMMethodRenderer {
                     appendable.append("\n");
                 }
 
-                expectingException = !block.readTryCatchBlocks().isEmpty();
+                /*expectingException = !block.readTryCatchBlocks().isEmpty();
                 if (expectingException) {
                     appendable.append("    %exception" + i + " = call i8* @teavm.catchException()\n");
                     appendable.append("    %caught" + i + " = icmp ne i8* %exception, null\n");
                     appendable.append("    br i1 %caught" + i + ", label %lp" + i + ", label %b" + i + "\n");
-                }
+                }*/
                 for (int j = 0; j < block.instructionCount(); ++j) {
                     this.callSiteLiveIns = blockLiveIns.get(j);
                     updateShadowStack();
                     block.readInstruction(j, reader);
                     flushInstructions();
                 }
-                if (expectingException) {
+                /*if (expectingException) {
                     appendable.append("lp" + i + ":\n");
-                }
+                }*/
             }
 
             if (stackFrameSize > 0 && !returnBlocks.isEmpty()) {
@@ -283,6 +284,7 @@ class LLVMMethodRenderer {
                             csLiveIn.clear(v);
                         }
                     }
+                    csLiveIn.clear(0, method.parameterCount() + 1);
                     blockLiveIn.put(j, csLiveIn);
                 }
             }

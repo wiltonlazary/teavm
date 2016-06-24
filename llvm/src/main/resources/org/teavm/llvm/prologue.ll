@@ -4,7 +4,8 @@
 @teavm.bufferPos = private global i32 0
 
 %teavm.Object = type {
-    i32              ; header
+    i32,             ; header
+    i32              ; reserved
 }
 
 %teavm.Array = type {

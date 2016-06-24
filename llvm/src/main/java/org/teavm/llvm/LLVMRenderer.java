@@ -345,14 +345,14 @@ public class LLVMRenderer {
                 String str = stringPool.get(i);
                 String charsType = "[ " + (str.length() + 1) + " x i16 ]";
                 String dataType = "{ %teavm.Array, " + charsType + " }";
-                String stringObjectHeader = "%teavm.Object { i32 0 }";
+                String stringObjectHeader = "%teavm.Object zeroinitializer";
                 String stringObjectContent = "%class.java.lang.String { %class.java.lang.Object { "
                         + stringObjectHeader + " }, "
                         + "i8* bitcast (" + dataType + "* @teavm.strdata." + i + " to i8*), i32 0 }";
                 appendable.append("@teavm.str." + i + " = private global " + stringObjectContent + "\n");
 
                 appendable.append("@teavm.strdata." + i + " = private global " + dataType + " "
-                        + "{ %teavm.Array { %teavm.Object { i32 0 }"
+                        + "{ %teavm.Array { %teavm.Object zeroinitializer"
                         + ", i32 " + str.length() + ", %itable* null }, "
                         + charsType  + " [ i16 0");
                 for (int j = 0; j < str.length(); ++j) {
