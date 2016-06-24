@@ -1,8 +1,5 @@
 @teavm.printf.format = private constant [4 x i8] c"%d\0A\00", align 1
 @teavm.exceptionOccurred = private constant [26 x i8] c"Exception occurred in %s\0A\00", align 1
-@teavm.debug.text.1 = private constant [9 x i8] c"debug 1\0A\00"
-@teavm.debug.text.2 = private constant [9 x i8] c"debug 2\0A\00"
-@teavm.debug.text.3 = private constant [9 x i8] c"debug 3\0A\00"
 @teavm.buffer = private global [4096 x i8] zeroinitializer
 @teavm.bufferPos = private global i32 0
 
@@ -133,28 +130,8 @@ define void @method$java.lang.ConsoleOutputStreamStdout.V5_writeI(i8* %this, i32
 }
 define i64 @method$java.lang.System.L17_currentTimeMillis() {
     call void @initializer$java.lang.System()
-    %ts = alloca %timespec
-    call i32 @clock_gettime(i32 0, %timespec* %ts)
-    %nanoPtr = getelementptr %timespec, %timespec* %ts, i32 0, i32 1
-    %nano = load i64, i64* %nanoPtr
-    %milli = udiv i64 %nano, 1000000
-    ret i64 %milli
-}
-
-define void @teavm.debug.1() {
-    %buffer = bitcast [9 x i8]* @teavm.debug.text.1 to i8*
-    call i32 @puts(i8* %buffer)
-    ret void
-}
-define void @teavm.debug.2() {
-    %buffer = bitcast [9 x i8]* @teavm.debug.text.2 to i8*
-    call i32 @puts(i8* %buffer)
-    ret void
-}
-define void @teavm.debug.3() {
-    %buffer = bitcast [9 x i8]* @teavm.debug.text.3 to i8*
-    call i32 @puts(i8* %buffer)
-    ret void
+    %result = call i64 @teavm_currentTimeMillis()
+    ret i64 %result
 }
 
 define i1 @teavm.instanceOf(i8* %object, %itable* %type) {
@@ -256,3 +233,4 @@ declare i8* @teavm_intArrayAlloc(i32)
 declare i8* @teavm_longArrayAlloc(i32)
 declare i8* @teavm_floatArrayAlloc(i32)
 declare i8* @teavm_doubleArrayAlloc(i32)
+declare i64 @teavm_currentTimeMillis()

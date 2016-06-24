@@ -59,6 +59,7 @@ static void* pool = NULL;
 static int objectCount = 0;
 static int objectsCapacity = 1024;
 static int EMPTY_TAG = 0;
+static int EMPTY_SHORT_TAG = 1;
 static int END_TAG = -1;
 static int GC_MARK = 1 << 31;
 static int CLASS_SIZE_MASK = -1 ^ (1 << 31);
@@ -69,7 +70,7 @@ static int objectsRemoved = 0;
 
 static void* getPool() {
     if (pool == NULL) {
-        int poolSize = 1024 * 1024 * 2;
+        int poolSize = 1024 * 1024 * 1048;
         pool = malloc(poolSize);
 
         Object *root = (Object *) pool;
@@ -92,6 +93,8 @@ static void* getPool() {
 static int objectSize(Object *object) {
     if (object->tag == EMPTY_TAG) {
         return object->size;
+    } else if (object->tag == EMPTY_SHORT_TAG) {
+        return sizeof(int);
     } else {
         char *tagAddress = (char *) (long) (object->tag << 3);
         Class *cls = (Class *) tagAddress;
@@ -213,6 +216,15 @@ static int compareFreeChunks(const void* first, const void *second) {
     return (*a)->size - (*b)->size;
 }
 
+static void makeEmpty(Object *object, int size) {
+    if (size == sizeof(int)) {
+        object->tag = EMPTY_SHORT_TAG;
+    } else {
+        object->tag = EMPTY_TAG;
+        object->size = size;
+    }
+}
+
 static void sweep() {
     objects = objectsStart;
     objectCount = 0;
@@ -222,13 +234,13 @@ static void sweep() {
     while (object->tag != END_TAG) {
         int size = objectSize(object);
         int free = 0;
-        if (object->tag == 0) {
+        if (object->tag == EMPTY_TAG || object->tag == EMPTY_SHORT_TAG) {
             free = 1;
         } else {
             free = (object->tag & GC_MARK) == 0;
             if (free) {
                 ++objectsRemoved;
-                object->tag = 0;
+                object->tag = EMPTY_TAG;
             } else {
                 object->tag = object->tag & (-1 ^ GC_MARK);
             }
@@ -236,13 +248,11 @@ static void sweep() {
         if (free) {
             if (lastFreeSpace == NULL) {
                 lastFreeSpace = object;
-                freeSize = size;
-            } else {
-                freeSize += size;
             }
+            freeSize += size;
         } else {
             if (lastFreeSpace != NULL) {
-                lastFreeSpace->size = freeSize;
+                makeEmpty(lastFreeSpace, freeSize);
                 objects[objectCount++] = lastFreeSpace;
                 lastFreeSpace = NULL;
                 freeSize = 0;
@@ -253,23 +263,23 @@ static void sweep() {
     }
 
     if (lastFreeSpace != NULL) {
-        lastFreeSpace->size = freeSize;
+        makeEmpty(lastFreeSpace, freeSize);
         objects[objectCount++] = lastFreeSpace;
     }
 
     qsort(objects, objectCount, sizeof(Object *), &compareFreeChunks);
-    printf("GC: free chunks: %d\n", objectCount);
+    //printf("GC: free chunks: %d\n", objectCount);
     for (int i = 0; i < objectCount; ++i) {
-        printf("GC:   chunk %d contains %d bytes\n", i, objects[i]->size);
+        //printf("GC:   chunk %d contains %d bytes\n", i, objects[i]->size);
     }
 }
 
 static int collectGarbage() {
-    printf("GC: starting GC\n");
+    //printf("GC: starting GC\n");
     objectsRemoved = 0;
     mark();
     sweep();
-    printf("GC: GC complete, %d objects removed\n", objectsRemoved);
+    //printf("GC: GC complete, %d objects removed\n", objectsRemoved);
     return 1;
 }
 
@@ -277,7 +287,8 @@ static Object* findAvailableChunk(int size) {
     getPool();
     while (objectCount > 0) {
         Object* chunk = *objects;
-        if (chunk->size - 8 >= size || chunk->size == size) {
+        int chunkSize = chunk->tag == EMPTY_TAG ? chunk->size : sizeof(4);
+        if (chunkSize >= size + sizeof(Object) || chunkSize == size) {
             return chunk;
         }
         --objectCount;
@@ -309,8 +320,7 @@ Object *teavm_alloc(int tag) {
     Object* chunk = getAvailableChunk(size);
     if (chunk->size > size) {
         Object* next = (Object *) ((char *) chunk + size);
-        next->size = chunk->size - size;
-        next->tag = EMPTY_TAG;
+        makeEmpty(next, chunk->size - size);
         objects[0] = next;
     }
     memset(chunk, 0, size);
@@ -323,8 +333,8 @@ static Array *teavm_arrayAlloc(Class* cls, unsigned char depth, int arraySize, i
     Object* chunk = getAvailableChunk(size);
     if (chunk->size > size) {
         Object* next = (Object *) ((char *) chunk + size);
-        next->size = chunk->size - size;
-        next->tag = 0;
+        int nextSize = chunk->size - size;
+        makeEmpty(next, chunk->size - size);
         objects[0] = next;
     }
 
