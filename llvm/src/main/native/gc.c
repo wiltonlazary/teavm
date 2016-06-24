@@ -70,7 +70,7 @@ static Object** objects = NULL;
 static TraversalStack* traversalStack;
 static int objectsRemoved = 0;
 static Object* currentObject;
-static int currentSize = 0;
+static Object* currentLimit;
 static int arrayTag;
 
 static void* getPool() {
@@ -84,7 +84,7 @@ static void* getPool() {
         memset(root, 0, rootSize);
         root->tag = EMPTY_TAG;
         root->size = rootSize;
-        currentSize = rootSize;
+        currentLimit = (Object *) ((char *) root + rootSize);
         currentObject = root;
 
         char* address = (char *)pool;
@@ -292,11 +292,12 @@ static void sweep() {
     qsort(objects, objectCount, sizeof(Object *), &compareFreeChunks);
     if (objectCount > 0) {
         currentObject = objects[0];
-        currentSize = currentObject->size;
-        memset(currentObject, 0, currentSize);
+        int size = currentObject->tag == 0 ? currentObject->size : sizeof(4);
+        currentLimit = (Object *)((char *) currentObject + size);
+        memset(currentObject, 0, size);
     } else {
         currentObject = NULL;
-        currentSize = 0;
+        currentLimit = NULL;
     }
     //printf("GC: free chunks: %d\n", objectCount);
     for (int i = 0; i < objectCount; ++i) {
@@ -315,27 +316,28 @@ static int collectGarbage() {
     return 1;
 }
 
-static Object* findAvailableChunk(int size) {
+static Object *findAvailableChunk(int size) {
     getPool();
     while (1) {
-        if (currentSize >= size + sizeof(Object) || currentSize == size) {
+        char *next = (char *) currentObject + size;
+        if (next + sizeof(Object) <= (char *) currentLimit || next == (char *) currentLimit) {
             return currentObject;
         }
-        makeEmpty(currentObject, currentSize);
+        makeEmpty(currentObject, (int) ((char *) currentLimit - (char *) currentObject));
         --objectCount;
         ++objects;
         if (objectCount > 0) {
             currentObject = objects[0];
-            currentSize = currentObject->size;
-            memset(currentObject, 0, currentSize);
+            currentLimit = (Object *) ((char *) currentObject + currentObject->size);
+            memset(currentObject, 0, currentObject->size);
         } else {
             return NULL;
         }
     }
 }
 
-static Object* getAvailableChunk(int size) {
-    Object* chunk = findAvailableChunk(size);
+static Object *getAvailableChunk(int size) {
+    Object *chunk = findAvailableChunk(size);
     if (chunk != NULL) {
         return chunk;
     }
@@ -352,11 +354,11 @@ static Object* getAvailableChunk(int size) {
 }
 
 Object *teavm_alloc(int tag) {
-    Class* cls = (Class *) ((long) tag << 3);
+    Class *cls = (Class *) ((long) tag << 3);
     int size = cls->size & CLASS_SIZE_MASK;
-    Object* chunk = size + sizeof(Object) < currentSize ? currentObject : getAvailableChunk(size);
+    char *next = ((char *) currentObject + size);
+    Object *chunk = next + sizeof(Object) <= (char *) currentLimit ? currentObject : getAvailableChunk(size);
     currentObject = (Object *) ((char *) chunk + size);
-    currentSize -= size;
 
     chunk->tag = tag;
     return chunk;
@@ -364,11 +366,11 @@ Object *teavm_alloc(int tag) {
 
 static Array *teavm_arrayAlloc(Class* cls, unsigned char depth, int arraySize, int elemSize) {
     int size = alignSize(sizeof(Array) + elemSize * (arraySize + 1));
-    Object* chunk = size + sizeof(Object) < currentSize ? currentObject : getAvailableChunk(size);
+    char *next = ((char *) currentObject + size);
+    Object *chunk = next + sizeof(Object) <= (char *) currentLimit ? currentObject : getAvailableChunk(size);
     currentObject = (Object *) ((char *) chunk + size);
-    currentSize -= size;
 
-    Array* array = (Array *) chunk;
+    Array *array = (Array *) chunk;
     array->object.tag = (int) teavm_Array() >> 3;
     array->object.size = arraySize;
     array->elementType = cls;
