@@ -71,9 +71,11 @@ static TraversalStack* traversalStack;
 static int objectsRemoved = 0;
 static Object* currentObject;
 static int currentSize = 0;
+static int arrayTag;
 
 static void* getPool() {
     if (pool == NULL) {
+        arrayTag = (int) ((long) teavm_Array() >> 3);
         int poolSize = 1024 * 1024 * 1024;
         pool = malloc(poolSize);
 
@@ -102,43 +104,48 @@ static int alignSize(int size) {
     return (((size - 1) >> 3) + 1) << 3;
 }
 
-static int objectSize(Object *object) {
-    if (object->tag == EMPTY_TAG) {
-        return object->size;
-    } else if (object->tag == EMPTY_SHORT_TAG) {
-        return sizeof(int);
-    } else {
-        char *tagAddress = (char *) (long) (object->tag << 3);
-        Class *cls = (Class *) tagAddress;
-        if (cls == teavm_Array()) {
-            Array *array = (Array *) object;
-            unsigned char *depthPtr = (unsigned char *) (array + 1);
-            int depth = *depthPtr;
-            int elementCount = array->object.size;
-            int elemSize;
-            if (depth == 0) {
-                Class *elementType = array->elementType;
-                if (elementType == teavm_booleanArray() || elementType == teavm_byteArray()) {
-                    elemSize = sizeof(char);
-                } else if (elementType == teavm_shortArray() || elementType == teavm_charArray()) {
-                    elemSize = sizeof(short);
-                } else if (elementType == teavm_intArray()) {
-                    elemSize = sizeof(int);
-                } else if (elementType == teavm_longArray()) {
-                    elemSize = sizeof(long);
-                } else if (elementType == teavm_floatArray()) {
-                    elemSize = sizeof(float);
-                } else if (elementType == teavm_doubleArray()) {
-                    elemSize = sizeof(double);
-                } else {
-                    elemSize = sizeof(Object *);
-                }
-            } else {
-                elemSize = sizeof(Object *);
-            }
-            return alignSize((elementCount + 1) * elemSize + sizeof(Array));
+static int arraySize(Array* array) {
+    unsigned char *depthPtr = (unsigned char *) (array + 1);
+    int depth = *depthPtr;
+    int elementCount = array->object.size;
+    int elemSize;
+    if (depth == 0) {
+        Class *elementType = array->elementType;
+        if (elementType == teavm_booleanArray() || elementType == teavm_byteArray()) {
+            elemSize = sizeof(char);
+        } else if (elementType == teavm_shortArray() || elementType == teavm_charArray()) {
+            elemSize = sizeof(short);
+        } else if (elementType == teavm_intArray()) {
+            elemSize = sizeof(int);
+        } else if (elementType == teavm_longArray()) {
+            elemSize = sizeof(long);
+        } else if (elementType == teavm_floatArray()) {
+            elemSize = sizeof(float);
+        } else if (elementType == teavm_doubleArray()) {
+            elemSize = sizeof(double);
         } else {
-            return cls->size & CLASS_SIZE_MASK;
+            elemSize = sizeof(Object *);
+        }
+    } else {
+        elemSize = sizeof(Object *);
+    }
+    return alignSize((elementCount + 1) * elemSize + sizeof(Array));
+}
+
+static int objectSize(int tag, Object *object) {
+    switch (tag) {
+        case 0:
+            return object->size;
+        case 1:
+            return sizeof(int);
+        default: {
+            if (tag == arrayTag) {
+                return arraySize((Array *) object);
+            } else {
+                char *tagAddress = (char *) (long) (object->tag << 3);
+                Class *cls = (Class *) tagAddress;
+                return cls->size & CLASS_SIZE_MASK;
+            }
         }
     }
 }
@@ -245,36 +252,39 @@ static void sweep() {
     objectCount = 0;
     Object *object = getPool();
     Object *lastFreeSpace = NULL;
-    int freeSize = 0;
     while (object->tag != END_TAG) {
-        int size = objectSize(object);
         int free = 0;
-        if (object->tag == EMPTY_TAG || object->tag == EMPTY_SHORT_TAG) {
+        int tag = object->tag;
+        if (tag == 0 || tag == 1) {
             free = 1;
         } else {
-            free = (object->tag & GC_MARK) == 0;
-            object->tag = object->tag & (-1 ^ GC_MARK);
+            free = (tag & GC_MARK) == 0;
+            if (!free) {
+                tag &= (-1 ^ GC_MARK);
+                object->tag = tag;
+            }
         }
+
         if (free) {
             if (lastFreeSpace == NULL) {
                 lastFreeSpace = object;
             }
-            freeSize += size;
         } else {
             if (lastFreeSpace != NULL) {
-                memset(lastFreeSpace, 0, freeSize);
+                int freeSize = (int) ((char *) object - (char *) lastFreeSpace);
                 makeEmpty(lastFreeSpace, freeSize);
                 objects[objectCount++] = lastFreeSpace;
                 lastFreeSpace = NULL;
-                freeSize = 0;
             }
         }
+
+        int size = objectSize(tag, object);
         char *address = (char *) object + size;
         object = (Object *) address;
     }
 
     if (lastFreeSpace != NULL) {
-        memset(lastFreeSpace, 0, freeSize);
+        int freeSize = (int) ((char *) object - (char *) lastFreeSpace);
         makeEmpty(lastFreeSpace, freeSize);
         objects[objectCount++] = lastFreeSpace;
     }
@@ -283,6 +293,7 @@ static void sweep() {
     if (objectCount > 0) {
         currentObject = objects[0];
         currentSize = currentObject->size;
+        memset(currentObject, 0, currentSize);
     } else {
         currentObject = NULL;
         currentSize = 0;
@@ -295,12 +306,12 @@ static void sweep() {
 
 static int collectGarbage() {
     long start = teavm_currentTimeMillis();
-    printf("GC: starting GC\n");
+    //printf("GC: starting GC\n");
     objectsRemoved = 0;
     mark();
     sweep();
     long end = teavm_currentTimeMillis();
-    printf("GC: GC complete, in %ld ms\n", end - start);
+    //printf("GC: GC complete, in %ld ms\n", end - start);
     return 1;
 }
 
@@ -316,7 +327,7 @@ static Object* findAvailableChunk(int size) {
         if (objectCount > 0) {
             currentObject = objects[0];
             currentSize = currentObject->size;
-            currentObject->size = 0;
+            memset(currentObject, 0, currentSize);
         } else {
             return NULL;
         }
