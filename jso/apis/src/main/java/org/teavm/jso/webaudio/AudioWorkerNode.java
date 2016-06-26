@@ -13,14 +13,27 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package org.teavm.idea.jps.remote;
+package org.teavm.jso.webaudio;
 
-import java.rmi.Remote;
-import java.rmi.RemoteException;
+import org.teavm.jso.JSMethod;
+import org.teavm.jso.JSObject;
+import org.teavm.jso.JSProperty;
+import org.teavm.jso.dom.events.EventListener;
 
-public interface TeaVMBuilderAssistant extends Remote {
-    String ID = "TeaVM-JPS-Assistant";
+public interface AudioWorkerNode extends AudioNode {
+    @JSProperty("onmessage")
+    void setOnMessage(EventListener<MediaEvent> event);
 
-    TeaVMElementLocation getMethodLocation(String className, String methodName, String methodDesc)
-            throws RemoteException;
+    @JSProperty("onmessage")
+    EventListener<MediaEvent> getOnMessage();
+
+    @JSMethod
+    void postMessage(JSObject message, JSObject[] transfer);
+
+    @JSMethod
+    void postMessage(JSObject message, JSObject transfer);
+
+    @JSMethod
+    void postMessage(JSObject message);
 }
+

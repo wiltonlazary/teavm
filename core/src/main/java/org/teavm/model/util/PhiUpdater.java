@@ -24,6 +24,7 @@ import java.util.Map;
 import org.teavm.common.DominatorTree;
 import org.teavm.common.Graph;
 import org.teavm.common.GraphUtils;
+import org.teavm.common.IntegerArray;
 import org.teavm.model.BasicBlock;
 import org.teavm.model.Incoming;
 import org.teavm.model.Instruction;
@@ -83,6 +84,11 @@ public class PhiUpdater {
     private List<List<Phi>> synthesizedPhis = new ArrayList<>();
     private List<List<TryCatchJoint>> synthesizedJoints = new ArrayList<>();
     private boolean[] usedDefinitions;
+    private IntegerArray variableToSourceMap = new IntegerArray(10);
+
+    public int getSourceVariable(int var) {
+        return variableToSourceMap.get(var);
+    }
 
     public void updatePhis(Program program, Variable[] arguments) {
         if (program.basicBlockCount() == 0) {
@@ -94,8 +100,11 @@ public class PhiUpdater {
         domFrontiers = new int[cfg.size()][];
         variableMap = new Variable[program.variableCount()];
         usedDefinitions = new boolean[program.variableCount()];
+        for (int i = 0; i < program.variableCount(); ++i) {
+            variableToSourceMap.add(-1);
+        }
         for (int i = 0; i < arguments.length; ++i) {
-            variableMap[i] = arguments[i];
+            mapVariable(i, arguments[i]);
             usedDefinitions[i] = true;
         }
         phiMap = new Phi[program.basicBlockCount()][];
@@ -177,13 +186,13 @@ public class PhiUpdater {
                 Variable var = program.createVariable();
                 var.getDebugNames().addAll(phi.getReceiver().getDebugNames());
                 propagateToTryCatch(phi.getReceiver(), var, null);
-                variableMap[phi.getReceiver().getIndex()] = var;
+                mapVariable(phi.getReceiver().getIndex(), var);
                 phi.setReceiver(var);
             }
             for (TryCatchJoint joint : synthesizedJoints.get(index)) {
                 Variable var = program.createVariable();
                 var.getDebugNames().addAll(joint.getReceiver().getDebugNames());
-                variableMap[joint.getReceiver().getIndex()] = var;
+                mapVariable(joint.getReceiver().getIndex(), var);
                 joint.setReceiver(var);
             }
             for (Phi phi : currentBlock.getPhis()) {
@@ -370,7 +379,7 @@ public class PhiUpdater {
         Variable original = var;
         var = introduce(var);
         propagateToTryCatch(original, var, old);
-        variableMap[original.getIndex()] = var;
+        mapVariable(original.getIndex(), var);
         return var;
     }
 
@@ -392,6 +401,14 @@ public class PhiUpdater {
             }
             joint.getSourceVariables().add(var);
         }
+    }
+
+    private void mapVariable(int index, Variable var) {
+        variableMap[index] = var;
+        while (variableToSourceMap.size() <= var.getIndex()) {
+            variableToSourceMap.add(-1);
+        }
+        variableToSourceMap.set(var.getIndex(), index);
     }
 
     private Variable introduce(Variable var) {
