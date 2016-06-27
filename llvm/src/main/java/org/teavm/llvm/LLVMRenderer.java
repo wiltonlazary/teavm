@@ -333,6 +333,7 @@ public class LLVMRenderer {
     public void renderMain(MethodReference method) throws IOException {
         appendable.append("define i32 @main() {\n");
         appendable.append("    call void @teavm.init()\n");
+        appendable.append("    call void @teavm_initGC()\n");
         appendable.append("    call void @teavm.initStringPool()\n");
         appendable.append("    call void @\"" + mangleMethod(method) + "\"(i8 *null)\n");
         appendable.append("    ret i32 0\n");

@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <errno.h>
 
 typedef struct {
     int tag;
@@ -69,13 +70,11 @@ static int pageSize;
 static int objectCount = 0;
 static int EMPTY_TAG = 0;
 static int EMPTY_SHORT_TAG = 1;
-static int END_TAG = -1;
 static int GC_MARK = 1 << 31;
 static int CLASS_SIZE_MASK = -1 ^ (1 << 31);
 static long INITIAL_HEAP_SIZE = 256 * 1024;
 static long HEAP_LIMIT = 1024 * 1024 * 1024;
-static long MAX_GC_GROW = HEAP_LIMIT / 64;
-static Object** objectsStart = NULL;
+static long MAX_GC_GROW;
 static Object** objects = NULL;
 static TraversalStack* traversalStack;
 static int objectsRemoved = 0;
@@ -87,7 +86,12 @@ static void *allocExtra(int size) {
     char *next = extra + size;
     if (next > mmapLimit) {
         long memoryRequested = (size / pageSize + 1) * pageSize;
-        mmapLimit = mmap(mmapLimit, memoryRequested, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED);
+        if (mmap(mmapLimit + memoryRequested, memoryRequested, PROT_READ | PROT_WRITE,
+                MAP_PRIVATE | MAP_ANONYMOUS, -1, 0) == MAP_FAILED) {
+            printf("Could not allocate GC working memory (%ld bytes). Error %d\n", memoryRequested, errno);
+            exit(2);
+        }
+        mmapLimit += memoryRequested;
     }
     char *result = extra;
     extra = next;
@@ -100,8 +104,22 @@ static void freeExtra() {
 
 static void growHeapBy(long size) {
     long memoryRequested = (size / pageSize + 1) * pageSize;
-    mmap(mmapLimit, memoryRequested, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED);
     mmapLimit += memoryRequested;
+    char *mmapResult = mmap(mmapLimit + memoryRequested, memoryRequested, PROT_READ | PROT_WRITE,
+            MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (mmapResult == MAP_FAILED) {
+        printf("Could not grow heap by %ld bytes. Error %d\n", memoryRequested, errno);
+        exit(2);
+    }
+    if (mmapResult != mmapLimit) {
+        printf("Could not grow heap by %ld bytes.\n", memoryRequested, errno);
+        exit(2);
+    }
+
+    int extraSize = (int) ((long) extra - (long) limit);
+    if (extraSize > 0) {
+        memmove((void *) (limit + memoryRequested), (void *) limit, extraSize);
+    }
     limit += memoryRequested;
     extra += memoryRequested;
 }
@@ -110,39 +128,47 @@ static long getHeapSize() {
     return (long) limit - (long) pool;
 }
 
-static void growHeap() {
+static int growHeap(int atLeastSize) {
     long heapSize = getHeapSize();
-    if (heapSize > MAX_GC_GROW) {
-        heapSize = MAX_GC_GROW;
+    long growBy = heapSize;
+    if (growBy > MAX_GC_GROW) {
+        growBy = MAX_GC_GROW;
     }
-    growHeapBy(heapSize);
+    if (growBy < atLeastSize) {
+        growBy = atLeastSize;
+    }
+    growHeapBy(growBy);
+
+    return (int) growBy;
 }
 
 void teavm_initGC() {
     pageSize = (int) sysconf(_SC_PAGESIZE);
     long alignedHeapSize = (INITIAL_HEAP_SIZE / pageSize) * pageSize;
-    pool = (char *) mmap(NULL, alignedHeapSize, PROT_READ | PROT_WRITE, MAP_PRIVATE |  MAP_ANONYMOUS);
+    pool = (char *) mmap(NULL, alignedHeapSize, PROT_READ | PROT_WRITE, MAP_PRIVATE |  MAP_ANONYMOUS, -1, 0);
+    if (pool == MAP_FAILED) {
+        printf("Could not initialize heap. Error %d\n", errno);
+        exit(2);
+    }
+
     limit = pool + alignedHeapSize;
     extra = limit;
     mmapLimit = limit;
-    MAX_GC_GROW = (MAX_GC_GROW / pageSize) * pageSize;
+    MAX_GC_GROW = (HEAP_LIMIT / 64 / pageSize) * pageSize;
 
     Object *root = (Object *) pool;
-    int rootSize = poolSize - sizeof(Object);
+    int rootSize = alignedHeapSize;
     memset(root, 0, rootSize);
     root->tag = EMPTY_TAG;
     root->size = rootSize;
     currentLimit = (Object *) ((char *) root + rootSize);
     currentObject = root;
 
-    Object *terminator = (Object *) (pool + root->size);
-    terminator->tag = END_TAG;
-    terminator->size = 0;
-
-    objectsStart = (Object *) allocExtra(sizeof(Object*));
-    objects = &objectsStart[0];
+    objects = (Object **) allocExtra(sizeof(Object*));
     objects[0] = root;
     objectCount = 1;
+
+    arrayTag = (int) ((long) teavm_Array() >> 3);
 }
 
 static int alignSize(int size) {
@@ -253,7 +279,7 @@ static void markObject(Object *object) {
 }
 
 static void mark() {
-    traversalStack = allocExtra(traversalStack);
+    traversalStack = (TraversalStack *) allocExtra(sizeof(traversalStack));
     traversalStack->next = NULL;
     traversalStack->location = 0;
 
@@ -292,7 +318,7 @@ static void makeEmpty(Object *object, int size) {
     }
 }
 
-static void sweep() {
+static void sweep(int sizeToAllocate) {
     objects = (Object **) extra;
     objectCount = 0;
 
@@ -300,8 +326,9 @@ static void sweep() {
     Object *lastFreeSpace = NULL;
     long heapSize = getHeapSize();
     long reclaimedSpace = 0;
+    long maxFreeChunk = 0;
 
-    while (object->tag != END_TAG) {
+    while ((char *) object < limit) {
         int free = 0;
         int tag = object->tag;
         if (tag == 0 || tag == 1) {
@@ -326,6 +353,9 @@ static void sweep() {
                 objects[objectCount++] = lastFreeSpace;
                 lastFreeSpace = NULL;
                 reclaimedSpace += freeSize;
+                if (maxFreeChunk < freeSize) {
+                    maxFreeChunk = freeSize;
+                }
             }
         }
 
@@ -340,10 +370,17 @@ static void sweep() {
         allocExtra(sizeof(Object *));
         objects[objectCount++] = lastFreeSpace;
         reclaimedSpace += freeSize;
+        if (maxFreeChunk < freeSize) {
+            maxFreeChunk = freeSize;
+        }
     }
 
-    if (reclaimedSpace < heapSize / 2) {
-        growHeap();
+    if (reclaimedSpace - sizeToAllocate < heapSize / 2 || maxFreeChunk < sizeToAllocate) {
+        int growSize = growHeap(sizeToAllocate);
+        lastFreeSpace->size += growSize;
+        for (int i = 0; i < objectCount; ++i) {
+            objects[i] = (Object *) ((char *) objects[i] + growSize);
+        }
     }
 
     qsort(objects, objectCount, sizeof(Object *), &compareFreeChunks);
@@ -357,21 +394,16 @@ static void sweep() {
         currentLimit = NULL;
     }
     freeExtra();
-
-    //printf("GC: free chunks: %d\n", objectCount);
-    for (int i = 0; i < objectCount; ++i) {
-        //printf("GC:   chunk %d contains %d bytes\n", i, objects[i]->size);
-    }
 }
 
-static int collectGarbage() {
+static int collectGarbage(int size) {
     long start = teavm_currentTimeMillis();
-    //printf("GC: starting GC\n");
+    printf("GC: starting GC\n");
     objectsRemoved = 0;
     mark();
-    sweep();
+    sweep(size);
     long end = teavm_currentTimeMillis();
-    //printf("GC: GC complete, in %ld ms\n", end - start);
+    printf("GC: GC complete, in %ld ms\n", end - start);
     return 1;
 }
 
@@ -399,7 +431,7 @@ static Object *getAvailableChunk(int size) {
     if (chunk != NULL) {
         return chunk;
     }
-    if (!collectGarbage()) {
+    if (!collectGarbage(size + sizeof(Object))) {
         printf("Out of memory\n");
         exit(2);
     }
