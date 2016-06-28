@@ -363,7 +363,7 @@ public class LLVMRenderer {
             }
         }
 
-        appendable.append("define private void @teavm.initStringPool() {\n");
+        appendable.append("define void @teavm.initStringPool() {\n");
         appendable.append("    %stringTag = " + tagConstant("%vtable.java.lang.String* @vtable.java.lang.String")
                 + "\n");
         for (int i = 0; i < stringPool.size(); ++i) {
@@ -378,7 +378,7 @@ public class LLVMRenderer {
     }
 
     private static String tagConstant(String tag) {
-        return "or i32 lshr (i32 ptrtoint (i8* bitcast (" + tag + " to i8*) to i32), i32 3), " + GC_BLACK;
+        return "or i32 lshr (i32 ptrtoint (i8* bitcast (" + tag + " to i8*) to i32), i32 3), " + (int) GC_BLACK;
     }
 
     public void renderInterfaceTable() throws IOException {

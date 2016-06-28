@@ -76,12 +76,15 @@ static int GC_MARK = 1 << 31;
 static int CLASS_SIZE_MASK = -1 ^ (1 << 31);
 static long INITIAL_HEAP_SIZE = 256 * 1024;
 static long HEAP_LIMIT = 1024 * 1024 * 1024;
+#define SWEEP_PIECE_SIZE 16384
 static long MAX_GC_GROW;
 static Object** objects = NULL;
 static TraversalStack* traversalStack;
 static int objectsRemoved = 0;
 static Object* currentObject;
 static Object* currentLimit;
+static int sweepPieceCount;
+static unsigned short *sweepPieces;
 static int arrayTag;
 
 static void printStackTrace() {
@@ -170,7 +173,6 @@ void teavm_initGC() {
 
     Object *root = (Object *) pool;
     int rootSize = alignedHeapSize;
-    memset(root, 0, rootSize);
     root->tag = EMPTY_TAG;
     root->size = rootSize;
     currentLimit = (Object *) ((char *) root + rootSize);
@@ -272,6 +274,14 @@ static void markObject(Object *object) {
             break;
         }
         object->tag = object->tag | GC_MARK;
+        if ((char *) object >= pool && (char *) object < limit) {
+            long offset = (long) object - (long) pool;
+            int pieceIndex = (int) (offset / SWEEP_PIECE_SIZE);
+            unsigned short pieceOffset = (unsigned short) (offset % SWEEP_PIECE_SIZE);
+            if (sweepPieces[pieceIndex] > pieceOffset) {
+                sweepPieces[pieceIndex] = pieceOffset;
+            }
+        }
 
         char *address = (char *) object;
         Class *cls = (Class *) (long) (object->tag << 3);
@@ -291,6 +301,11 @@ static void markObject(Object *object) {
 }
 
 static void mark() {
+    sweepPieceCount = (getHeapSize() / SWEEP_PIECE_SIZE / 4 + 1) * 4;
+    sweepPieces = (unsigned short *) allocExtra(sizeof(unsigned short) * sweepPieceCount);
+    memset(sweepPieces, -1, sizeof(unsigned short) * sweepPieceCount);
+    char *sweepPiecesEnd = extra;
+
     traversalStack = (TraversalStack *) allocExtra(sizeof(TraversalStack));
     traversalStack->next = NULL;
     traversalStack->location = 0;
@@ -309,7 +324,7 @@ static void mark() {
         stack = stack->next;
     }
 
-    freeExtra();
+    extra = sweepPiecesEnd;
 }
 
 static int compareFreeChunks(const void* first, const void *second) {
@@ -339,8 +354,23 @@ static void sweep(int sizeToAllocate) {
     long heapSize = getHeapSize();
     long reclaimedSpace = 0;
     long maxFreeChunk = 0;
+    int currentPieceIndex = 0;
+    char *currentPieceStart = pool;
+    char *currentPieceEnd = currentPieceStart + SWEEP_PIECE_SIZE;
 
     while ((char *) object < limit) {
+        /*if ((char *) object >= currentPieceEnd) {
+            currentPieceIndex = (int) (((long) object - (long) pool) / SWEEP_PIECE_SIZE);
+            while (sweepPieces[currentPieceIndex] == 0xFFFF) {
+                if (++currentPieceIndex == sweepPieceCount) {
+                    goto endSweep;
+                }
+            }
+            Object *oldObject = object;
+            object = (Object *) (pool + currentPieceIndex * SWEEP_PIECE_SIZE + sweepPieces[currentPieceIndex]);
+            currentPieceStart = pool + currentPieceIndex * SWEEP_PIECE_SIZE;
+            currentPieceEnd = currentPieceStart + SWEEP_PIECE_SIZE;
+        }*/
         int free = 0;
         int tag = object->tag;
         if (tag == 0 || tag == 1) {
@@ -375,6 +405,7 @@ static void sweep(int sizeToAllocate) {
         char *address = (char *) object + size;
         object = (Object *) address;
     }
+    endSweep:
 
     if (lastFreeSpace != NULL) {
         int freeSize = (int) ((char *) object - (char *) lastFreeSpace);
@@ -402,7 +433,6 @@ static void sweep(int sizeToAllocate) {
         currentObject = objects[0];
         int size = currentObject->tag == 0 ? currentObject->size : sizeof(4);
         currentLimit = (Object *)((char *) currentObject + size);
-        memset(currentObject, 0, size);
     } else {
         currentObject = NULL;
         currentLimit = NULL;
@@ -431,7 +461,6 @@ static Object *findAvailableChunk(int size) {
         if (objectCount > 0) {
             currentObject = objects[0];
             currentLimit = (Object *) ((char *) currentObject + currentObject->size);
-            memset(currentObject, 0, currentObject->size);
         } else {
             return NULL;
         }
@@ -464,6 +493,7 @@ Object *teavm_alloc(int tag) {
     Object *chunk = next + sizeof(Object) <= (char *) currentLimit ? currentObject : getAvailableChunk(size);
     currentObject = (Object *) ((char *) chunk + size);
 
+    memset((char *) chunk, 0, size);
     chunk->tag = tag;
     return chunk;
 }
@@ -475,6 +505,7 @@ static Array *teavm_arrayAlloc(Class* cls, unsigned char depth, int arraySize, i
     currentObject = (Object *) ((char *) chunk + size);
 
     Array *array = (Array *) chunk;
+    memset((char *) array, 0, size);
     array->object.tag = (int) teavm_Array() >> 3;
     array->object.size = arraySize;
     array->elementType = cls;
