@@ -355,22 +355,10 @@ static void sweep(int sizeToAllocate) {
     long reclaimedSpace = 0;
     long maxFreeChunk = 0;
     int currentPieceIndex = 0;
-    char *currentPieceStart = pool;
-    char *currentPieceEnd = currentPieceStart + SWEEP_PIECE_SIZE;
+    char *currentPieceEnd = pool + SWEEP_PIECE_SIZE;
+    Object *nextNonFreeObject = NULL;
 
     while ((char *) object < limit) {
-        /*if ((char *) object >= currentPieceEnd) {
-            currentPieceIndex = (int) (((long) object - (long) pool) / SWEEP_PIECE_SIZE);
-            while (sweepPieces[currentPieceIndex] == 0xFFFF) {
-                if (++currentPieceIndex == sweepPieceCount) {
-                    goto endSweep;
-                }
-            }
-            Object *oldObject = object;
-            object = (Object *) (pool + currentPieceIndex * SWEEP_PIECE_SIZE + sweepPieces[currentPieceIndex]);
-            currentPieceStart = pool + currentPieceIndex * SWEEP_PIECE_SIZE;
-            currentPieceEnd = currentPieceStart + SWEEP_PIECE_SIZE;
-        }*/
         int free = 0;
         int tag = object->tag;
         if (tag == 0 || tag == 1) {
@@ -386,6 +374,22 @@ static void sweep(int sizeToAllocate) {
         if (free) {
             if (lastFreeSpace == NULL) {
                 lastFreeSpace = object;
+            }
+
+            if ((char *) object >= currentPieceEnd) {
+                currentPieceIndex = (int) (((long) object - (long) pool) / SWEEP_PIECE_SIZE);
+                if (sweepPieces[currentPieceIndex] == 0xFFFF) {
+                    while (sweepPieces[currentPieceIndex] == 0xFFFF) {
+                        if (++currentPieceIndex == sweepPieceCount) {
+                            object = (Object *) limit;
+                            goto endSweep;
+                        }
+                    }
+                    object = (Object *) (pool + currentPieceIndex * SWEEP_PIECE_SIZE + sweepPieces[currentPieceIndex]);
+                    currentPieceEnd = pool + (currentPieceIndex + 1) * (long) SWEEP_PIECE_SIZE;
+                    continue;
+                }
+                currentPieceEnd = pool + (currentPieceIndex + 1) * (long) SWEEP_PIECE_SIZE;
             }
         } else {
             if (lastFreeSpace != NULL) {
