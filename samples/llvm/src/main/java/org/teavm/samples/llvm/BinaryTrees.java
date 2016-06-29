@@ -41,7 +41,7 @@ public final class BinaryTrees {
         int stretchDepth = maxDepth + 1;
         int check = (TreeNode.create(0, stretchDepth)).check();
 
-        //System.out.println("stretch tree of depth " + (maxDepth + 1) + "\t check: " + check);
+        System.out.println("stretch tree of depth " + (maxDepth + 1) + "\t check: " + check);
 
         TreeNode longLivedTree = TreeNode.create(0, maxDepth);
         for (int depth = minDepth; depth <= maxDepth; depth += 2) {
@@ -55,7 +55,7 @@ public final class BinaryTrees {
             //System.out.println((iterations << 1) + "\t trees of depth " + depth + "\t check: " + check);
         }
 
-        //System.out.println("long lived tree of depth " + maxDepth + "\t check: " + longLivedTree.check());
+        System.out.println("long lived tree of depth " + maxDepth + "\t check: " + longLivedTree.check());
     }
 
     static class TreeNode {

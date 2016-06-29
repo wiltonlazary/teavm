@@ -366,12 +366,16 @@ public class LLVMRenderer {
         appendable.append("define void @teavm.initStringPool() {\n");
         appendable.append("    %stringTag = " + tagConstant("%vtable.java.lang.String* @vtable.java.lang.String")
                 + "\n");
+        appendable.append("    %stringCheck = xor i32 %stringTag, -1\n");
         for (int i = 0; i < stringPool.size(); ++i) {
             appendable.append("    %str." + i + " = bitcast %class.java.lang.String* @teavm.str." + i
                     + " to %teavm.Object*\n");
             appendable.append("    %str.tagPtr." + i + " = getelementptr %teavm.Object, "
                     + "%teavm.Object* %str." + i + ", i32 0, i32 0\n");
             appendable.append("    store i32 %stringTag, i32* %str.tagPtr." + i + "\n");
+            appendable.append("    %str.checkPtr." + i + " = getelementptr %teavm.Object, "
+                    + "%teavm.Object* %str." + i + ", i32 0, i32 1\n");
+            appendable.append("    store i32 %stringCheck, i32* %str.checkPtr." + i + "\n");
         }
         appendable.append("    ret void\n");
         appendable.append("}\n");

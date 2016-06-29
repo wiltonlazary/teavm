@@ -64,6 +64,7 @@ import org.teavm.model.instructions.BinaryBranchingCondition;
 import org.teavm.model.instructions.BinaryOperation;
 import org.teavm.model.instructions.BranchingCondition;
 import org.teavm.model.instructions.CastIntegerDirection;
+import org.teavm.model.instructions.CloneArrayInstruction;
 import org.teavm.model.instructions.ConstructArrayInstruction;
 import org.teavm.model.instructions.ConstructInstruction;
 import org.teavm.model.instructions.InitClassInstruction;
@@ -122,7 +123,7 @@ class LLVMMethodRenderer {
         appendable.append(methodNameVar + " = private constant [" + methodNameSize + " x i8] c\""
                 + methodName + "\\00\"\n");
 
-        appendable.append("define private ").append(renderType(method.getResultType())).append(" ");
+        appendable.append("define ").append(renderType(method.getResultType())).append(" ");
         appendable.append("@").append(mangleMethod(method.getReference())).append("(");
         List<String> parameters = new ArrayList<>();
         if (!method.hasModifier(ElementModifier.STATIC)) {
@@ -277,7 +278,8 @@ class LLVMMethodRenderer {
                     currentLiveOut.clear(definedVar.getIndex());
                 }
                 if (insn instanceof InvokeInstruction || insn instanceof InitClassInstruction
-                        || insn instanceof ConstructInstruction || insn instanceof ConstructArrayInstruction) {
+                        || insn instanceof ConstructInstruction || insn instanceof ConstructArrayInstruction
+                        || insn instanceof CloneArrayInstruction) {
                     BitSet csLiveIn = (BitSet) currentLiveOut.clone();
                     for (int v = csLiveIn.nextSetBit(0); v >= 0; v = csLiveIn.nextSetBit(v + 1)) {
                         if (!isReference(v)) {
@@ -806,13 +808,7 @@ class LLVMMethodRenderer {
 
         @Override
         public void cloneArray(VariableReader receiver, VariableReader array) {
-            String type = renderItemType(typeInferer.typeOf(array.getIndex()));
-            int length = temporaryVariable++;
-            arrayLength(array, "%t" + length);
-            int byteCount = arraySizeInBytes("%t" + length, type);
-            emitted.add("%v" + receiver.getIndex() + " = call i8* @malloc(i32 %t" + byteCount + ")");
-            emitted.add("call i8* @memcpy(i8* %v" + receiver.getIndex() + ", i8* %v" + array.getIndex() + ", "
-                    + "i32 %t" + length + ")");
+            emitted.add("%v" + receiver.getIndex() + " = call i8* @teavm_cloneArray(i8* %v" + array.getIndex() + ")");
         }
 
         @Override

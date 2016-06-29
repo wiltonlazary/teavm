@@ -218,6 +218,9 @@ static int arraySize(Array* array) {
 }
 
 static int objectSize(int tag, Object *object) {
+    if (((object->reserved ^ tag) | 0x80000000) != -1) {
+        printf("GC: not an object 2: %lx \n", (long) object);
+    }
     switch (tag) {
         case 0:
             return object->size;
@@ -269,6 +272,9 @@ static void markObject(Object *object) {
         object = popObject();
         if (object == NULL) {
             break;
+        }
+        if ((object->tag ^ object->reserved) != -1) {
+            printf("GC: not an object: %lx \n", (long) object);
         }
         if ((object->tag & GC_MARK) != 0) {
             break;
@@ -341,6 +347,7 @@ static void makeEmpty(Object *object, int size) {
         object->tag = EMPTY_SHORT_TAG;
     } else {
         object->tag = EMPTY_TAG;
+        object->reserved = EMPTY_TAG ^ -1;
         object->size = size;
     }
 }
@@ -407,6 +414,12 @@ static void sweep(int sizeToAllocate) {
 
         int size = objectSize(tag, object);
         char *address = (char *) object + size;
+        if ((long) address > (long) limit) {
+            printf("GC: violation2: %lx[%d] + %d vs %lx vs .\n", (long) object, tag, size, (long) limit);
+        }
+        if (address < limit) {
+            objectSize(((Object *) address)->tag, (Object *) address);
+        }
         object = (Object *) address;
     }
     endSweep:
@@ -445,11 +458,9 @@ static void sweep(int sizeToAllocate) {
 }
 
 static int collectGarbage(int size) {
-    long start = teavm_currentTimeMillis();
     objectsRemoved = 0;
     mark();
     sweep(size);
-    long end = teavm_currentTimeMillis();
     return 1;
 }
 
@@ -499,7 +510,18 @@ Object *teavm_alloc(int tag) {
 
     memset((char *) chunk, 0, size);
     chunk->tag = tag;
+    chunk->reserved = tag ^ -1;
     return chunk;
+}
+
+Array *teavm_cloneArray(Array *array) {
+    int size = arraySize(array);
+    char *next = ((char *) currentObject + size);
+    Object *chunk = next + sizeof(Object) <= (char *) currentLimit ? currentObject : getAvailableChunk(size);
+    currentObject = (Object *) ((char *) chunk + size);
+
+    memcpy(chunk, array, size);
+    return (Array *) chunk;
 }
 
 static Array *teavm_arrayAlloc(Class* cls, unsigned char depth, int arraySize, int elemSize) {
@@ -510,7 +532,8 @@ static Array *teavm_arrayAlloc(Class* cls, unsigned char depth, int arraySize, i
 
     Array *array = (Array *) chunk;
     memset((char *) array, 0, size);
-    array->object.tag = (int) teavm_Array() >> 3;
+    array->object.tag = arrayTag;
+    array->object.reserved = arrayTag ^ -1;
     array->object.size = arraySize;
     array->elementType = cls;
     unsigned char* depthPtr = (unsigned char *) (array + 1);
