@@ -45,7 +45,7 @@ function $rt_putStderr(ch) {
 }
 function $rt_metadata(data) {
     for (var i = 0; i < data.length; i += 8) {
-        var cls = data[i + 0];
+        var cls = data[i];
         cls.$meta = {};
         var m = cls.$meta;
         m.name = data[i + 1];
@@ -84,8 +84,8 @@ function $rt_metadata(data) {
         }
 
         var virtualMethods = data[i + 7];
-        for (var j = 0; j < virtualMethods.length; j += 2) {
-            var name = virtualMethods[j + 0];
+        for (j = 0; j < virtualMethods.length; j += 2) {
+            var name = virtualMethods[j];
             var func = virtualMethods[j + 1];
             if (typeof name === 'string') {
                 name = [name];
@@ -94,6 +94,8 @@ function $rt_metadata(data) {
                 cls.prototype[name[k]] = func;
             }
         }
+
+        cls.$array = null;
     }
 }
 function $rt_threadStarter(f) {
@@ -318,7 +320,7 @@ function Long_compare(a, b) {
     if (r !== 0) {
         return r;
     }
-    var r = (a.lo >>> 1) - (b.lo >>> 1);
+    r = (a.lo >>> 1) - (b.lo >>> 1);
     if (r !== 0) {
         return r;
     }
@@ -532,15 +534,15 @@ function LongInt_ucompare(a, b) {
     if (r != 0) {
         return r;
     }
-    var r = (a.hi >>> 1) - (b.hi >>> 1);
+    r = (a.hi >>> 1) - (b.hi >>> 1);
     if (r != 0) {
         return r;
     }
-    var r = (a.hi & 1) - (b.hi & 1);
+    r = (a.hi & 1) - (b.hi & 1);
     if (r != 0) {
         return r;
     }
-    var r = (a.lo >>> 1) - (b.lo >>> 1);
+    r = (a.lo >>> 1) - (b.lo >>> 1);
     if (r != 0) {
         return r;
     }
@@ -561,7 +563,8 @@ function LongInt_numOfLeadingZeroBits(a) {
 function LongInt_shl(a, b) {
     if (b == 0) {
         return;
-    } else if (b < 32) {
+    }
+    if (b < 32) {
         a.sup = ((a.hi >>> (32 - b)) | (a.sup << b)) & 0xFFFF;
         a.hi = (a.lo >>> (32 - b)) | (a.hi << b);
         a.lo <<= b;
@@ -586,7 +589,8 @@ function LongInt_shl(a, b) {
 function LongInt_shr(a, b) {
     if (b == 0) {
         return;
-    } else if (b == 32) {
+    }
+    if (b == 32) {
         a.lo = a.hi;
         a.hi = a.sup;
         a.sup = 0;
