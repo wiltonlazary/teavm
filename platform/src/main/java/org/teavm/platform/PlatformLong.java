@@ -45,36 +45,140 @@ public abstract class PlatformLong implements JSObject {
         }
     }
 
-    public static double toNumber(PlatformLong value) {
-        double lo = value.lo();
-        double hi = value.hi();
+    public double toNumber() {
+        double lo = lo();
+        double hi = hi();
         if (lo < 0) {
             lo += 0x100000000L;
         }
         return 0x100000000L * hi + lo;
     }
 
-    public static PlatformLong add(PlatformLong a, PlatformLong b) {
-        if (a.hi() == (a.lo() >> 31) && b.hi() == (b.lo() >> 31)) {
-            return fromNumber(a.lo() + b.lo());
-        } else if (Math.abs(a.hi()) < MAX_NORMAL && Math.abs(b.hi()) < MAX_NORMAL) {
-            return fromNumber(toNumber(a) + toNumber(b));
+    public PlatformLong add(PlatformLong other) {
+        if (hi() == (lo() >> 31) && other.hi() == (other.lo() >> 31)) {
+            return fromNumber(lo() + other.lo());
+        } else if (Math.abs(hi()) < MAX_NORMAL && Math.abs(other.hi()) < MAX_NORMAL) {
+            return fromNumber(toNumber() + other.toNumber());
         }
 
-        short alolo = (short) a.lo();
-        short alohi = (short) (a.lo() >>> 16);
-        short ahilo = (short) a.hi();
-        short ahihi = (short) (a.hi() >>> 16);
-        short blolo = (short) b.lo();
-        short blohi = (short) (b.lo() >>> 16);
-        short bhilo = (short) b.hi();
-        short bhihi = (short) (b.hi() >>> 16);
+        short thisLolo = (short) lo();
+        short thisLohi = (short) (lo() >>> 16);
+        short thisHilo = (short) hi();
+        short thisHihi = (short) (hi() >>> 16);
+        short otherLolo = (short) other.lo();
+        short otherLohi = (short) (other.lo() >>> 16);
+        short otherHilo = (short) other.hi();
+        short otherHihi = (short) (other.hi() >>> 16);
 
-        int lolo = alolo + blolo;
-        int lohi = alohi + blohi + (lolo >> 16);
-        int hilo = ahilo + bhilo + (lohi >> 16);
-        int hihi = ahihi + bhihi + (hilo >> 16);
+        int lolo = thisLolo + otherLolo;
+        int lohi = thisLohi + otherLohi + (lolo >> 16);
+        int hilo = thisHilo + otherHilo + (lohi >> 16);
+        int hihi = thisHihi + otherHihi + (hilo >> 16);
         return create((lolo & 0xFFFF) | ((lohi & 0xFFFF) << 16), (hilo & 0xFFFF) | ((hihi & 0xFFFF) << 16));
+    }
+
+    public PlatformLong inc() {
+        int lo = lo() + 1;
+        int hi = hi();
+        if (lo == 0) {
+            hi++;
+        }
+        return create(lo, hi);
+    }
+
+    public PlatformLong dec() {
+        int lo = lo() - 1;
+        int hi = hi();
+        if (lo == -1) {
+            hi--;
+        }
+        return create(lo, hi);
+    }
+
+    public PlatformLong neg() {
+        return create(~lo(), ~hi()).inc();
+    }
+
+    public PlatformLong sub(PlatformLong other) {
+        if (hi() == (other.lo() >> 31) && hi() == (other.lo() >> 31)) {
+            return fromNumber(lo() - other.lo());
+        }
+
+        int thisLolo = lo() & 0xFFFF;
+        int thisLohi = lo() >>> 16;
+        int thisHilo = hi() & 0xFFFF;
+        int thisHihi = hi() >>> 16;
+        int otherLolo = other.lo() & 0xFFFF;
+        int otherLohi = other.lo() >>> 16;
+        int otherHilo = other.hi() & 0xFFFF;
+        int otherHihi = other.hi() >>> 16;
+
+        int lolo = thisLolo - otherLolo;
+        int lohi = thisLohi - otherLohi + (lolo >> 16);
+        int hilo = thisHilo - otherHilo + (lohi >> 16);
+        int hihi = thisHihi - otherHihi + (hilo >> 16);
+        return create((lolo & 0xFFFF) | ((lohi & 0xFFFF) << 16), (hilo & 0xFFFF) | ((hihi & 0xFFFF) << 16));
+    }
+
+    public int compare(PlatformLong other) {
+        int r = hi() - other.hi();
+        if (r != 0) {
+            return r;
+        }
+        r = (lo() >>> 1) - (other.lo() >>> 1);
+        if (r != 0) {
+            return r;
+        }
+        return (lo() & 1) - (other.lo() & 1);
+    }
+
+    public boolean isPositive() {
+        return (hi() & 0x80000000) == 0;
+    }
+
+    public boolean isNegative() {
+        return (hi() & 0x80000000) != 0;
+    }
+
+    private PlatformLong mul(PlatformLong b) {
+        PlatformLong a = this;
+
+        boolean positive = a.isNegative() == b.isNegative();
+        if (a.isNegative()) {
+            a = a.neg();
+        }
+        if (b.isNegative()) {
+            b = b.neg();
+        }
+        int alolo = a.lo() & 0xFFFF;
+        int alohi = a.lo() >>> 16;
+        int ahilo = a.hi() & 0xFFFF;
+        int ahihi = a.hi() >>> 16;
+        int blolo = b.lo() & 0xFFFF;
+        int blohi = b.lo() >>> 16;
+        int bhilo = b.hi() & 0xFFFF;
+        int bhihi = b.hi() >>> 16;
+
+        int lolo;
+        int lohi;
+        int hilo;
+        int hihi;
+        lolo = alolo * blolo;
+        lohi = lolo >>> 16;
+        lohi = (lohi & 0xFFFF) + alohi * blolo;
+        hilo = lohi >>> 16;
+        lohi = (lohi & 0xFFFF) + alolo * blohi;
+        hilo = hilo + (lohi >>> 16);
+        hihi = hilo >>> 16;
+        hilo = (hilo & 0xFFFF) + ahilo * blolo;
+        hihi = hihi + (hilo >>> 16);
+        hilo = (hilo & 0xFFFF) + alohi * blohi;
+        hihi = hihi + (hilo >>> 16);
+        hilo = (hilo & 0xFFFF) + alolo * bhilo;
+        hihi = hihi + (hilo >>> 16);
+        hihi = hihi + ahihi * blolo + ahilo * blohi + alohi * bhilo + alolo * bhihi;
+        PlatformLong result = create((lolo & 0xFFFF) | (lohi << 16), (hilo & 0xFFFF) | (hihi << 16));
+        return positive ? result : result.neg();
     }
 
     @JSBody(params = { "lo", "hi", "constructor" }, script = "return constructor(lo, hi);")
@@ -84,6 +188,6 @@ public abstract class PlatformLong implements JSObject {
             + "return function Long(lo, hi) {"
             + "    this.lo = lo;"
             + "    this.hi = hi;"
-            + "")
+            + "}")
     private static native JSObject createConstructor();
 }
