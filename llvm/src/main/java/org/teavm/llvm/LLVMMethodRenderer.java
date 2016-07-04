@@ -729,16 +729,6 @@ class LLVMMethodRenderer {
 
         }
 
-        private int arraySizeInBytes(String size, String type) {
-            int sizeOfVar = sizeOf("%teavm.Array", "1");
-            int adjustedSize = temporaryVariable++;
-            emitted.add("%t" + adjustedSize + " = add i32 " + size + ", 1");
-            int dataSizeVar = sizeOf(type, "%t" + adjustedSize);
-            int byteCount = temporaryVariable++;
-            emitted.add("%t" + byteCount + " = add i32 %t" + dataSizeVar + ", %t" + sizeOfVar);
-            return byteCount;
-        }
-
         @Override
         public void create(VariableReader receiver, String type) {
             String typeRef = "vtable." + type;
@@ -904,9 +894,7 @@ class LLVMMethodRenderer {
 
                 int functionRef = temporaryVariable++;
                 int vtableIndex = entry.getIndex() + 1;
-                if (className == null) {
-                    vtableIndex += 2;
-                }
+
                 emitted.add("%t" + functionRef + " = getelementptr inbounds " + typeRef + ", "
                         + typeRef + "* %t" + vtableTypedRef + ", i32 0, i32 " + vtableIndex);
                 int function = temporaryVariable++;
@@ -969,9 +957,10 @@ class LLVMMethodRenderer {
                     String vtableRef = "%t" + temporaryVariable++;
                     emitted.add(vtableRef + " = shl i32 " + vtableTag + ", 3");
                     String typedVtableRef = "%t" + temporaryVariable++;
-                    emitted.add(typedVtableRef + " = inttoptr i32 " + vtableRef + " to %itable*");
+                    emitted.add(typedVtableRef + " = inttoptr i32 " + vtableRef + " to %teavm.Class*");
                     String tagRef = "%t" + temporaryVariable++;
-                    emitted.add(tagRef + " = getelementptr %itable, %itable* " + typedVtableRef + ", i32 0, i32 1");
+                    emitted.add(tagRef + " = getelementptr %teavm.Class, %teavm.Class* " + typedVtableRef
+                            + ", i32 0, i32 2");
                     String tag = "%t" + temporaryVariable++;
                     emitted.add(tag + " = load i32, i32* " + tagRef);
 

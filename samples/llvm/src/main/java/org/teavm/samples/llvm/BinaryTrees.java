@@ -52,7 +52,8 @@ public final class BinaryTrees {
                 check += (TreeNode.create(i, depth)).check();
                 check += (TreeNode.create(-i, depth)).check();
             }
-            //System.out.println((iterations << 1) + "\t trees of depth " + depth + "\t check: " + check);
+
+            System.out.println((iterations << 1) + "\t trees of depth " + depth + "\t check: " + check);
         }
 
         System.out.println("long lived tree of depth " + maxDepth + "\t check: " + longLivedTree.check());

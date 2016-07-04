@@ -22,20 +22,22 @@ public class Fibonacci {
     }
 
     public static void main(String[] args) {
-        for (int j = 0; j < 1000; ++j) {
+        BigInteger result = BigInteger.ONE;
+        for (int j = 0; j < 100; ++j) {
             long start = System.currentTimeMillis();
 
             BigInteger a = BigInteger.ZERO;
             BigInteger b = BigInteger.ONE;
-            for (int i = 0; i < 1000; ++i) {
+            for (int i = 0; i < 100000; ++i) {
                 BigInteger c = a.add(b);
                 a = b;
                 b = c;
             }
 
             long end = System.currentTimeMillis();
-            System.out.println(a.bitCount());
+            result = a;
             System.out.println("Operation took " + (end - start) + " milliseconds");
         }
+        System.out.println(result);
     }
 }

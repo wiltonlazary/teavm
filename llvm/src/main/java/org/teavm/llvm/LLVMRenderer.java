@@ -237,27 +237,37 @@ public class LLVMRenderer {
 
         indent(level + 1);
         String dataType = "%class." + cls.getName();
+        appendable.append("%teavm.Class {\n");
+        indent(level + 2);
         appendable.append("i32 ptrtoint (" + dataType + "* getelementptr (" + dataType + ", "
                 + dataType + "* null, i32 1) to i32),\n");
-        indent(level + 1);
-        appendable.append("i32 " + tag + ",\n");
-        indent(level + 1);
-        appendable.append("%teavm.Fields {\n");
         indent(level + 2);
+        appendable.append("i32 0,\n");
+        indent(level + 2);
+        appendable.append("i32 " + tag + ",\n");
+        indent(level + 2);
+        appendable.append("i32 " + (tag ^ 0xAAAAAAAA) + ",\n");
+
+        indent(level + 2);
+        appendable.append("%teavm.Fields {\n");
+        indent(level + 3);
         if (cls.getParent() != null && !cls.getParent().equals(cls.getName())) {
             String parent = cls.getParent();
-            appendable.append("%itable *bitcast (%vtable." + parent + "* @vtable." + parent + " to %itable*),\n");
+            appendable.append("%teavm.Class *bitcast (%vtable." + parent + "* @vtable." + parent
+                    + " to %teavm.Class*),\n");
         } else {
-            appendable.append("%itable *null,\n");
+            appendable.append("%teavm.Class *null,\n");
         }
-        indent(level + 2);
+        indent(level + 3);
         appendable.append("i64 " + fieldCount + ",\n");
-        indent(level + 2);
+        indent(level + 3);
         if (fieldCount > 0) {
             appendable.append("i32* bitcast ([" + fieldCount + " x i32]* @fields." + cls.getName() + " to i32*)\n");
         } else {
             appendable.append("i32* null\n");
         }
+        indent(level + 2);
+        appendable.append("}\n");
         indent(level + 1);
         appendable.append("}");
 
@@ -289,8 +299,9 @@ public class LLVMRenderer {
         if (clinitMethod != null) {
             String structType = "%vtable." + cls.getName();
             appendable.append("    %itableRef = bitcast " + structType + "* @vtable." + cls.getName()
-                    + " to %itable*\n");
-            appendable.append("    %flagsPtr = " + "getelementptr %itable, %itable* %itableRef, i32 0, i32 0\n");
+                    + " to %teavm.Class*\n");
+            appendable.append("    %flagsPtr = " + "getelementptr %teavm.Class, "
+                    + "%teavm.Class* %itableRef, i32 0, i32 1\n");
             appendable.append("    %flags = load i32, i32* %flagsPtr\n");
             appendable.append("    %flag = lshr i32 %flags, 31\n");
             appendable.append("    %initialized = trunc i32 %flag to i1\n");
@@ -354,7 +365,7 @@ public class LLVMRenderer {
 
                 appendable.append("@teavm.strdata." + i + " = private global " + dataType + " "
                         + "{ %teavm.Array { %teavm.Object zeroinitializer"
-                        + ", i32 " + str.length() + ", %itable* null }, "
+                        + ", i32 " + str.length() + ", %teavm.Class* null }, "
                         + charsType  + " [ i16 0");
                 for (int j = 0; j < str.length(); ++j) {
                     appendable.append(", i16 " + (int) str.charAt(j));
@@ -387,9 +398,7 @@ public class LLVMRenderer {
 
     public void renderInterfaceTable() throws IOException {
         Structure structure = new Structure("itable");
-        structure.fields.add(new Field("i32", "size"));
-        structure.fields.add(new Field("i32", "tag"));
-        structure.fields.add(new Field("%teavm.Fields", "fieldLayout"));
+        structure.fields.add(new Field("%teavm.Class", "class information"));
         emitVirtualTableEntries(vtableProvider.getInterfaceTable(), true, structure);
         renderStructure(structure);
         appendable.append("\n");

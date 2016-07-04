@@ -11,13 +11,21 @@
 %teavm.Array = type {
     %teavm.Object,   ; parent
     i32,             ; size
-    %itable*         ; reference to class
+    %teavm.Class*    ; reference to class
 }
 
 %teavm.Fields = type {
-    %itable*,        ; parent class
+    %teavm.Class*,        ; parent class
     i64,             ; number of fields
     i32*             ; pointer to array of offsets
+}
+
+%teavm.Class = type {
+    i32,             ; size
+    i32,             ; flags
+    i32,             ; tag
+    i32,             ; magic
+    %teavm.Fields    ; field layout
 }
 
 %timespec = type { i32, i64 }

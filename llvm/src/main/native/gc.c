@@ -22,7 +22,9 @@ typedef struct {
 
 typedef struct ClassStruct {
     int size;
+    int flags;
     int tag;
+    int magic;
     FieldLayout fields;
 } Class;
 
@@ -87,6 +89,8 @@ static int sweepPieceCount;
 static unsigned short *sweepPieces;
 static int arrayTag;
 
+#define VALID_TAG(cls) ((cls->tag ^ 0xAAAAAAAA) == cls->magic)
+
 static void printStackTrace() {
     void *pointers[256];
     int stackTraceSize = backtrace(pointers, 256);
@@ -136,6 +140,10 @@ static long growHeapBy(long size) {
     limit += memoryRequested;
     extra += memoryRequested;
     mmapLimit += memoryRequested;
+
+#ifdef TEAVM_GC_TRACE
+    printf("GC: heap grown by %ld bytes and now it's %ld bytes long\n", memoryRequested, (long) limit - (long) pool);
+#endif
 
     return memoryRequested;
 }
@@ -218,9 +226,6 @@ static int arraySize(Array* array) {
 }
 
 static int objectSize(int tag, Object *object) {
-    if (((object->reserved ^ tag) | 0x80000000) != -1) {
-        printf("GC: not an object 2: %lx \n", (long) object);
-    }
     switch (tag) {
         case 0:
             return object->size;
@@ -232,7 +237,14 @@ static int objectSize(int tag, Object *object) {
             } else {
                 char *tagAddress = (char *) (long) (object->tag << 3);
                 Class *cls = (Class *) tagAddress;
-                return cls->size & CLASS_SIZE_MASK;
+#ifdef TEAVM_GC_ASSERT
+                if (!VALID_TAG(cls)) {
+                    printf("GC: not an object 2: %lx \n", (long) object);
+                    printStackTrace();
+                    exit(255);
+                }
+#endif
+                return cls->size;
             }
         }
     }
@@ -273,20 +285,35 @@ static void markObject(Object *object) {
         if (object == NULL) {
             break;
         }
-        if ((object->tag ^ object->reserved) != -1) {
-            printf("GC: not an object: %lx \n", (long) object);
+
+#ifdef TEAVM_GC_ASSERT
+        if (object->tag != 0 && object->tag != 1 && object->tag != arrayTag) {
+            Class *cls = (Class *) (long) (object->tag << 3);
+            if (!VALID_TAG(cls)) {
+                printf("GC: not an object: %lx \n", (long) object);
+                printStackTrace();
+                exit(255);
+            }
         }
+#endif
         if ((object->tag & GC_MARK) != 0) {
             break;
         }
         object->tag = object->tag | GC_MARK;
-        if ((char *) object >= pool && (char *) object < limit) {
-            long offset = (long) object - (long) pool;
-            int pieceIndex = (int) (offset / SWEEP_PIECE_SIZE);
-            unsigned short pieceOffset = (unsigned short) (offset % SWEEP_PIECE_SIZE);
-            if (sweepPieces[pieceIndex] > pieceOffset) {
-                sweepPieces[pieceIndex] = pieceOffset;
-            }
+
+#ifdef TEAVM_GC_ASSERT
+        if ((char *) object < pool || (char *) object >= limit) {
+            printf("GC: violation 3: %lx <= %lx < %lx\n", (long) pool, (long) object, (long) limit);
+            printStackTrace();
+            exit(255);
+        }
+#endif
+
+        long offset = (long) object - (long) pool;
+        int pieceIndex = (int) (offset / SWEEP_PIECE_SIZE);
+        unsigned short pieceOffset = (unsigned short) (offset % SWEEP_PIECE_SIZE);
+        if (sweepPieces[pieceIndex] > pieceOffset) {
+            sweepPieces[pieceIndex] = pieceOffset;
         }
 
         char *address = (char *) object;
@@ -307,6 +334,10 @@ static void markObject(Object *object) {
 }
 
 static void mark() {
+#ifdef TEAVM_GC_TRACE
+    printf("GC: running mark\n");
+#endif
+
     sweepPieceCount = (getHeapSize() / SWEEP_PIECE_SIZE / 4 + 1) * 4;
     sweepPieces = (unsigned short *) allocExtra(sizeof(unsigned short) * sweepPieceCount);
     memset(sweepPieces, -1, sizeof(unsigned short) * sweepPieceCount);
@@ -331,6 +362,10 @@ static void mark() {
     }
 
     extra = sweepPiecesEnd;
+
+#ifdef TEAVM_GC_TRACE
+    printf("GC: mark complete\n");
+#endif
 }
 
 static int compareFreeChunks(const void* first, const void *second) {
@@ -347,12 +382,15 @@ static void makeEmpty(Object *object, int size) {
         object->tag = EMPTY_SHORT_TAG;
     } else {
         object->tag = EMPTY_TAG;
-        object->reserved = EMPTY_TAG ^ -1;
         object->size = size;
     }
 }
 
 static void sweep(int sizeToAllocate) {
+#ifdef TEAVM_GC_TRACE
+    printf("GC: running sweep\n");
+#endif
+
     objects = (Object **) extra;
     objectCount = 0;
 
@@ -414,12 +452,16 @@ static void sweep(int sizeToAllocate) {
 
         int size = objectSize(tag, object);
         char *address = (char *) object + size;
-        if ((long) address > (long) limit) {
-            printf("GC: violation2: %lx[%d] + %d vs %lx vs .\n", (long) object, tag, size, (long) limit);
+#ifdef TEAVM_GC_ASSERT
+        if ((unsigned long) address > (unsigned long) limit) {
+            printf("GC: violation2: %lx[%d] + %d vs %lx\n", (long) object, tag, size, (long) limit);
+            printStackTrace();
+            exit(255);
         }
         if (address < limit) {
             objectSize(((Object *) address)->tag, (Object *) address);
         }
+#endif
         object = (Object *) address;
     }
     endSweep:
@@ -439,9 +481,10 @@ static void sweep(int sizeToAllocate) {
         int growSize = growHeap(sizeToAllocate);
         if (lastFreeSpace == NULL) {
             lastFreeSpace = (Object *) (limit - growSize);
-            lastFreeSpace->size = 0;
+            makeEmpty(lastFreeSpace, growSize);
+        } else {
+            lastFreeSpace->size += growSize;
         }
-        lastFreeSpace->size += growSize;
         objects = (Object **) ((char *) objects + growSize);
     }
 
@@ -455,12 +498,24 @@ static void sweep(int sizeToAllocate) {
         currentLimit = NULL;
     }
     freeExtra();
+
+#ifdef TEAVM_GC_TRACE
+    printf("GC: sweep complete\n");
+#endif
 }
 
 static int collectGarbage(int size) {
+#ifdef TEAVM_GC_TRACE
+    long start = teavm_currentTimeMillis();
+    printf("GC: started\n");
+#endif
     objectsRemoved = 0;
     mark();
     sweep(size);
+#ifdef TEAVM_GC_TRACE
+    long end = teavm_currentTimeMillis();
+    printf("GC: complete in %ld ms\n", end - start);
+#endif
     return 1;
 }
 
@@ -510,7 +565,6 @@ Object *teavm_alloc(int tag) {
 
     memset((char *) chunk, 0, size);
     chunk->tag = tag;
-    chunk->reserved = tag ^ -1;
     return chunk;
 }
 
@@ -533,7 +587,6 @@ static Array *teavm_arrayAlloc(Class* cls, unsigned char depth, int arraySize, i
     Array *array = (Array *) chunk;
     memset((char *) array, 0, size);
     array->object.tag = arrayTag;
-    array->object.reserved = arrayTag ^ -1;
     array->object.size = arraySize;
     array->elementType = cls;
     unsigned char* depthPtr = (unsigned char *) (array + 1);
