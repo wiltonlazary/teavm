@@ -24,8 +24,14 @@
     i32,             ; size
     i32,             ; flags
     i32,             ; tag
+    i32,             ; upperTag
     i32,             ; magic
     %teavm.Fields    ; field layout
+}
+
+%teavm.CallSite = type {
+    i32,             ; handler count
+    %teavm.Class**   ; exception types
 }
 
 define private i32 @teavm.cmp.i32(i32 %a, i32 %b) {
@@ -179,41 +185,9 @@ define %itable* @teavm_doubleArray() {
     ret %itable* @teavm.doubleArray
 }
 
-%teavm.ExceptionBuffer = type { [ 16 x i32 ], i8* }
-
-@teavm.exceptionTable = global [ 32 x %teavm.ExceptionBuffer ] zeroinitializer
-@teavm.exceptionDepth = global i32 0
-
-define i32 @teavm.enterException() {
-    %current = load i32, i32* @teavm.exceptionDepth
-    %next = add i32 %current, 1
-    store i32 %next, i32* @teavm.exceptionDepth
-    ret i32 %current
-}
-define void @teavm.leaveException() {
-    %current = load i32, i32* @teavm.exceptionDepth
-    %next = sub i32 %current, 1
-    store i32 %next, i32* @teavm.exceptionDepth
-    ret void
-}
-define void @teavm.throwException() {
-    %current = load i32, i32* @teavm.exceptionDepth
-    %buffer = getelementptr [32 x %teavm.ExceptionBuffer], [32 x %teavm.ExceptionBuffer]* @teavm.exceptionTable, i32 0, i32 %current
-    call void @longjmp(%teavm.ExceptionBuffer* %buffer, i32 1)
-    ret void
-}
-define i8* @teavm.catchException() {
-    %current = call i32 @teavm.enterException()
-    %buffer = getelementptr [32 x %teavm.ExceptionBuffer], [32 x %teavm.ExceptionBuffer]* @teavm.exceptionTable, i32 0, i32 %current
-    %result = call i32 @setjmp(%teavm.ExceptionBuffer* %buffer)
-    %caught = icmp ne i32 %result, 0
-    br i1 %caught, label %throw, label %continue
-throw:
-    %exceptionPtr = getelementptr %teavm.ExceptionBuffer, %teavm.ExceptionBuffer* %buffer, i32 0, i32 1
-    %exception = load i8*, i8** %exceptionPtr
-    ret i8* %exception
-continue:
-    ret i8* null
+define %teavm.CallSite* @teavm_getCallSite(i32 %id) {
+    %callSite = getelementptr %teavm.CallSite*, %teavm.CallSite** @teavm.CallSites, i32 %id
+    ret %teavm.CallSite* %callSite
 }
 
 declare void @exit(i32)
@@ -236,3 +210,5 @@ declare i8* @teavm_floatArrayAlloc(i32)
 declare i8* @teavm_doubleArrayAlloc(i32)
 declare i64 @teavm_currentTimeMillis()
 declare void @teavm_initGC()
+declare void @teavm_throw(%teavm.Object*)
+declare %teavm.Object* @teavm_getException()

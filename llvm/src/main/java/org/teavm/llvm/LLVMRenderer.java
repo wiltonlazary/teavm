@@ -26,7 +26,9 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
+import org.teavm.llvm.context.CallSite;
 import org.teavm.llvm.context.LayoutProvider;
 import org.teavm.llvm.context.StringPool;
 import org.teavm.llvm.context.TagRegistry;
@@ -50,6 +52,7 @@ public class LLVMRenderer {
     private TagRegistry tagRegistry;
     private Appendable appendable;
     private StringPool stringPool = new StringPool();
+    private List<CallSite> callSites = new ArrayList<>();
 
     public LLVMRenderer(ClassReaderSource classSource, VirtualTableProvider vtableProvider,
             LayoutProvider layoutProvider, TagRegistry tagRegistry, Appendable appendable) {
@@ -138,7 +141,7 @@ public class LLVMRenderer {
 
             for (MethodReader method : cls.getMethods()) {
                 LLVMMethodRenderer methodRenderer = new LLVMMethodRenderer(appendable, classSource, stringPool,
-                        layoutProvider, vtableProvider, tagRegistry);
+                        layoutProvider, vtableProvider, tagRegistry, cs -> addCallSite(cs));
                 methodRenderer.renderMethod(method);
             }
 
@@ -189,6 +192,60 @@ public class LLVMRenderer {
             appendable.append("\n    i8** " + stackRoots.get(i));
         }
         appendable.append("]\n");
+
+        renderCallSites();
+    }
+
+    private void renderCallSites() throws IOException {
+        String callSitesArrayType = "[" + callSites.size() + " x %teavm.CallSite]";
+        appendable.append("@teavm.callSiteArray = constant " + callSitesArrayType + " [");
+        for (int i = 0; i < callSites.size(); ++i) {
+            if (i > 0) {
+                appendable.append(",");
+            }
+            appendable.append("\n");
+
+            CallSite callSite = callSites.get(i);
+            int exceptionTypeCount = callSite.getExceptionTypes().size();
+            appendable.append("    %teavm.CallSite {\n");
+            appendable.append("        i32 " + exceptionTypeCount + ",\n");
+            if (exceptionTypeCount > 0) {
+                appendable.append("        %teavm.Class** bitcast ([" + exceptionTypeCount + " x %teavm.Class*] "
+                        + "@teavm.exceptionTypes." + i + " as %teavm.Class**)\n");
+            } else {
+                appendable.append("        %teavm.Class** null\n");
+            }
+            appendable.append("    }");
+        }
+        appendable.append("\n]\n");
+
+        appendable.append("@teavm.callSites = constant %teavm.CallSite* bitcast (" + callSitesArrayType
+                + " @teavm.callSiteArray to %teavm.CallSite*\n)");
+
+        for (int i = 0; i < callSites.size(); ++i) {
+            CallSite callSite = callSites.get(i);
+            int exceptionTypeCount = callSite.getExceptionTypes().size();
+            if (exceptionTypeCount == 0) {
+                continue;
+            }
+
+            appendable.append("@teavm.exceptionTypes." + i + " = constant [" + exceptionTypeCount
+                    + " x %teavm.Class*] [");
+            for (int j = 0; j < exceptionTypeCount; ++j) {
+                if (j > 0) {
+                    appendable.append(", ");
+                }
+                appendable.append("%teavm.Class* ");
+                String exceptionType = callSite.getExceptionTypes().get(j);
+                if (exceptionType == null) {
+                    appendable.append("null");
+                } else {
+                    appendable.append(" bitcast (%vtable." + exceptionType + "* @vtable." + exceptionType
+                            + " as %teavm.Class*)");
+                }
+            }
+            appendable.append("]\n");
+        }
     }
 
     private void renderVirtualTableValues(ClassReader cls, VirtualTable vtable, int level) throws IOException {
@@ -233,7 +290,10 @@ public class LLVMRenderer {
                 .count();
         appendable.append("%itable {\n");
 
-        int tag = tagRegistry.getRanges(cls.getName()).stream().map(range -> range.lower).findAny().orElse(-1);
+        int tag = tagRegistry.getRanges(cls.getName()).stream().map(range -> range.lower)
+                .min(Comparator.naturalOrder()).orElse(-1);
+        int upperTag = tagRegistry.getRanges(cls.getName()).stream().map(range -> range.upper)
+                .max(Comparator.naturalOrder()).orElse(-1);
 
         indent(level + 1);
         String dataType = "%class." + cls.getName();
@@ -245,6 +305,8 @@ public class LLVMRenderer {
         appendable.append("i32 0,\n");
         indent(level + 2);
         appendable.append("i32 " + tag + ",\n");
+        indent(level + 2);
+        appendable.append("i32 " + upperTag + ",\n");
         indent(level + 2);
         appendable.append("i32 " + (tag ^ 0xAAAAAAAA) + ",\n");
 
@@ -434,6 +496,12 @@ public class LLVMRenderer {
             appendable.append(" ;").append(lastField.name);
         }
         appendable.append("\n}\n");
+    }
+
+    private int addCallSite(CallSite callSite) {
+        int id = callSites.size();
+        callSites.add(callSite);
+        return id;
     }
 
     private static class Structure {
