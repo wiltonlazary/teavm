@@ -5,46 +5,9 @@
 #include <sys/mman.h>
 #include <errno.h>
 #include <execinfo.h>
+#include "teavm.h"
 
-typedef struct {
-    int tag;
-    int reserved;
-    int size;
-} Object;
-
-struct ClassStruct;
-
-typedef struct {
-    struct ClassStruct* parent;
-    long count;
-    int *offsets;
-} FieldLayout;
-
-typedef struct ClassStruct {
-    int size;
-    int flags;
-    int tag;
-    int magic;
-    FieldLayout fields;
-} Class;
-
-typedef struct {
-    Object object;
-    Class *elementType;
-} Array;
-
-typedef struct StackFrameStruct {
-    int size;
-    int reserved;
-    struct StackFrameStruct *next;
-} StackFrame;
-
-typedef struct {
-    int size;
-    Object ***data;
-} StackRoots;
-
-static const int TRAVERSAL_STACK_SIZE = 512;
+#define TRAVERSAL_STACK_SIZE 512
 
 typedef struct TraversalStackStruct {
     int location;
@@ -52,19 +15,7 @@ typedef struct TraversalStackStruct {
     struct TraversalStackStruct* next;
 } TraversalStack;
 
-extern StackFrame *teavm_getStackTop();
-extern StackRoots* teavm_getStackRoots();
-extern Class* teavm_Array();
-extern Class* teavm_booleanArray();
-extern Class* teavm_byteArray();
-extern Class* teavm_shortArray();
-extern Class* teavm_charArray();
-extern Class* teavm_intArray();
-extern Class* teavm_longArray();
-extern Class* teavm_floatArray();
-extern Class* teavm_doubleArray();
 extern long teavm_currentTimeMillis();
-extern char* end;
 
 static char *pool = NULL;
 static char *limit = NULL;
@@ -72,10 +23,10 @@ static char *extra = NULL;
 static char *mmapLimit = NULL;
 static int pageSize;
 static int objectCount = 0;
-static int EMPTY_TAG = 0;
-static int EMPTY_SHORT_TAG = 1;
-static int GC_MARK = 1 << 31;
-static int CLASS_SIZE_MASK = -1 ^ (1 << 31);
+#define EMPTY_TAG 0
+#define EMPTY_SHORT_TAG 1;
+#define GC_MARK (1 << 31)
+#define CLASS_SIZE_MASK (-1 ^ (1 << 31))
 static long INITIAL_HEAP_SIZE = 256 * 1024;
 static long HEAP_LIMIT = 1024 * 1024 * 1024;
 #define SWEEP_PIECE_SIZE 16384
@@ -89,7 +40,7 @@ static int sweepPieceCount;
 static unsigned short *sweepPieces;
 static int arrayTag;
 
-#define VALID_TAG(cls) ((cls->tag ^ 0xAAAAAAAA) == cls->magic)
+#define VALID_TAG(cls) (((cls)->tag ^ 0xAAAAAAAA) == cls->magic)
 
 static void printStackTrace() {
     void *pointers[256];
@@ -235,8 +186,7 @@ static int objectSize(int tag, Object *object) {
             if (tag == arrayTag) {
                 return arraySize((Array *) object);
             } else {
-                char *tagAddress = (char *) (long) (object->tag << 3);
-                Class *cls = (Class *) tagAddress;
+                Class *cls = OBJECT_CLASS(object);
 #ifdef TEAVM_GC_ASSERT
                 if (!VALID_TAG(cls)) {
                     printf("GC: not an object 2: %lx \n", (long) object);
@@ -288,7 +238,7 @@ static void markObject(Object *object) {
 
 #ifdef TEAVM_GC_ASSERT
         if (object->tag != 0 && object->tag != 1 && object->tag != arrayTag) {
-            Class *cls = (Class *) (long) (object->tag << 3);
+            Class *cls = OBJECT_CLASS(object);
             if (!VALID_TAG(cls)) {
                 printf("GC: not an object: %lx \n", (long) object);
                 printStackTrace();
@@ -317,7 +267,7 @@ static void markObject(Object *object) {
         }
 
         char *address = (char *) object;
-        Class *cls = (Class *) (long) (object->tag << 3);
+        Class *cls = OBJECT_CLASS(object);
         while (cls != NULL) {
             int fieldCount = (int) cls->fields.count;
             int *offsets = &cls->fields.offsets[0];
@@ -557,7 +507,7 @@ static Object *getAvailableChunk(int size) {
 }
 
 Object *teavm_alloc(int tag) {
-    Class *cls = (Class *) ((long) tag << 3);
+    Class *cls = FIND_CLASS(tag);
     int size = cls->size & CLASS_SIZE_MASK;
     char *next = ((char *) currentObject + size);
     Object *chunk = next + sizeof(Object) <= (char *) currentLimit ? currentObject : getAvailableChunk(size);

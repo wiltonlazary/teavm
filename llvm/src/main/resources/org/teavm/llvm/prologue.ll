@@ -28,8 +28,6 @@
     %teavm.Fields    ; field layout
 }
 
-%timespec = type { i32, i64 }
-
 define private i32 @teavm.cmp.i32(i32 %a, i32 %b) {
     %less = icmp slt i32 %a, %b
     br i1 %less, label %whenLess, label %checkGreater
@@ -143,10 +141,6 @@ define i64 @method$java.lang.System.L17_currentTimeMillis() {
     ret i64 %result
 }
 
-define i1 @teavm.instanceOf(i8* %object, %itable* %type) {
-    ret i1 1
-}
-
 @teavm.Array = global %teavm.Array zeroinitializer, align 8
 @teavm.booleanArray = global %itable zeroinitializer, align 8
 @teavm.byteArray = global %itable zeroinitializer, align 8
@@ -224,14 +218,11 @@ continue:
 
 declare void @exit(i32)
 declare i32 @printf(i8*, ...)
-declare i8* @malloc(i32)
 declare i8* @memcpy(i8*, i8*, i32)
-declare i8* @memset(i8*, i32, i32)
 declare i32 @puts(i8*)
 declare i32 @putchar(i32)
 declare i32 @setjmp(%teavm.ExceptionBuffer*)
 declare void @longjmp(%teavm.ExceptionBuffer*, i32)
-declare i32 @clock_gettime(i32, %timespec*)
 declare i8* @teavm_alloc(i32)
 declare i8* @teavm_objectArrayAlloc(i32, i8, i32)
 declare i8* @teavm_cloneArray(i8*)

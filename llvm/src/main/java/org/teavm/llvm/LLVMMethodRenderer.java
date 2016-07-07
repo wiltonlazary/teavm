@@ -92,7 +92,6 @@ class LLVMMethodRenderer {
     private TypeInferer typeInferer;
     private ValueType currentReturnType;
     private Map<VariableReader, List<VariableReader>> joints;
-    private boolean expectingException;
     private int methodNameSize;
     private String methodNameVar;
     private BitSet callSiteLiveIns;
@@ -201,21 +200,12 @@ class LLVMMethodRenderer {
                     appendable.append("\n");
                 }
 
-                /*expectingException = !block.readTryCatchBlocks().isEmpty();
-                if (expectingException) {
-                    appendable.append("    %exception" + i + " = call i8* @teavm.catchException()\n");
-                    appendable.append("    %caught" + i + " = icmp ne i8* %exception, null\n");
-                    appendable.append("    br i1 %caught" + i + ", label %lp" + i + ", label %b" + i + "\n");
-                }*/
                 for (int j = 0; j < block.instructionCount(); ++j) {
                     this.callSiteLiveIns = blockLiveIns.get(j);
                     updateShadowStack();
                     block.readInstruction(j, reader);
                     flushInstructions();
                 }
-                /*if (expectingException) {
-                    appendable.append("lp" + i + ":\n");
-                }*/
             }
 
             if (stackFrameSize > 0 && !returnBlocks.isEmpty()) {
@@ -587,9 +577,6 @@ class LLVMMethodRenderer {
 
             emitted.add("%t" + tmp + " = icmp " + getLLVMOperation(cond) + " " + type
                     + " %v" + operand.getIndex() + ", " + second);
-            if (expectingException) {
-                emitted.add("call void @teavm.leaveException()");
-            }
             emitted.add("br i1 %t" + tmp + ", label %b" + consequent.getIndex() + ", label %b"
                     + alternative.getIndex());
         }
@@ -622,18 +609,12 @@ class LLVMMethodRenderer {
 
             emitted.add("%t" + tmp + " = icmp " + op + " " + type + " %v" + first.getIndex()
                     + ", %v" + second.getIndex());
-            if (expectingException) {
-                emitted.add("call void @teavm.leaveException()");
-            }
             emitted.add("br i1 %t" + tmp + ", label %b" + consequent.getIndex() + ", label %b"
                     + alternative.getIndex());
         }
 
         @Override
         public void jump(BasicBlockReader target) {
-            if (expectingException) {
-                emitted.add("call void @teavm.leaveException()");
-            }
             emitted.add("br label %b" + target.getIndex());
         }
 
@@ -651,9 +632,6 @@ class LLVMMethodRenderer {
 
         @Override
         public void exit(VariableReader valueToReturn) {
-            if (expectingException) {
-                emitted.add("call void @teavm.leaveException()");
-            }
             if (valueToReturn == null) {
                 if (stackFrameSize == 0) {
                     emitted.add("ret void");
@@ -734,15 +712,6 @@ class LLVMMethodRenderer {
             String typeRef = "vtable." + type;
             String tag = "i32 lshr (i32 ptrtoint (%" + typeRef + "* @" + typeRef + " to i32), i32 3)";
             emitted.add("%v" + receiver.getIndex() + " = call i8* @teavm_alloc(" + tag + ")");
-        }
-
-        private int sizeOf(String typeRef, String count) {
-            int temporaryPointer = temporaryVariable++;
-            int sizeOfVar = temporaryVariable++;
-            emitted.add("%t" + temporaryPointer + " = getelementptr " + typeRef + ", " + typeRef
-                    + "* null, i32 " + count);
-            emitted.add("%t" + sizeOfVar + " = ptrtoint " + typeRef + "* %t" + temporaryPointer + " to i32");
-            return sizeOfVar;
         }
 
         @Override
