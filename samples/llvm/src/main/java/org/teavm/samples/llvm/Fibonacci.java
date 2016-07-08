@@ -21,21 +21,38 @@ public class Fibonacci {
     private Fibonacci() {
     }
 
+    private static void test() {
+        try {
+            test2();
+            System.out.println("Exception should have been thrown");
+        } catch (IllegalStateException e) {
+            System.out.println("Exception caught");
+        }
+    }
+
+    private static void test2() {
+        throw new IllegalStateException();
+    }
+
     public static void main(String[] args) {
+        test();
         BigInteger result = BigInteger.ONE;
         for (int j = 0; j < 100; ++j) {
             long start = System.currentTimeMillis();
 
-            BigInteger a = BigInteger.ZERO;
-            BigInteger b = BigInteger.ONE;
-            for (int i = 0; i < 100000; ++i) {
-                BigInteger c = a.add(b);
-                a = b;
-                b = c;
+            for (int k = 0; k < 5000; ++k) {
+                BigInteger a = BigInteger.ZERO;
+                BigInteger b = BigInteger.ONE;
+                for (int i = 0; i < 1000; ++i) {
+                    BigInteger c = a.add(b);
+                    a = b;
+                    b = c;
+                }
+                result = a;
             }
 
             long end = System.currentTimeMillis();
-            result = a;
+
             System.out.println("Operation took " + (end - start) + " milliseconds");
         }
         System.out.println(result);

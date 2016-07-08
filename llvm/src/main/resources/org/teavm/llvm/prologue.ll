@@ -186,7 +186,8 @@ define %itable* @teavm_doubleArray() {
 }
 
 define %teavm.CallSite* @teavm_getCallSite(i32 %id) {
-    %callSite = getelementptr %teavm.CallSite*, %teavm.CallSite** @teavm.CallSites, i32 %id
+    %base = load %teavm.CallSite*, %teavm.CallSite** @teavm.callSites
+    %callSite = getelementptr %teavm.CallSite, %teavm.CallSite* %base, i32 %id
     ret %teavm.CallSite* %callSite
 }
 
@@ -195,8 +196,6 @@ declare i32 @printf(i8*, ...)
 declare i8* @memcpy(i8*, i8*, i32)
 declare i32 @puts(i8*)
 declare i32 @putchar(i32)
-declare i32 @setjmp(%teavm.ExceptionBuffer*)
-declare void @longjmp(%teavm.ExceptionBuffer*, i32)
 declare i8* @teavm_alloc(i32)
 declare i8* @teavm_objectArrayAlloc(i32, i8, i32)
 declare i8* @teavm_cloneArray(i8*)
@@ -210,5 +209,5 @@ declare i8* @teavm_floatArrayAlloc(i32)
 declare i8* @teavm_doubleArrayAlloc(i32)
 declare i64 @teavm_currentTimeMillis()
 declare void @teavm_initGC()
-declare void @teavm_throw(%teavm.Object*)
-declare %teavm.Object* @teavm_getException()
+declare void @teavm_throw(i8*)
+declare i8* @teavm_getException()

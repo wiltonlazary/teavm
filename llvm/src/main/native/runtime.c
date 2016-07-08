@@ -1,21 +1,24 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <time.h>
 #include "teavm.h"
 
 static Object *thrownException;
 
 void teavm_throw(Object *object) {
-    Class *exceptionType = OBJECT_TYPE(object);
+    Class *exceptionType = OBJECT_CLASS(object);
 
     StackFrame *frame = teavm_getStackTop();
     thrownException = object;
     while (frame != NULL) {
+        printf("Unwinding stack at %d\n", frame->callSiteId);
         CallSite *callSite = teavm_getCallSite(frame->callSiteId);
         Class **handlerTypes = callSite->exceptionTypes;
         for (int i = 0; i < callSite->handlerCount; ++i) {
             Class *handlerType = *handlerTypes;
-            if (handlerType == NULL || handlerType->tag <= exceptionType->tag
-                    && handlerType->upperTag >= exceptionType->upperTag) {
+            printf("  handler %d..%d id %d\n", handlerType->tag, handlerType->upperTag, i);
+            if (handlerType == NULL || (handlerType->tag <= exceptionType->tag
+                    && handlerType->upperTag >= exceptionType->upperTag)) {
                 frame->callSiteId += i + 1;
                 return;
             }
@@ -24,6 +27,7 @@ void teavm_throw(Object *object) {
         frame->callSiteId--;
         frame = frame->next;
     }
+    printf("Entire stack unwound\n");
 }
 
 Object *teavm_getException() {

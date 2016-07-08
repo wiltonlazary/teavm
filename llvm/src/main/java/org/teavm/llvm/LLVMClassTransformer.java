@@ -17,14 +17,11 @@ package org.teavm.llvm;
 
 import org.teavm.diagnostics.Diagnostics;
 import org.teavm.llvm.annotations.LLVMNative;
-import org.teavm.model.BasicBlock;
 import org.teavm.model.ClassHolder;
 import org.teavm.model.ClassHolderTransformer;
 import org.teavm.model.ClassReaderSource;
 import org.teavm.model.ElementModifier;
 import org.teavm.model.MethodHolder;
-import org.teavm.model.Program;
-import org.teavm.optimization.UnreachableBasicBlockEliminator;
 
 public class LLVMClassTransformer implements ClassHolderTransformer {
     @Override
@@ -33,15 +30,6 @@ public class LLVMClassTransformer implements ClassHolderTransformer {
             if (method.getAnnotations().get(LLVMNative.class.getName()) != null) {
                 method.getModifiers().add(ElementModifier.NATIVE);
                 method.setProgram(null);
-            }
-            Program program = method.getProgram();
-            if (program != null) {
-                for (int i = 0; i < program.basicBlockCount(); ++i) {
-                    BasicBlock block = program.basicBlockAt(i);
-                    block.getTryCatchBlocks().clear();
-                    block.getTryCatchJoints().clear();
-                }
-                new UnreachableBasicBlockEliminator().optimize(program);
             }
         }
     }

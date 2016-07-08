@@ -210,8 +210,8 @@ public class LLVMRenderer {
             appendable.append("    %teavm.CallSite {\n");
             appendable.append("        i32 " + exceptionTypeCount + ",\n");
             if (exceptionTypeCount > 0) {
-                appendable.append("        %teavm.Class** bitcast ([" + exceptionTypeCount + " x %teavm.Class*] "
-                        + "@teavm.exceptionTypes." + i + " as %teavm.Class**)\n");
+                appendable.append("        %teavm.Class** bitcast ([" + exceptionTypeCount + " x %teavm.Class*]* "
+                        + "@teavm.exceptionTypes." + i + " to %teavm.Class**)\n");
             } else {
                 appendable.append("        %teavm.Class** null\n");
             }
@@ -220,7 +220,7 @@ public class LLVMRenderer {
         appendable.append("\n]\n");
 
         appendable.append("@teavm.callSites = constant %teavm.CallSite* bitcast (" + callSitesArrayType
-                + " @teavm.callSiteArray to %teavm.CallSite*\n)");
+                + "* @teavm.callSiteArray to %teavm.CallSite*)\n");
 
         for (int i = 0; i < callSites.size(); ++i) {
             CallSite callSite = callSites.get(i);
@@ -241,7 +241,7 @@ public class LLVMRenderer {
                     appendable.append("null");
                 } else {
                     appendable.append(" bitcast (%vtable." + exceptionType + "* @vtable." + exceptionType
-                            + " as %teavm.Class*)");
+                            + " to %teavm.Class*)");
                 }
             }
             appendable.append("]\n");

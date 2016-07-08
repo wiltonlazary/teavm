@@ -95,7 +95,6 @@ class LLVMMethodRenderer {
     private List<String> emitted = new ArrayList<>();
     private int temporaryVariable;
     private TypeInferer typeInferer;
-    private ValueType currentReturnType;
     private Map<VariableReader, List<VariableReader>> joints;
     private int methodNameSize;
     private String methodNameVar;
@@ -104,8 +103,10 @@ class LLVMMethodRenderer {
     private int stackFrameSize;
     private List<String> returnVariables = new ArrayList<>();
     private List<String> returnBlocks = new ArrayList<>();
-    private String currentLlvmBlock;
     private int lastCallSiteId;
+    private boolean errorBlockNeeded;
+    private boolean exceptionThrown;
+    private List<List<String>> exceptionHandlerPhis = new ArrayList<>();
 
     LLVMMethodRenderer(Appendable appendable, ClassReaderSource classSource,
             StringPool stringPool, LayoutProvider layoutProvider,
@@ -144,6 +145,7 @@ class LLVMMethodRenderer {
         appendable.append(parameters.stream().collect(Collectors.joining(", "))).append(") {\n");
 
         ProgramReader program = method.getProgram();
+        errorBlockNeeded = false;
         if (program != null && program.basicBlockCount() > 0) {
             typeInferer = new TypeInferer();
             typeInferer.inferTypes(program, method.getReference());
@@ -178,14 +180,17 @@ class LLVMMethodRenderer {
             appendable.append("    br label %b0\n");
 
             temporaryVariable = 0;
-            currentReturnType = method.getResultType();
             List<List<TryCatchJointReader>> outputJoints = ProgramUtils.getOutputJoints(program);
 
             for (int i = 0; i < program.basicBlockCount(); ++i) {
+                exceptionHandlerPhis = new ArrayList<>();
                 IntObjectMap<BitSet> blockLiveIns = callSiteLiveIns.get(i);
                 BasicBlockReader block = program.basicBlockAt(i);
-                currentLlvmBlock = "b" + block.getIndex();
-                appendable.append(currentLlvmBlock + ":\n");
+                appendable.append("b" + block.getIndex() + ":\n");
+
+                for (int j = 0; j < block.readTryCatchBlocks().size(); ++j) {
+                    exceptionHandlerPhis.add(new ArrayList<>());
+                }
 
                 joints = new HashMap<>();
                 for (TryCatchJointReader joint : outputJoints.get(i)) {
@@ -204,12 +209,13 @@ class LLVMMethodRenderer {
                         }
                         first = false;
                         appendable.append("[ %v" + incoming.getValue().getIndex() + ", %b"
-                                + incoming.getSource().getIndex() + "]");
+                                + incoming.getSource().getIndex() + ".exit ]");
                     }
                     appendable.append("\n");
                 }
 
                 currentBlock = block;
+                exceptionThrown = false;
                 for (int j = 0; j < block.instructionCount(); ++j) {
                     this.callSiteLiveIns = blockLiveIns.get(j);
                     updateShadowStack();
@@ -217,6 +223,21 @@ class LLVMMethodRenderer {
                     addExceptionHandler();
                     flushInstructions();
                 }
+                if (exceptionThrown) {
+                    addTerminalLabel();
+                    emitted.add("br label %error");
+                    flushInstructions();
+                }
+
+                addCatches();
+                flushInstructions();
+            }
+
+            if (errorBlockNeeded) {
+                appendable.append("error:\n");
+                appendable.append("    br label %exit\n");
+                returnBlocks.add("error");
+                returnVariables.add(defaultValue(method.getResultType()));
             }
 
             if (!returnBlocks.isEmpty()) {
@@ -341,22 +362,43 @@ class LLVMMethodRenderer {
         for (int i = 0; i < tryCatchBlocks.size(); ++i) {
             String label = "eh" + temporaryVariable++;
             handlerLabels.add(label);
-            sb.append(" i32" + (lastCallSiteId + i + i) + ", label %" + label);
+            sb.append(" i32 " + (lastCallSiteId + i + 1) + ", label %" + label);
         }
         emitted.add("switch i32 " + handlerId + ", label %error [ " + sb + " ]");
+        errorBlockNeeded = true;
 
         for (int i = 0; i < tryCatchBlocks.size(); ++i) {
             TryCatchBlockReader tryCatch = tryCatchBlocks.get(i);
             emitted.add(handlerLabels.get(i) + ":");
             if (tryCatch.getExceptionVariable() != null) {
-                emitted.add("%v" + tryCatch.getExceptionVariable().getIndex() + " = "
-                        + "call %teavm.Object* %teavm_getException()");
+                String exception = "%t" + temporaryVariable++;
+                emitted.add(exception + " = call i8* @teavm_getException()");
+                exceptionHandlerPhis.get(i).add(exception + ", %" + handlerLabels.get(i));
             }
-            emitted.add("br label %b" + tryCatch.getHandler().getIndex());
+            emitted.add("br label %b" + currentBlock.getIndex() + ".catch." + i);
         }
 
         emitted.add(continueLabel + ":");
-        currentLlvmBlock = continueLabel;
+    }
+
+    private void addCatches() {
+        List<? extends TryCatchBlockReader> tryCatchBlocks = currentBlock.readTryCatchBlocks();
+        for (int i = 0; i < tryCatchBlocks.size(); ++i) {
+            TryCatchBlockReader tryCatch = tryCatchBlocks.get(i);
+            emitted.add("b" + currentBlock.getIndex() + ".catch." + i + ":");
+            List<String> incomings = exceptionHandlerPhis.get(i);
+            if (tryCatch.getExceptionVariable() != null) {
+                if (!incomings.isEmpty()) {
+                    String incomingsText = incomings.stream()
+                            .map(incoming -> "[ " + incoming + " ]")
+                            .collect(Collectors.joining(", "));
+                    emitted.add("%v" + tryCatch.getExceptionVariable().getIndex() + " = phi i8* " + incomingsText);
+                } else {
+                    emitted.add("%v" + tryCatch.getExceptionVariable().getIndex() + " = bitcast i8* null to i8*");
+                }
+            }
+            emitted.add("br label %b" + tryCatch.getHandler().getIndex());
+        }
     }
 
     private boolean isReference(int var) {
@@ -393,6 +435,12 @@ class LLVMMethodRenderer {
             appendable.append("    " + emittedLine + "\n");
         }
         emitted.clear();
+    }
+
+    private void addTerminalLabel() {
+        String label = "b" + currentBlock.getIndex() + ".exit";
+        emitted.add("br label %" + label);
+        emitted.add(label + ":");
     }
 
     private InstructionReader reader = new InstructionReader() {
@@ -622,6 +670,7 @@ class LLVMMethodRenderer {
         @Override
         public void jumpIf(BranchingCondition cond, VariableReader operand, BasicBlockReader consequent,
                 BasicBlockReader alternative) {
+            addTerminalLabel();
             int tmp = temporaryVariable++;
             String type = "i32";
             String second = "0";
@@ -639,6 +688,7 @@ class LLVMMethodRenderer {
         @Override
         public void jumpIf(BinaryBranchingCondition cond, VariableReader first, VariableReader second,
                 BasicBlockReader consequent, BasicBlockReader alternative) {
+            addTerminalLabel();
             int tmp = temporaryVariable++;
 
             String type = "i32";
@@ -670,12 +720,14 @@ class LLVMMethodRenderer {
 
         @Override
         public void jump(BasicBlockReader target) {
+            addTerminalLabel();
             emitted.add("br label %b" + target.getIndex());
         }
 
         @Override
         public void choose(VariableReader condition, List<? extends SwitchTableEntryReader> table,
                 BasicBlockReader defaultTarget) {
+            addTerminalLabel();
             StringBuilder sb = new StringBuilder();
             sb.append("switch i32 %v" + condition.getIndex() + ", label %b" + defaultTarget.getIndex() + " [");
             for (SwitchTableEntryReader entry : table) {
@@ -687,6 +739,7 @@ class LLVMMethodRenderer {
 
         @Override
         public void exit(VariableReader valueToReturn) {
+            addTerminalLabel();
             if (valueToReturn == null) {
                 emitted.add("br label %exit");
             } else {
@@ -694,23 +747,13 @@ class LLVMMethodRenderer {
                 returnVariables.add(returnVar);
                 emitted.add("br label %exit");
             }
-            returnBlocks.add(currentLlvmBlock);
+            returnBlocks.add("b" + currentBlock.getIndex() + ".exit");
         }
 
         @Override
         public void raise(VariableReader exception) {
-            int tmp = temporaryVariable++;
-            int methodName = temporaryVariable++;
-            emitted.add("%t" + tmp + " = getelementptr [26 x i8], [26 x i8]* @teavm.exceptionOccurred, i32 0, i32 0");
-            emitted.add("%t" + methodName + " = getelementptr [" + methodNameSize + " x i8], "
-                    + "[" + methodNameSize + " x i8]* " + methodNameVar + ", i32 0, i32 0");
-            emitted.add("call i32 (i8*, ...) @printf(i8* %t" + tmp + ", i8* %t" + methodName + ")");
-            emitted.add("call void @exit(i32 255)");
-            if (currentReturnType == ValueType.VOID) {
-                emitted.add("ret void");
-            } else {
-                emitted.add("ret " + renderType(currentReturnType) + " " + defaultValue(currentReturnType));
-            }
+            emitted.add("call void @teavm_throw(i8* %v" + exception.getIndex() + ")");
+            exceptionThrown = true;
         }
 
         @Override
@@ -1007,8 +1050,6 @@ class LLVMMethodRenderer {
                     emitted.add(phiVar + " = phi i32 [ " + trueVar + ", "
                             + "%" + trueLabel + " ], [ " + falseVar + ", %" + next + "]");
                     emitted.add("%v" + receiver.getIndex() + " = add i32 0, " + phiVar);
-
-                    currentLlvmBlock = finalLabel;
                 } else {
                     emitted.add("%v" + receiver.getIndex() + " = add i32 0, 0");
                 }
