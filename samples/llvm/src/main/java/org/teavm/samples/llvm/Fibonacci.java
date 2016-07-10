@@ -22,8 +22,10 @@ public class Fibonacci {
     }
 
     private static void test() {
+        int x = 0;
         try {
             test2();
+            x++;
             System.out.println("Exception should have been thrown");
         } catch (IllegalStateException e) {
             System.out.println("Exception caught");

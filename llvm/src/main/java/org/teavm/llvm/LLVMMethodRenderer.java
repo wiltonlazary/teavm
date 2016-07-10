@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.teavm.common.Graph;
+import org.teavm.common.GraphUtils;
 import org.teavm.llvm.context.CallSite;
 import org.teavm.llvm.context.LLVMCallSiteRegistry;
 import org.teavm.llvm.context.LayoutProvider;
@@ -53,12 +54,13 @@ import org.teavm.model.MethodDescriptor;
 import org.teavm.model.MethodHandle;
 import org.teavm.model.MethodReader;
 import org.teavm.model.MethodReference;
+import org.teavm.model.Phi;
 import org.teavm.model.PhiReader;
 import org.teavm.model.Program;
-import org.teavm.model.ProgramReader;
 import org.teavm.model.RuntimeConstant;
+import org.teavm.model.TryCatchBlock;
 import org.teavm.model.TryCatchBlockReader;
-import org.teavm.model.TryCatchJointReader;
+import org.teavm.model.TryCatchJoint;
 import org.teavm.model.ValueType;
 import org.teavm.model.Variable;
 import org.teavm.model.VariableReader;
@@ -95,10 +97,8 @@ class LLVMMethodRenderer {
     private List<String> emitted = new ArrayList<>();
     private int temporaryVariable;
     private TypeInferer typeInferer;
-    private Map<VariableReader, List<VariableReader>> joints;
-    private int methodNameSize;
-    private String methodNameVar;
-    private BasicBlockReader currentBlock;
+    private Map<Variable, List<Variable>> joints;
+    private BasicBlock currentBlock;
     private BitSet callSiteLiveIns;
     private int stackFrameSize;
     private List<String> returnVariables = new ArrayList<>();
@@ -107,6 +107,12 @@ class LLVMMethodRenderer {
     private boolean errorBlockNeeded;
     private boolean exceptionThrown;
     private List<List<String>> exceptionHandlerPhis = new ArrayList<>();
+    private Program program;
+    private Graph cfg;
+    private int[] firstJointValues;
+    private Map<Variable, Variable> currentJointValues = new HashMap<>();
+    private List<List<TryCatchJoint>> outputJoints;
+    private Map<Variable, List<String>> jointPhiIncomings = new HashMap<>();
 
     LLVMMethodRenderer(Appendable appendable, ClassReaderSource classSource,
             StringPool stringPool, LayoutProvider layoutProvider,
@@ -126,12 +132,6 @@ class LLVMMethodRenderer {
             return;
         }
 
-        String methodName = method.getReference().toString();
-        methodNameSize = methodName.length() + 1;
-        methodNameVar = "@name$" + mangleMethod(method.getReference());
-        appendable.append(methodNameVar + " = private constant [" + methodNameSize + " x i8] c\""
-                + methodName + "\\00\"\n");
-
         appendable.append("define ").append(renderType(method.getResultType())).append(" ");
         appendable.append("@").append(mangleMethod(method.getReference())).append("(");
         List<String> parameters = new ArrayList<>();
@@ -144,9 +144,12 @@ class LLVMMethodRenderer {
         }
         appendable.append(parameters.stream().collect(Collectors.joining(", "))).append(") {\n");
 
-        ProgramReader program = method.getProgram();
         errorBlockNeeded = false;
-        if (program != null && program.basicBlockCount() > 0) {
+        if (method.getProgram() != null && method.getProgram().basicBlockCount() > 0) {
+            DefinitionExtractor defExtractor = new DefinitionExtractor();
+            program = ProgramUtils.copy(method.getProgram());
+            cfg = ProgramUtils.buildControlFlowGraph(program);
+
             typeInferer = new TypeInferer();
             typeInferer.inferTypes(program, method.getReference());
 
@@ -180,12 +183,13 @@ class LLVMMethodRenderer {
             appendable.append("    br label %b0\n");
 
             temporaryVariable = 0;
-            List<List<TryCatchJointReader>> outputJoints = ProgramUtils.getOutputJoints(program);
+            outputJoints = ProgramUtils.getOutputJoints(program);
+            firstJointValues = getFirstJointValues(method);
 
             for (int i = 0; i < program.basicBlockCount(); ++i) {
                 exceptionHandlerPhis = new ArrayList<>();
                 IntObjectMap<BitSet> blockLiveIns = callSiteLiveIns.get(i);
-                BasicBlockReader block = program.basicBlockAt(i);
+                BasicBlock block = program.basicBlockAt(i);
                 appendable.append("b" + block.getIndex() + ":\n");
 
                 for (int j = 0; j < block.readTryCatchBlocks().size(); ++j) {
@@ -193,10 +197,15 @@ class LLVMMethodRenderer {
                 }
 
                 joints = new HashMap<>();
-                for (TryCatchJointReader joint : outputJoints.get(i)) {
-                    for (VariableReader jointSource : joint.readSourceVariables()) {
+                currentJointValues.clear();
+                jointPhiIncomings.clear();
+                for (TryCatchJoint joint : outputJoints.get(i)) {
+                    for (Variable jointSource : joint.getSourceVariables()) {
                         joints.computeIfAbsent(jointSource, x -> new ArrayList<>()).add(joint.getReceiver());
                     }
+                    int receiver = joint.getReceiver().getIndex();
+                    currentJointValues.put(joint.getReceiver(), program.variableAt(firstJointValues[receiver]));
+                    jointPhiIncomings.put(joint.getReceiver(), new ArrayList<>());
                 }
 
                 for (PhiReader phi : block.readPhis()) {
@@ -220,6 +229,15 @@ class LLVMMethodRenderer {
                     this.callSiteLiveIns = blockLiveIns.get(j);
                     updateShadowStack();
                     block.readInstruction(j, reader);
+                    block.getInstructions().get(j).acceptVisitor(defExtractor);
+                    for (Variable def : defExtractor.getDefinedVariables()) {
+                        List<Variable> receivers = joints.get(def);
+                        if (receivers != null) {
+                            for (Variable receiver : receivers) {
+                                currentJointValues.put(receiver, def);
+                            }
+                        }
+                    }
                     addExceptionHandler();
                     flushInstructions();
                 }
@@ -279,10 +297,8 @@ class LLVMMethodRenderer {
     private List<IntObjectMap<BitSet>> findCallSiteLiveIns(MethodReader method) {
         List<IntObjectMap<BitSet>> liveOut = new ArrayList<>();
 
-        Program program = ProgramUtils.copy(method.getProgram());
         LivenessAnalyzer livenessAnalyzer = new LivenessAnalyzer();
         livenessAnalyzer.analyze(program);
-        Graph cfg = ProgramUtils.buildControlFlowGraph(program);
         DefinitionExtractor defExtractor = new DefinitionExtractor();
 
         for (int i = 0; i < program.basicBlockCount(); ++i) {
@@ -292,6 +308,11 @@ class LLVMMethodRenderer {
             BitSet currentLiveOut = new BitSet();
             for (int successor : cfg.outgoingEdges(i)) {
                 currentLiveOut.or(livenessAnalyzer.liveIn(successor));
+            }
+            for (TryCatchBlock tryCatch : block.getTryCatchBlocks()) {
+                if (tryCatch.getExceptionVariable() != null) {
+                    currentLiveOut.clear(tryCatch.getExceptionVariable().getIndex());
+                }
             }
             for (int j = block.getInstructions().size() - 1; j >= 0; --j) {
                 Instruction insn = block.getInstructions().get(j);
@@ -350,7 +371,7 @@ class LLVMMethodRenderer {
             return;
         }
 
-        List<? extends TryCatchBlockReader> tryCatchBlocks = currentBlock.readTryCatchBlocks();
+        List<TryCatchBlock> tryCatchBlocks = currentBlock.getTryCatchBlocks();
 
         String handlerId = "%t" + temporaryVariable++;
         emitted.add(handlerId + " = load i32, i32* %callSiteIdRef");
@@ -368,7 +389,7 @@ class LLVMMethodRenderer {
         errorBlockNeeded = true;
 
         for (int i = 0; i < tryCatchBlocks.size(); ++i) {
-            TryCatchBlockReader tryCatch = tryCatchBlocks.get(i);
+            TryCatchBlock tryCatch = tryCatchBlocks.get(i);
             emitted.add(handlerLabels.get(i) + ":");
             if (tryCatch.getExceptionVariable() != null) {
                 String exception = "%t" + temporaryVariable++;
@@ -376,13 +397,22 @@ class LLVMMethodRenderer {
                 exceptionHandlerPhis.get(i).add(exception + ", %" + handlerLabels.get(i));
             }
             emitted.add("br label %b" + currentBlock.getIndex() + ".catch." + i);
+
+            for (TryCatchJoint joint : tryCatch.getHandler().getTryCatchJoints()) {
+                if (joint.getSource() != currentBlock) {
+                    continue;
+                }
+                String sourceVariable = "%v" + currentJointValues.get(joint.getReceiver()).getIndex();
+                String sourceBlock = "%" + handlerLabels.get(i);
+                jointPhiIncomings.get(joint.getReceiver()).add(sourceVariable + ", " + sourceBlock);
+            }
         }
 
         emitted.add(continueLabel + ":");
     }
 
     private void addCatches() {
-        List<? extends TryCatchBlockReader> tryCatchBlocks = currentBlock.readTryCatchBlocks();
+        List<TryCatchBlock> tryCatchBlocks = currentBlock.getTryCatchBlocks();
         for (int i = 0; i < tryCatchBlocks.size(); ++i) {
             TryCatchBlockReader tryCatch = tryCatchBlocks.get(i);
             emitted.add("b" + currentBlock.getIndex() + ".catch." + i + ":");
@@ -397,8 +427,78 @@ class LLVMMethodRenderer {
                     emitted.add("%v" + tryCatch.getExceptionVariable().getIndex() + " = bitcast i8* null to i8*");
                 }
             }
+
+            for (Map.Entry<Variable, List<String>> jointPhi : jointPhiIncomings.entrySet()) {
+                int receiver = jointPhi.getKey().getIndex();
+                String type = renderType(typeInferer.typeOf(receiver));
+                String incomingsText = jointPhi.getValue().stream()
+                        .map(incoming -> "[ " + incoming + " ]")
+                        .collect(Collectors.joining(", "));
+                emitted.add("%v" + receiver + " = phi " + type + " " + incomingsText);
+            }
+
             emitted.add("br label %b" + tryCatch.getHandler().getIndex());
         }
+    }
+
+    private int[] getFirstJointValues(MethodReader method) {
+        class Step {
+            int node;
+            boolean[] initialized = new boolean[program.variableCount()];
+            public Step(int node) {
+                this.node = node;
+            }
+        }
+
+        int[] result = new int[program.variableCount()];
+        Graph dom = GraphUtils.buildDominatorGraph(GraphUtils.buildDominatorTree(cfg), cfg.size());
+        DefinitionExtractor defExtractor = new DefinitionExtractor();
+
+        Step[] stack = new Step[cfg.size()];
+        int depth = 0;
+        Step first = new Step(0);
+        for (int i = 0; i <= method.parameterCount(); ++i) {
+            first.initialized[i] = true;
+        }
+        stack[depth++] = first;
+
+        while (depth > 0) {
+            Step step = stack[--depth];
+            int node = step.node;
+            boolean[] initialized = step.initialized;
+
+            BasicBlock block = program.basicBlockAt(node);
+            for (Phi phi : block.getPhis()) {
+                initialized[phi.getReceiver().getIndex()] = true;
+            }
+            for (TryCatchJoint joint : block.getTryCatchJoints()) {
+                initialized[joint.getReceiver().getIndex()] = true;
+            }
+
+            for (TryCatchJoint outputJoint : outputJoints.get(node)) {
+                for (Variable variable : outputJoint.getSourceVariables()) {
+                    if (initialized[variable.getIndex()]) {
+                        result[outputJoint.getReceiver().getIndex()] = variable.getIndex();
+                        break;
+                    }
+                }
+            }
+
+            for (Instruction insn : block.getInstructions()) {
+                insn.acceptVisitor(defExtractor);
+                for (Variable def : defExtractor.getDefinedVariables()) {
+                    initialized[def.getIndex()] = true;
+                }
+            }
+
+            for (int successor : dom.outgoingEdges(node)) {
+                Step next = new Step(successor);
+                System.arraycopy(initialized, 0, next.initialized, 0, next.initialized.length);
+                stack[depth++] = next;
+            }
+        }
+
+        return result;
     }
 
     private boolean isReference(int var) {
