@@ -28,7 +28,7 @@ public class Fibonacci {
             x++;
             System.out.println("Exception should have been thrown");
         } catch (IllegalStateException e) {
-            System.out.println("Exception caught");
+            System.out.println("Exception caught " + x);
         }
     }
 

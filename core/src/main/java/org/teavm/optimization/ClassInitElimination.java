@@ -15,6 +15,8 @@
  */
 package org.teavm.optimization;
 
+import com.carrotsearch.hppc.IntOpenHashSet;
+import com.carrotsearch.hppc.IntSet;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashSet;
@@ -49,6 +51,7 @@ public class ClassInitElimination implements MethodOptimization {
             int node = step.node;
             BasicBlock block = program.basicBlockAt(node);
             List<Instruction> instructions = block.getInstructions();
+            Set<String> oldInitializedClasses = new HashSet<>(step.initializedClasses);
 
             for (int i = 0; i < instructions.size(); ++i) {
                 Instruction insn = instructions.get(i);
@@ -67,9 +70,18 @@ public class ClassInitElimination implements MethodOptimization {
                 }
             }
 
+            IntSet handlers = new IntOpenHashSet();
+            block.getTryCatchBlocks().stream()
+                    .mapToInt(b -> b.getHandler().getIndex())
+                    .forEach(i -> handlers.add(i));
+
             for (int successor : domGraph.outgoingEdges(node)) {
                 Step next = new Step(successor);
-                next.initializedClasses.addAll(step.initializedClasses);
+                if (handlers.contains(successor)) {
+                    next.initializedClasses.addAll(oldInitializedClasses);
+                } else {
+                    next.initializedClasses.addAll(step.initializedClasses);
+                }
                 stack.push(next);
             }
         }

@@ -416,6 +416,21 @@ class LLVMMethodRenderer {
         for (int i = 0; i < tryCatchBlocks.size(); ++i) {
             TryCatchBlockReader tryCatch = tryCatchBlocks.get(i);
             emitted.add("b" + currentBlock.getIndex() + ".catch." + i + ":");
+
+            for (Map.Entry<Variable, List<String>> jointPhi : jointPhiIncomings.entrySet()) {
+                int receiver = jointPhi.getKey().getIndex();
+                String type = renderType(typeInferer.typeOf(receiver));
+                if (jointPhi.getValue().isEmpty()) {
+                    emitted.add("%v" + receiver + " = bitcast " + type + " %v" + firstJointValues[receiver]
+                            + " to " + type);
+                } else {
+                    String incomingsText = jointPhi.getValue().stream()
+                            .map(incoming -> "[ " + incoming + " ]")
+                            .collect(Collectors.joining(", "));
+                    emitted.add("%v" + receiver + " = phi " + type + " " + incomingsText);
+                }
+            }
+
             List<String> incomings = exceptionHandlerPhis.get(i);
             if (tryCatch.getExceptionVariable() != null) {
                 if (!incomings.isEmpty()) {
@@ -426,15 +441,6 @@ class LLVMMethodRenderer {
                 } else {
                     emitted.add("%v" + tryCatch.getExceptionVariable().getIndex() + " = bitcast i8* null to i8*");
                 }
-            }
-
-            for (Map.Entry<Variable, List<String>> jointPhi : jointPhiIncomings.entrySet()) {
-                int receiver = jointPhi.getKey().getIndex();
-                String type = renderType(typeInferer.typeOf(receiver));
-                String incomingsText = jointPhi.getValue().stream()
-                        .map(incoming -> "[ " + incoming + " ]")
-                        .collect(Collectors.joining(", "));
-                emitted.add("%v" + receiver + " = phi " + type + " " + incomingsText);
             }
 
             emitted.add("br label %b" + tryCatch.getHandler().getIndex());
