@@ -201,7 +201,7 @@ public class Inlining {
             jointCopy.getSourceVariables().addAll(joint.getSourceVariables());
             int sourceIndex = joint.getSource().getIndex();
             jointCopy.setSource(target.getProgram().basicBlockAt(sourceIndex));
-            target.getTryCatchJoints().add(joint);
+            target.getTryCatchJoints().add(jointCopy);
         }
     }
 

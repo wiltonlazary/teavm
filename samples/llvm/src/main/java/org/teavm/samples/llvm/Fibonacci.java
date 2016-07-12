@@ -26,14 +26,13 @@ public class Fibonacci {
         try {
             test2();
             x++;
-            System.out.println("Exception should have been thrown");
         } catch (IllegalStateException e) {
-            System.out.println("Exception caught " + x);
+            e.printStackTrace();
         }
     }
 
     private static void test2() {
-        throw new IllegalStateException();
+        throw new IllegalStateException("Error");
     }
 
     public static void main(String[] args) {

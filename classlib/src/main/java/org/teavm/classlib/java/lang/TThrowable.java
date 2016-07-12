@@ -28,6 +28,7 @@ import org.teavm.javascript.spi.Superclass;
 @Superclass("java.lang.Object")
 public class TThrowable extends RuntimeException {
     private static final long serialVersionUID = 2026791432677149320L;
+    private TStackTraceElement[] stackTraceElements;
     private TString message;
     private TThrowable cause;
     private boolean suppressionEnabled;
@@ -143,16 +144,16 @@ public class TThrowable extends RuntimeException {
     }
 
     public void printStackTrace(TPrintStream stream) {
-        stream.println(TString.wrap(getClass().getName() + ": " + getMessage()));
+        stream.println(TString.wrap(getMessage()));
     }
 
     @Rename("getStackTrace")
     public TStackTraceElement[] getStackTrace0() {
-        return new TStackTraceElement[0];
+        return stackTraceElements == null ? new TStackTraceElement[0] : stackTraceElements.clone();
     }
 
     public void setStackTrace(@SuppressWarnings("unused") TStackTraceElement[] stackTrace) {
-        // do nothing
+        stackTraceElements = stackTrace.clone();
     }
 
     @Rename("getSuppressed")
