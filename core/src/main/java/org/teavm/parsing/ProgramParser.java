@@ -23,10 +23,6 @@ import org.teavm.model.instructions.*;
 import org.teavm.model.util.InstructionTransitionExtractor;
 import org.teavm.model.util.ProgramUtils;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class ProgramParser {
     private static final byte ROOT = 0;
     private static final byte SINGLE = 1;
@@ -239,6 +235,7 @@ public class ProgramParser {
                 workStack.push(new Step(index, next));
             }
         }
+
         for (Object obj : method.tryCatchBlocks) {
             TryCatchBlockNode tryCatchNode = (TryCatchBlockNode) obj;
             if (tryCatchNode.start == tryCatchNode.handler) {
@@ -256,7 +253,7 @@ public class ProgramParser {
                         tryCatch.setExceptionType(tryCatchNode.type.replace('/', '.'));
                     }
                     tryCatch.setHandler(getBasicBlock(labelIndexes.get(tryCatchNode.handler.getLabel())));
-                    tryCatch.setExceptionVariable(getVariable(minLocal + method.maxLocals));
+                    tryCatch.getHandler().setExceptionVariable(program.variableAt(minLocal + method.maxLocals));
                     block.getTryCatchBlocks().add(tryCatch);
                 }
             }
