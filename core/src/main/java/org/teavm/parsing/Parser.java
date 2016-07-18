@@ -27,10 +27,6 @@ import org.teavm.model.*;
 import org.teavm.model.util.PhiUpdater;
 import org.teavm.optimization.UnreachableBasicBlockEliminator;
 
-/**
- *
- * @author Alexey Andreev
- */
 public final class Parser {
     private Parser() {
     }
