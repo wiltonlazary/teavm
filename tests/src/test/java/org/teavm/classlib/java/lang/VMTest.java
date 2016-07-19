@@ -111,6 +111,21 @@ public class VMTest {
         assertNotNull(obj.getValue());
     }
 
+    @Test
+    public void variableReadInCatchBlock() {
+        int n = foo();
+        try {
+            for (int i = 0; i < 10; ++i) {
+                n += foo();
+            }
+            bar();
+            n += foo() * 5;
+        } catch (RuntimeException e) {
+            assertEquals(RuntimeException.class, e.getClass());
+            assertEquals(n, 22);
+        }
+    }
+
     static class SuperClass {
         static final Integer ONE = new Integer(1);
 
