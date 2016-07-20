@@ -21,10 +21,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.teavm.junit.TeaVMTestRunner;
 
-/**
- *
- * @author Alexey Andreev
- */
 @RunWith(TeaVMTestRunner.class)
 public class VMTest {
     @Test
@@ -113,6 +109,21 @@ public class VMTest {
     public void passesStaticFieldToSuperClassConstructor()  {
         SubClass obj = new SubClass();
         assertNotNull(obj.getValue());
+    }
+
+    @Test
+    public void variableReadInCatchBlock() {
+        int n = foo();
+        try {
+            for (int i = 0; i < 10; ++i) {
+                n += foo();
+            }
+            bar();
+            n += foo() * 5;
+        } catch (RuntimeException e) {
+            assertEquals(RuntimeException.class, e.getClass());
+            assertEquals(n, 22);
+        }
     }
 
     static class SuperClass {

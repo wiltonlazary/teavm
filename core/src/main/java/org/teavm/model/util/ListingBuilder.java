@@ -28,7 +28,7 @@ public class ListingBuilder {
         for (int i = 0; i < program.variableCount(); ++i) {
             sb.append(prefix).append("var @").append(i);
             VariableReader var = program.variableAt(i);
-            if (!var.readDebugNames().isEmpty()) {
+            if (var != null && !var.readDebugNames().isEmpty()) {
                 sb.append(" as ");
                 boolean first = true;
                 for (String debugName : var.readDebugNames()) {
@@ -48,12 +48,10 @@ public class ListingBuilder {
                 continue;
             }
 
-            for (TryCatchJointReader joint : block.readTryCatchJoints()) {
-                sb.append("    @").append(joint.getReceiver().getIndex()).append(" := e-phi(");
-                sb.append(joint.readSourceVariables().stream().map(sourceVar -> "@" + sourceVar.getIndex())
-                        .collect(Collectors.joining(", ")));
-                sb.append(") from $").append(joint.getSource().getIndex()).append("\n");
+            if (block.getExceptionVariable() != null) {
+                sb.append("    @").append(block.getExceptionVariable().getIndex()).append(" = exception\n");
             }
+
             for (PhiReader phi : block.readPhis()) {
                 sb.append(prefix).append("    ");
                 sb.append("@").append(phi.getReceiver().getIndex()).append(" := ");
@@ -81,10 +79,15 @@ public class ListingBuilder {
                 sb.append(prefix).append("    ").append(insnSb).append("\n");
             }
             for (TryCatchBlockReader tryCatch : block.readTryCatchBlocks()) {
-                sb.append(prefix).append("    catch ").append(tryCatch.getExceptionType()).append(" @")
-                        .append(tryCatch.getExceptionVariable().getIndex())
+                sb.append(prefix).append("    catch ").append(tryCatch.getExceptionType())
                         .append(" -> $").append(tryCatch.getHandler().getIndex());
                 sb.append("\n");
+                for (TryCatchJointReader joint : tryCatch.readJoints()) {
+                    sb.append("      @").append(joint.getReceiver().getIndex()).append(" := e-phi(");
+                    sb.append(joint.readSourceVariables().stream().map(sourceVar -> "@" + sourceVar.getIndex())
+                            .collect(Collectors.joining(", ")));
+                    sb.append(")\n");
+                }
             }
         }
         return sb.toString();
