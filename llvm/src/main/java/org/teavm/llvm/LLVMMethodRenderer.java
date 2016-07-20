@@ -24,6 +24,8 @@ import static org.teavm.llvm.LLVMRenderingHelper.renderItemType;
 import static org.teavm.llvm.LLVMRenderingHelper.renderType;
 import com.carrotsearch.hppc.IntObjectMap;
 import com.carrotsearch.hppc.IntObjectOpenHashMap;
+import com.carrotsearch.hppc.IntOpenHashSet;
+import com.carrotsearch.hppc.IntSet;
 import com.carrotsearch.hppc.cursors.ObjectCursor;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -111,6 +113,8 @@ class LLVMMethodRenderer {
     private int[] firstJointValues;
     private Map<Variable, Variable> currentJointValues = new HashMap<>();
     private Map<Variable, List<String>> jointPhiIncomings = new HashMap<>();
+    private List<IntSet> exceptionHandlerTransitions = new ArrayList<>();
+    private List<IntSet> exceptionHandlerBackTransitions = new ArrayList<>();
 
     LLVMMethodRenderer(Appendable appendable, ClassReaderSource classSource,
             StringPool stringPool, LayoutProvider layoutProvider,
@@ -147,6 +151,7 @@ class LLVMMethodRenderer {
             DefinitionExtractor defExtractor = new DefinitionExtractor();
             program = ProgramUtils.copy(method.getProgram());
             cfg = ProgramUtils.buildControlFlowGraph(program);
+            findExceptionHandlerTransitions(program);
 
             typeInferer = new TypeInferer();
             typeInferer.inferTypes(program, method.getReference());
@@ -212,8 +217,12 @@ class LLVMMethodRenderer {
                             appendable.append(", ");
                         }
                         first = false;
-                        appendable.append("[ %v" + incoming.getValue().getIndex() + ", %b"
-                                + incoming.getSource().getIndex() + ".exit ]");
+                        boolean fromException = exceptionHandlerBackTransitions.get(block.getIndex())
+                                .contains(incoming.getSource().getIndex());
+                        String fromBlock = fromException
+                                ? "%b" + incoming.getSource().getIndex() + ".catch.to." + block.getIndex()
+                                : "%b" + incoming.getSource().getIndex() + ".exit";
+                        appendable.append(" [ %v" + incoming.getValue().getIndex() + ", " + fromBlock + " ]");
                     }
                     appendable.append("\n");
                 }
@@ -292,6 +301,22 @@ class LLVMMethodRenderer {
         }
 
         appendable.append("}\n");
+    }
+
+    private void findExceptionHandlerTransitions(Program program) {
+        for (int i = 0; i < program.basicBlockCount(); ++i) {
+            IntSet transitions = new IntOpenHashSet();
+            for (TryCatchBlock tryCatch : program.basicBlockAt(i).getTryCatchBlocks()) {
+                transitions.add(tryCatch.getHandler().getIndex());
+            }
+            exceptionHandlerTransitions.add(transitions);
+            exceptionHandlerBackTransitions.add(new IntOpenHashSet());
+        }
+        for (int i = 0; i < program.basicBlockCount(); ++i) {
+            for (TryCatchBlock tryCatch : program.basicBlockAt(i).getTryCatchBlocks()) {
+                exceptionHandlerBackTransitions.get(tryCatch.getHandler().getIndex()).add(i);
+            }
+        }
     }
 
     private List<IntObjectMap<BitSet>> findCallSiteLiveIns(MethodReader method) {
@@ -421,7 +446,12 @@ class LLVMMethodRenderer {
                 }
             }
 
-            emitted.add("br label %b" + tryCatch.getHandler().getIndex());
+            emitted.add("br label %b" + currentBlock.getIndex() + ".catch.to." + tryCatch.getHandler().getIndex());
+        }
+
+        for (int target : exceptionHandlerTransitions.get(currentBlock.getIndex()).toArray()) {
+            emitted.add("b" + currentBlock.getIndex() + ".catch.to." + target + ":");
+            emitted.add("br label %b" + target);
         }
     }
 
