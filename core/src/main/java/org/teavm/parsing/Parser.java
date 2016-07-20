@@ -144,13 +144,6 @@ public final class Parser {
             IntIntMap varMap = new IntIntOpenHashMap(step.varMap);
             BasicBlock block = program.basicBlockAt(node);
 
-            for (TryCatchJoint joint : block.getTryCatchJoints()) {
-                int receiver = joint.getReceiver().getIndex();
-                int sourceVar = phiUpdater.getSourceVariable(receiver);
-                if (sourceVar >= 0) {
-                    varMap.put(sourceVar, receiver);
-                }
-            }
             for (Phi phi : block.getPhis()) {
                 int receiver = phi.getReceiver().getIndex();
                 int sourceVar = phiUpdater.getSourceVariable(receiver);

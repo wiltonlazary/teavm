@@ -28,6 +28,7 @@ public class Fibonacci {
             x++;
         } catch (IllegalStateException e) {
             e.printStackTrace();
+            System.out.println(x);
         }
     }
 

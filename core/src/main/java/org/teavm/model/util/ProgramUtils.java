@@ -187,4 +187,19 @@ public final class ProgramUtils {
         }
         return places;
     }
+
+    public static List<List<TryCatchJoint>> getInputJoints(Program program) {
+        List<List<TryCatchJoint>> result = new ArrayList<>();
+        for (int i = 0; i < program.basicBlockCount(); ++i) {
+            result.add(new ArrayList<>());
+        }
+        for (int i = 0; i < program.basicBlockCount(); ++i) {
+            for (TryCatchBlock tryCatch : program.basicBlockAt(i).getTryCatchBlocks()) {
+                for (TryCatchJoint joint : tryCatch.getJoints()) {
+                    result.get(joint.getBlock().getHandler().getIndex()).add(joint);
+                }
+            }
+        }
+        return result;
+    }
 }

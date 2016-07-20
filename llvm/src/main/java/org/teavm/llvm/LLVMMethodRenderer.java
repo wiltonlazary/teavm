@@ -106,12 +106,10 @@ class LLVMMethodRenderer {
     private int lastCallSiteId;
     private boolean errorBlockNeeded;
     private boolean exceptionThrown;
-    private List<List<String>> exceptionHandlerPhis = new ArrayList<>();
     private Program program;
     private Graph cfg;
     private int[] firstJointValues;
     private Map<Variable, Variable> currentJointValues = new HashMap<>();
-    private List<List<TryCatchJoint>> outputJoints;
     private Map<Variable, List<String>> jointPhiIncomings = new HashMap<>();
 
     LLVMMethodRenderer(Appendable appendable, ClassReaderSource classSource,
@@ -183,29 +181,26 @@ class LLVMMethodRenderer {
             appendable.append("    br label %b0\n");
 
             temporaryVariable = 0;
-            outputJoints = ProgramUtils.getOutputJoints(program);
             firstJointValues = getFirstJointValues(method);
 
             for (int i = 0; i < program.basicBlockCount(); ++i) {
-                exceptionHandlerPhis = new ArrayList<>();
                 IntObjectMap<BitSet> blockLiveIns = callSiteLiveIns.get(i);
                 BasicBlock block = program.basicBlockAt(i);
                 appendable.append("b" + block.getIndex() + ":\n");
 
-                for (int j = 0; j < block.readTryCatchBlocks().size(); ++j) {
-                    exceptionHandlerPhis.add(new ArrayList<>());
-                }
-
                 joints = new HashMap<>();
                 currentJointValues.clear();
                 jointPhiIncomings.clear();
-                for (TryCatchJoint joint : outputJoints.get(i)) {
-                    for (Variable jointSource : joint.getSourceVariables()) {
-                        joints.computeIfAbsent(jointSource, x -> new ArrayList<>()).add(joint.getReceiver());
+
+                for (TryCatchBlock tryCatch : block.getTryCatchBlocks()) {
+                    for (TryCatchJoint joint : tryCatch.getJoints()) {
+                        for (Variable jointSource : joint.getSourceVariables()) {
+                            joints.computeIfAbsent(jointSource, x -> new ArrayList<>()).add(joint.getReceiver());
+                        }
+                        int receiver = joint.getReceiver().getIndex();
+                        currentJointValues.put(joint.getReceiver(), program.variableAt(firstJointValues[receiver]));
+                        jointPhiIncomings.put(joint.getReceiver(), new ArrayList<>());
                     }
-                    int receiver = joint.getReceiver().getIndex();
-                    currentJointValues.put(joint.getReceiver(), program.variableAt(firstJointValues[receiver]));
-                    jointPhiIncomings.put(joint.getReceiver(), new ArrayList<>());
                 }
 
                 for (PhiReader phi : block.readPhis()) {
@@ -221,6 +216,11 @@ class LLVMMethodRenderer {
                                 + incoming.getSource().getIndex() + ".exit ]");
                     }
                     appendable.append("\n");
+                }
+
+                if (block.getExceptionVariable() != null) {
+                    String exception = "%v" + block.getExceptionVariable().getIndex();
+                    emitted.add(exception + " = call i8* @teavm_getException()");
                 }
 
                 currentBlock = block;
@@ -309,11 +309,6 @@ class LLVMMethodRenderer {
             for (int successor : cfg.outgoingEdges(i)) {
                 currentLiveOut.or(livenessAnalyzer.liveIn(successor));
             }
-            for (TryCatchBlock tryCatch : block.getTryCatchBlocks()) {
-                if (tryCatch.getExceptionVariable() != null) {
-                    currentLiveOut.clear(tryCatch.getExceptionVariable().getIndex());
-                }
-            }
             for (int j = block.getInstructions().size() - 1; j >= 0; --j) {
                 Instruction insn = block.getInstructions().get(j);
                 insn.acceptVisitor(defExtractor);
@@ -332,6 +327,9 @@ class LLVMMethodRenderer {
                     csLiveIn.clear(0, method.parameterCount() + 1);
                     blockLiveIn.put(j, csLiveIn);
                 }
+            }
+            if (block.getExceptionVariable() != null) {
+                currentLiveOut.clear(block.getExceptionVariable().getIndex());
             }
         }
 
@@ -391,17 +389,9 @@ class LLVMMethodRenderer {
         for (int i = 0; i < tryCatchBlocks.size(); ++i) {
             TryCatchBlock tryCatch = tryCatchBlocks.get(i);
             emitted.add(handlerLabels.get(i) + ":");
-            if (tryCatch.getExceptionVariable() != null) {
-                String exception = "%t" + temporaryVariable++;
-                emitted.add(exception + " = call i8* @teavm_getException()");
-                exceptionHandlerPhis.get(i).add(exception + ", %" + handlerLabels.get(i));
-            }
             emitted.add("br label %b" + currentBlock.getIndex() + ".catch." + i);
 
-            for (TryCatchJoint joint : tryCatch.getHandler().getTryCatchJoints()) {
-                if (joint.getSource() != currentBlock) {
-                    continue;
-                }
+            for (TryCatchJoint joint : tryCatch.getJoints()) {
                 String sourceVariable = "%v" + currentJointValues.get(joint.getReceiver()).getIndex();
                 String sourceBlock = "%" + handlerLabels.get(i);
                 jointPhiIncomings.get(joint.getReceiver()).add(sourceVariable + ", " + sourceBlock);
@@ -431,18 +421,6 @@ class LLVMMethodRenderer {
                 }
             }
 
-            List<String> incomings = exceptionHandlerPhis.get(i);
-            if (tryCatch.getExceptionVariable() != null) {
-                if (!incomings.isEmpty()) {
-                    String incomingsText = incomings.stream()
-                            .map(incoming -> "[ " + incoming + " ]")
-                            .collect(Collectors.joining(", "));
-                    emitted.add("%v" + tryCatch.getExceptionVariable().getIndex() + " = phi i8* " + incomingsText);
-                } else {
-                    emitted.add("%v" + tryCatch.getExceptionVariable().getIndex() + " = bitcast i8* null to i8*");
-                }
-            }
-
             emitted.add("br label %b" + tryCatch.getHandler().getIndex());
         }
     }
@@ -467,6 +445,7 @@ class LLVMMethodRenderer {
             first.initialized[i] = true;
         }
         stack[depth++] = first;
+        List<List<TryCatchJoint>> inputJoints = ProgramUtils.getInputJoints(program);
 
         while (depth > 0) {
             Step step = stack[--depth];
@@ -477,15 +456,18 @@ class LLVMMethodRenderer {
             for (Phi phi : block.getPhis()) {
                 initialized[phi.getReceiver().getIndex()] = true;
             }
-            for (TryCatchJoint joint : block.getTryCatchJoints()) {
+            for (TryCatchJoint joint : inputJoints.get(node)) {
                 initialized[joint.getReceiver().getIndex()] = true;
             }
 
-            for (TryCatchJoint outputJoint : outputJoints.get(node)) {
-                for (Variable variable : outputJoint.getSourceVariables()) {
-                    if (initialized[variable.getIndex()]) {
-                        result[outputJoint.getReceiver().getIndex()] = variable.getIndex();
-                        break;
+            for (TryCatchBlock tryCatch : block.getTryCatchBlocks()) {
+                for (TryCatchJoint joint : tryCatch.getJoints()) {
+                    Variable initializedVar = joint.getSourceVariables().stream()
+                            .filter(variable -> initialized[variable.getIndex()])
+                            .findFirst()
+                            .orElse(null);
+                    if (initializedVar != null) {
+                        result[joint.getReceiver().getIndex()] = initializedVar.getIndex();
                     }
                 }
             }
