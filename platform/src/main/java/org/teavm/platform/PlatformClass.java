@@ -16,9 +16,11 @@
 package org.teavm.platform;
 
 import static org.teavm.platform.Platform.getPlatformString;
+import org.teavm.javascript.spi.GeneratedBy;
 import org.teavm.jso.JSBody;
 import org.teavm.jso.JSObject;
 import org.teavm.jso.JSProperty;
+import org.teavm.platform.plugin.PlatformClassGenerator;
 
 public abstract class PlatformClass implements JSObject {
     public static final PlatformClass BOOLEAN = createPrimitiveClass(getPlatformString("boolean"),
@@ -79,4 +81,7 @@ public abstract class PlatformClass implements JSObject {
 
     @JSBody(params = "data", script = "return new this(data);")
     public native PlatformObject newArrayInstance(JSObject data);
+
+    @GeneratedBy(PlatformClassGenerator.class)
+    public final native Class<?> asJavaClass();
 }

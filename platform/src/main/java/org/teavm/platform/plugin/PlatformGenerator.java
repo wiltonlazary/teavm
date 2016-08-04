@@ -37,10 +37,6 @@ import org.teavm.platform.Platform;
 import org.teavm.platform.PlatformClass;
 import org.teavm.platform.PlatformRunnable;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class PlatformGenerator implements Generator, Injector, DependencyPlugin {
     @Override
     public void methodReached(DependencyAgent agent, MethodDependency method, CallLocation location) {
@@ -77,7 +73,7 @@ public class PlatformGenerator implements Generator, Injector, DependencyPlugin 
                 break;
             case "getPlatformClass": {
                 Expr arg = context.getArgument(0);
-                if (!(arg instanceof ConstantExpr) || ((ConstantExpr) arg).getValue() instanceof ValueType.Object)  {
+                if (!(arg instanceof ConstantExpr) || !(((ConstantExpr) arg).getValue() instanceof ValueType.Object))  {
                     throw new IllegalArgumentException("Calling " + methodRef + " with non-constant argument");
                 }
                 ValueType.Object type = (ValueType.Object) ((ConstantExpr) arg).getValue();
@@ -86,11 +82,13 @@ public class PlatformGenerator implements Generator, Injector, DependencyPlugin 
             }
             case "getPlatformString": {
                 Expr arg = context.getArgument(0);
-                if (!(arg instanceof ConstantExpr) || ((ConstantExpr) arg).getValue() instanceof String)  {
+                if (!(arg instanceof ConstantExpr) || !(((ConstantExpr) arg).getValue() instanceof String))  {
                     throw new IllegalArgumentException("Calling " + methodRef + " with non-constant argument");
                 }
                 String value = (String) ((ConstantExpr) arg).getValue();
+                context.getWriter().append('"');
                 context.writeEscaped(value);
+                context.getWriter().append('"');
                 break;
             }
         }

@@ -15,7 +15,6 @@
  */
 package org.teavm.classlib.java.lang;
 
-import static org.teavm.platform.PlatformString.asString;
 import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
@@ -66,7 +65,7 @@ public class TClass<T> extends TObject implements TAnnotatedElement {
 
     public TString getName() {
         if (name == null) {
-            name = TString.wrap(asString(platformClass.getMetadata().getName()));
+            name = TString.wrap(platformClass.getMetadata().getName().asJavaString());
         }
         return name;
     }
@@ -77,7 +76,7 @@ public class TClass<T> extends TObject implements TAnnotatedElement {
                 simpleName = getComponentType().getSimpleName().concat(TString.wrap("[]"));
                 return simpleName;
             }
-            String name = asString(platformClass.getMetadata().getName());
+            String name = platformClass.getMetadata().getName().asJavaString();
             int lastDollar = name.lastIndexOf('$');
             if (lastDollar != -1) {
                 name = name.substring(lastDollar + 1);

@@ -1,5 +1,5 @@
 /*
- *  Copyright 2015 Alexey Andreev.
+ *  Copyright 2016 Alexey Andreev.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -15,12 +15,12 @@
  */
 package org.teavm.platform;
 
-import org.teavm.jso.JSObject;
+public final class PlatformLongDivisionResult {
+    public final PlatformLong quotient;
+    public final PlatformLong remainder;
 
-/**
- *
- * @author Alexey Andreev
- */
-interface PlatformStringClass extends JSObject {
-    PlatformString fromCharCode(int charCode);
+    public PlatformLongDivisionResult(PlatformLong quotient, PlatformLong remainder) {
+        this.quotient = quotient;
+        this.remainder = remainder;
+    }
 }

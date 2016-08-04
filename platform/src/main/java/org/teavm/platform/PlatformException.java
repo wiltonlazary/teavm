@@ -15,10 +15,15 @@
  */
 package org.teavm.platform;
 
+import org.teavm.javascript.spi.Remove;
 import org.teavm.jso.JSBody;
 import org.teavm.jso.JSObject;
 
 public abstract class PlatformException implements JSObject {
+    @Remove
+    private PlatformException() {
+    }
+
     @JSBody(params = "exception", script = ""
             + "var err = ex.$jsException;\n"
             + "if (!err) {\n"

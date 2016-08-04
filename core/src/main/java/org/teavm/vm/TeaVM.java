@@ -38,12 +38,14 @@ import org.teavm.codegen.AliasProvider;
 import org.teavm.codegen.DefaultAliasProvider;
 import org.teavm.codegen.DefaultNamingStrategy;
 import org.teavm.codegen.MinifyingAliasProvider;
+import org.teavm.codegen.PlatformNames;
 import org.teavm.codegen.SourceWriter;
 import org.teavm.codegen.SourceWriterBuilder;
 import org.teavm.common.ServiceRepository;
 import org.teavm.debugging.information.DebugInformationEmitter;
 import org.teavm.debugging.information.SourceLocation;
 import org.teavm.dependency.BootstrapMethodSubstitutor;
+import org.teavm.dependency.ClassDependency;
 import org.teavm.dependency.DependencyChecker;
 import org.teavm.dependency.DependencyInfo;
 import org.teavm.dependency.DependencyListener;
@@ -70,10 +72,12 @@ import org.teavm.model.ClassReader;
 import org.teavm.model.ClassReaderSource;
 import org.teavm.model.ElementHolder;
 import org.teavm.model.ElementModifier;
+import org.teavm.model.FieldReader;
 import org.teavm.model.InstructionLocation;
 import org.teavm.model.ListableClassHolderSource;
 import org.teavm.model.ListableClassReaderSource;
 import org.teavm.model.MethodHolder;
+import org.teavm.model.MethodReader;
 import org.teavm.model.MethodReference;
 import org.teavm.model.MutableClassHolderSource;
 import org.teavm.model.Program;
@@ -415,6 +419,7 @@ public class TeaVM implements TeaVMHost, ServiceRepository {
 
         AliasProvider aliasProvider = minifying ? new MinifyingAliasProvider() : new DefaultAliasProvider();
         dependencyChecker.setInterruptor(() -> progressListener.progressReached(0) == TeaVMProgressFeedback.CONTINUE);
+        includeRuntime(dependencyChecker);
         dependencyChecker.linkMethod(new MethodReference(Class.class.getName(), "getClass",
                 ValueType.object("org.teavm.platform.PlatformClass"), ValueType.parse(Class.class)), null).use();
         dependencyChecker.linkMethod(new MethodReference(String.class, "<init>", char[].class, void.class),
@@ -528,6 +533,23 @@ public class TeaVM implements TeaVMHost, ServiceRepository {
             }
         } catch (IOException e) {
             throw new RenderingException("IO Error occured", e);
+        }
+    }
+
+    private void includeRuntime(DependencyChecker dependencyChecker) {
+        String[] runtimeClasses = { PlatformNames.RUNTIME, PlatformNames.CLASS, PlatformNames.EXCEPTION,
+                PlatformNames.OBJECT, PlatformNames.STRING, PlatformNames.LONG };
+        for (String className : runtimeClasses) {
+            ClassDependency cls = dependencyChecker.linkClass(className, null);
+            for (MethodReader method : cls.getClassReader().getMethods()) {
+                if (!method.hasModifier(ElementModifier.NATIVE) && !method.hasModifier(ElementModifier.ABSTRACT)
+                        && !method.getName().startsWith("<init>")) {
+                    dependencyChecker.linkMethod(method.getReference(), null).use();
+                }
+            }
+            for (FieldReader field : cls.getClassReader().getFields()) {
+                dependencyChecker.linkField(field.getReference(), null);
+            }
         }
     }
 

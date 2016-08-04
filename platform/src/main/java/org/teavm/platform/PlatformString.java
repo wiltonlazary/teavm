@@ -36,15 +36,6 @@ public abstract class PlatformString implements JSObject {
     @JSProperty
     public abstract int getLength();
 
-    public static String asString(PlatformString string) {
-        int length = string.getLength();
-        char[] data = new char[length];
-        for (int i = 0; i < length; ++i) {
-            data[i] = (char) string.charCodeAt(i);
-        }
-        return new String(data);
-    }
-
     @JSBody(params = "other", script = "return this + other;")
     public native PlatformString concat(PlatformString other);
 
@@ -56,7 +47,7 @@ public abstract class PlatformString implements JSObject {
         int length = strings.getLength();
         pool = JSArray.create(length);
         for (int i = 0; i < length; ++i) {
-            pool.set(i, Platform.getPlatformObject(intern(asString(strings.get(i)))));
+            pool.set(i, Platform.getPlatformObject(intern(strings.get(i).asJavaString())));
         }
     }
 
@@ -68,4 +59,26 @@ public abstract class PlatformString implements JSObject {
         }
         return result;
     }
+
+    @JSBody(params = "charCode", script = "return String.fromCharCode(charCode)")
+    public static native PlatformString fromCharCode(int charCode);
+
+    public final String asJavaString() {
+        char[] array = new char[getLength()];
+        for (int i = 0; i < array.length; ++i) {
+            array[i] = (char) charCodeAt(i);
+        }
+        return new String(array);
+    }
+
+    public static PlatformString fromJavaString(String javaString) {
+        PlatformString result = empty();
+        for (int i = 0; i < javaString.length(); ++i) {
+            result = result.concat(fromCharCode(javaString.charAt(i)));
+        }
+        return result;
+    }
+
+    @JSBody(params = {}, script = "return \"\";")
+    private static native PlatformString empty();
 }

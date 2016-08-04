@@ -125,15 +125,14 @@ public final class Platform {
     @PluggableDependency(PlatformGenerator.class)
     public static native int schedule(PlatformRunnable runnable, int timeout);
 
-    public static void killSchedule(int id) {
-        ((PlatformHelper) Window.current()).killSchedule(id);
-    }
+    @JSBody(params = "id", script = "clearTimeout(id);")
+    public static native void killSchedule(int id);
 
     @JSBody(params = {}, script = "return [];")
     public static native <T> PlatformQueue<T> createQueue();
 
     public static PlatformString stringFromCharCode(int charCode) {
-        return ((PlatformHelper) Window.current()).getStringClass().fromCharCode(charCode);
+        return PlatformString.fromCharCode(charCode);
     }
 
     @InjectedBy(PlatformGenerator.class)

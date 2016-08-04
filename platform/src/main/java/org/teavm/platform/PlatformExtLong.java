@@ -16,9 +16,9 @@
 package org.teavm.platform;
 
 class PlatformExtLong {
-    private int lo;
-    private int hi;
-    private int sup;
+    public int lo;
+    public int hi;
+    public int sup;
 
     public PlatformExtLong(int lo, int hi, int sup) {
         this.lo = lo;

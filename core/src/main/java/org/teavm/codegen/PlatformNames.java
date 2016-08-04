@@ -91,12 +91,18 @@ public final class PlatformNames {
     public static final MethodReference STRING_GET_FROM_POOL = new MethodReference(STRING, "getFromPool",
             ValueType.INTEGER, object(OBJECT));
 
-    public static final MethodReference LONG_ADD = new MethodReference(LONG, "add", object(LONG), object(LONG),
-            object(LONG));
     public static final MethodReference LONG_FROM_INT = new MethodReference(LONG, "fromInt", ValueType.INTEGER,
             object(LONG));
     public static final MethodReference LONG_FROM_NUMBER = new MethodReference(LONG, "fromNumber", ValueType.DOUBLE,
             object(LONG));
+    public static final MethodReference LONG_TO_NUMBER = new MethodReference(LONG, "toNumber", ValueType.DOUBLE);
+    public static final MethodReference LONG_TO_INT = new MethodReference(LONG, "toInt", ValueType.INTEGER);
+    public static final MethodReference LONG_NEG = new MethodReference(LONG, "neg", object(LONG));
+    public static final MethodReference LONG_NOT = new MethodReference(LONG, "not", object(LONG));
+    public static final MethodReference LONG_CREATE = new MethodReference(LONG, "create",
+            ValueType.INTEGER, ValueType.INTEGER, object(LONG));
+    public static final MethodReference LONG_COMPARE = new MethodReference(LONG, "compare",
+            object(LONG), ValueType.INTEGER);
 
     public static final MethodReference EXCEPTION_RAISE = new MethodReference(EXCEPTION, "raise", object(OBJECT),
             ValueType.VOID);

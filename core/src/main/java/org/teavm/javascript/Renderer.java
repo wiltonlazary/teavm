@@ -242,11 +242,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
 
     public void renderRuntime() throws RenderingException {
         try {
-            renderRuntimeCls();
-            renderRuntimeString();
-            renderRuntimeUnwrapString();
             renderRuntimeObjcls();
-            renderRuntimeNullCheck();
             renderRuntimeIntern();
             renderRuntimeThreads();
         } catch (NamingException e) {
@@ -254,56 +250,6 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
         } catch (IOException e) {
             throw new RenderingException("IO error", e);
         }
-    }
-
-    private void renderRuntimeCls() throws IOException {
-        writer.append("function $rt_cls(cls)").ws().append("{").softNewLine().indent();
-        writer.append("return ").appendMethodBody("java.lang.Class", "getClass",
-                ValueType.object("org.teavm.platform.PlatformClass"),
-                ValueType.object("java.lang.Class")).append("(cls);")
-                .softNewLine();
-        writer.outdent().append("}").newLine();
-    }
-
-    private void renderRuntimeString() throws IOException {
-        MethodReference stringCons = new MethodReference(String.class, "<init>", char[].class, void.class);
-        writer.append("function $rt_str(str) {").indent().softNewLine();
-        writer.append("if (str===null){").indent().softNewLine();
-        writer.append("return null;").softNewLine();
-        writer.outdent().append("}").softNewLine();
-        writer.append("var characters = $rt_createCharArray(str.length);").softNewLine();
-        writer.append("var charsBuffer = characters.data;").softNewLine();
-        writer.append("for (var i = 0; i < str.length; i = (i + 1) | 0) {").indent().softNewLine();
-        writer.append("charsBuffer[i] = str.charCodeAt(i) & 0xFFFF;").softNewLine();
-        writer.outdent().append("}").softNewLine();
-        writer.append("return ").append(naming.getNameForInit(stringCons)).append("(characters);").softNewLine();
-        writer.outdent().append("}").newLine();
-    }
-
-    private void renderRuntimeUnwrapString() throws IOException {
-        MethodReference stringLen = new MethodReference(String.class, "length", int.class);
-        MethodReference getChars = new MethodReference(String.class, "getChars", int.class, int.class,
-                char[].class, int.class, void.class);
-        writer.append("function $rt_ustr(str) {").indent().softNewLine();
-        writer.append("var result = \"\";").softNewLine();
-        writer.append("var sz = ").appendMethodBody(stringLen).append("(str);").softNewLine();
-        writer.append("var array = $rt_createCharArray(sz);").softNewLine();
-        writer.appendMethodBody(getChars).append("(str, 0, sz, array, 0);").softNewLine();
-        writer.append("for (var i = 0; i < sz; i = (i + 1) | 0) {").indent().softNewLine();
-        writer.append("result += String.fromCharCode(array.data[i]);").softNewLine();
-        writer.outdent().append("}").softNewLine();
-        writer.append("return result;").softNewLine();
-        writer.outdent().append("}").newLine();
-    }
-
-    private void renderRuntimeNullCheck() throws IOException {
-        writer.append("function $rt_nullCheck(val) {").indent().softNewLine();
-        writer.append("if (val === null) {").indent().softNewLine();
-        writer.append("$rt_throw(").append(naming.getNameForInit(new MethodReference(NullPointerException.class,
-                "<init>", void.class))).append("());").softNewLine();
-        writer.outdent().append("}").softNewLine();
-        writer.append("return val;").softNewLine();
-        writer.outdent().append("}").newLine();
     }
 
     private void renderRuntimeIntern() throws IOException {
@@ -330,8 +276,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
     }
 
     private void renderRuntimeAliases() throws IOException {
-        String[] names = { "$rt_throw", "$rt_compare", "$rt_nullCheck", "$rt_cls", "$rt_createArray",
-                "$rt_isInstance", "$rt_nativeThread", "$rt_suspending", "$rt_resuming", "$rt_invalidPointer" };
+        String[] names = { "$rt_nativeThread", "$rt_suspending", "$rt_resuming", "$rt_invalidPointer" };
         boolean first = true;
         for (String name : names) {
             if (!first) {
@@ -420,7 +365,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
         } catch (NamingException e) {
             throw new RenderingException("Error rendering class " + cls.getName() + ". See cause for details", e);
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -470,7 +415,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
         } catch (NamingException e) {
             throw new RenderingException("Error rendering class " + cls.getName() + ". See a cause for details", e);
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
         debugEmitter.emitClass(null);
     }
@@ -546,7 +491,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
         } catch (NamingException e) {
             throw new RenderingException("Error rendering class metadata. See a cause for details", e);
         } catch (IOException e) {
-            throw new RenderingException("IO error occured", e);
+            throw new RenderingException("IO error occurred", e);
         }
     }
 
@@ -1393,12 +1338,12 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
         }
     }
 
-    private void visitBinaryFunction(BinaryExpr expr, String function) {
+    private void visitBinaryFunction(BinaryExpr expr, MethodReference function) {
         try {
             if (expr.getLocation() != null) {
                 pushLocation(expr.getLocation());
             }
-            writer.append(function);
+            writer.appendMethodBody(function);
             writer.append('(');
             precedence = Precedence.min();
             expr.getFirstOperand().acceptVisitor(this);
@@ -1414,6 +1359,16 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
         }
     }
 
+    private void visitLongBinaryFunction(BinaryExpr expr, String name) {
+        visitBinaryFunction(expr, new MethodReference(PlatformNames.LONG, name,
+                ValueType.object(PlatformNames.LONG), ValueType.object(PlatformNames.LONG)));
+    }
+
+    private void visitLongIntBinaryFunction(BinaryExpr expr, String name) {
+        visitBinaryFunction(expr, new MethodReference(PlatformNames.LONG, name, ValueType.INTEGER,
+                ValueType.object(PlatformNames.LONG)));
+    }
+
     @Override
     public void visit(BinaryExpr expr) {
         switch (expr.getOperation()) {
@@ -1421,31 +1376,31 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 visitBinary(expr, "+");
                 break;
             case ADD_LONG:
-                visitBinaryFunction(expr, naming.getFullNameFor(PlatformNames.LONG_ADD));
+                visitLongBinaryFunction(expr, "add");
                 break;
             case SUBTRACT:
                 visitBinary(expr, "-");
                 break;
             case SUBTRACT_LONG:
-                visitBinaryFunction(expr, "Long_sub");
+                visitLongBinaryFunction(expr, "sub");
                 break;
             case MULTIPLY:
                 visitBinary(expr, "*");
                 break;
             case MULTIPLY_LONG:
-                visitBinaryFunction(expr, "Long_mul");
+                visitLongBinaryFunction(expr, "mul");
                 break;
             case DIVIDE:
                 visitBinary(expr, "/");
                 break;
             case DIVIDE_LONG:
-                visitBinaryFunction(expr, "Long_div");
+                visitLongBinaryFunction(expr, "div");
                 break;
             case MODULO:
                 visitBinary(expr, "%");
                 break;
             case MODULO_LONG:
-                visitBinaryFunction(expr, "Long_rem");
+                visitLongBinaryFunction(expr, "rem");
                 break;
             case EQUALS:
                 visitBinary(expr, "==");
@@ -1472,10 +1427,10 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 visitBinary(expr, "!==");
                 break;
             case COMPARE:
-                visitBinaryFunction(expr, naming.getFullNameFor(PlatformNames.RUNTIME_COMPARE));
+                visitBinaryFunction(expr, PlatformNames.RUNTIME_COMPARE);
                 break;
             case COMPARE_LONG:
-                visitBinaryFunction(expr, "Long_compare");
+                visitBinaryFunction(expr, PlatformNames.LONG_COMPARE);
                 break;
             case OR:
                 visitBinary(expr, "||");
@@ -1487,37 +1442,37 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                 visitBinary(expr, "|");
                 break;
             case BITWISE_OR_LONG:
-                visitBinaryFunction(expr, "Long_or");
+                visitLongBinaryFunction(expr, "or");
                 break;
             case BITWISE_AND:
                 visitBinary(expr, "&");
                 break;
             case BITWISE_AND_LONG:
-                visitBinaryFunction(expr, "Long_and");
+                visitLongBinaryFunction(expr, "and");
                 break;
             case BITWISE_XOR:
                 visitBinary(expr, "^");
                 break;
             case BITWISE_XOR_LONG:
-                visitBinaryFunction(expr, "Long_xor");
+                visitLongBinaryFunction(expr, "xor");
                 break;
             case LEFT_SHIFT:
                 visitBinary(expr, "<<");
                 break;
             case LEFT_SHIFT_LONG:
-                visitBinaryFunction(expr, "Long_shl");
+                visitLongIntBinaryFunction(expr, "shl");
                 break;
             case RIGHT_SHIFT:
                 visitBinary(expr, ">>");
                 break;
             case RIGHT_SHIFT_LONG:
-                visitBinaryFunction(expr, "Long_shr");
+                visitLongIntBinaryFunction(expr, "shr");
                 break;
             case UNSIGNED_RIGHT_SHIFT:
                 visitBinary(expr, ">>>");
                 break;
             case UNSIGNED_RIGHT_SHIFT_LONG:
-                visitBinaryFunction(expr, "Long_shru");
+                visitLongIntBinaryFunction(expr, "shru");
                 break;
         }
     }
@@ -1559,36 +1514,37 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                     writer.append(".length");
                     break;
                 case INT_TO_LONG:
-                    writer.appendMethodBody(PlatformNames.LONG_FROM_INT);
+                    writer.appendMethodBody(PlatformNames.LONG_FROM_INT).append('(');
                     precedence = Precedence.min();
                     expr.getOperand().acceptVisitor(this);
                     writer.append(')');
                     break;
                 case NUM_TO_LONG:
-                    writer.appendMethodBody(PlatformNames.LONG_FROM_NUMBER);
+                    writer.appendMethodBody(PlatformNames.LONG_FROM_NUMBER).append('(');
                     precedence = Precedence.min();
                     expr.getOperand().acceptVisitor(this);
                     writer.append(')');
                     break;
                 case LONG_TO_NUM:
-                    writer.append("Long_toNumber(");
+                    writer.appendMethodBody(PlatformNames.LONG_TO_NUMBER).append('(');
                     precedence = Precedence.min();
                     expr.getOperand().acceptVisitor(this);
                     writer.append(')');
                     break;
                 case LONG_TO_INT:
-                    precedence = Precedence.MEMBER_ACCESS;
+                    writer.appendMethodBody(PlatformNames.LONG_TO_INT).append('(');
+                    precedence = Precedence.min();
                     expr.getOperand().acceptVisitor(this);
-                    writer.append(".lo");
+                    writer.append(')');
                     break;
                 case NEGATE_LONG:
-                    writer.append("Long_neg(");
+                    writer.appendMethodBody(PlatformNames.LONG_NEG).append('(');
                     precedence = Precedence.min();
                     expr.getOperand().acceptVisitor(this);
                     writer.append(')');
                     break;
                 case NOT_LONG:
-                    writer.append("Long_not(");
+                    writer.appendMethodBody(PlatformNames.LONG_NOT).append('(');
                     precedence = Precedence.min();
                     expr.getOperand().acceptVisitor(this);
                     writer.append(')');
@@ -1712,11 +1668,11 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
         } else if (cst instanceof Long) {
             long value = (Long) cst;
             if (value == 0) {
-                return "Long_ZERO";
+                return naming.getFullNameFor(new FieldReference(PlatformNames.LONG, "ZERO"));
             } else if ((int) value == value) {
-                return "Long_fromInt(" + value + ")";
+                return naming.getFullNameFor(PlatformNames.LONG_FROM_INT);
             } else {
-                return "new Long(" + (value & 0xFFFFFFFFL) + ", " + (value >>> 32) + ")";
+                return naming.getFullNameFor(PlatformNames.LONG_CREATE);
             }
         } else if (cst instanceof Character) {
             return Integer.toString((Character) cst);
