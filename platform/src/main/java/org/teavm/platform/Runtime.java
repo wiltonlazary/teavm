@@ -16,10 +16,13 @@
 package org.teavm.platform;
 
 import org.teavm.jso.JSBody;
+import org.teavm.jso.JSFunctor;
 import org.teavm.jso.JSObject;
 import org.teavm.jso.core.JSArray;
 import org.teavm.jso.core.JSArrayReader;
+import org.teavm.jso.core.JSMap;
 import org.teavm.jso.core.JSNumber;
+import org.teavm.jso.core.JSString;
 import org.teavm.jso.typedarrays.Float32Array;
 import org.teavm.jso.typedarrays.Float64Array;
 import org.teavm.jso.typedarrays.Int16Array;
@@ -330,7 +333,55 @@ public final class Runtime {
         return val;
     }
 
-    private interface PrimitiveArrayFactory {
+    @JSFunctor
+    private interface PrimitiveArrayFactory extends JSObject {
         PlatformObject createArray(int size);
     }
+
+    public static void readMetadata(JSArray<JSObject> data) {
+        for (int i = 0; i < data.getLength(); i += 7) {
+            PlatformClass cls = (PlatformClass) data.get(i);
+            PlatformClass.init(cls);
+
+            PlatformClassMutableMetadata metadata = cls.getMetadata().cast();
+
+            metadata.setName(data.get(i + 1).cast());
+            metadata.setBinaryName(Platform.getPlatformString("L").concat(metadata.getName().concat(
+                    Platform.getPlatformString(";"))));
+
+            PlatformClass superclass = (PlatformClass) data.get(i + 2);
+            metadata.setSuperclass(JSNumber.valueOf(0).cast() != superclass ? superclass : null);
+            metadata.setSupertypes(data.get(i + 3).cast());
+
+            if (metadata.getSuperclass() != null) {
+                JSArray<PlatformClass> mutableSupertypes = metadata.getSupertypes().cast();
+                mutableSupertypes.push(metadata.getSuperclass());
+                cls.setPrototype(metadata.getSuperclass().newInstance());
+            }
+            cls.getPrototype().setPlatformClass(cls);
+
+            int flags = ((JSNumber) data.get(i + 4)).intValue();
+            metadata.setEnum((flags & 1) != 0);
+
+            JSObject clinit = data.get(i + 5);
+            cls.setClinit(clinit != JSNumber.valueOf(0) ? clinit : emptyFunction());
+
+            JSArrayReader<JSArrayReader<JSObject>> virtualMethods = data.get(i + 6).cast();
+            JSMap<JSObject> prototypeAsMap = cls.getPrototype().cast();
+            for (int j = 0; j < virtualMethods.getLength(); j += 2) {
+                JSObject nameObject = virtualMethods.get(j);
+                JSObject func = virtualMethods.get(j + 1);
+                JSArray<JSString> names = JSArray.isInstance(nameObject)
+                        ? nameObject.cast()
+                        : JSArray.singleton(nameObject.cast());
+
+                for (int k = 0; k < names.getLength(); ++k) {
+                    prototypeAsMap.put(names.get(k), func);
+                }
+            }
+        }
+    }
+
+    @JSBody(params = {}, script = "return function() {};")
+    private static native JSObject emptyFunction();
 }

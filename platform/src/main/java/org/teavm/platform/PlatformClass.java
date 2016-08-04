@@ -57,7 +57,9 @@ public abstract class PlatformClass implements JSObject {
             + "    binaryName: null,"
             + "    enum: false,"
             + "    primitive: false"
-            + "};")
+            + "};"
+            + "cls.$array = null;"
+            + "cls.classObject = null;")
     static native void init(PlatformClass cls);
 
     @JSBody(params = {}, script = "return function() {};")
@@ -84,4 +86,16 @@ public abstract class PlatformClass implements JSObject {
 
     @GeneratedBy(PlatformClassGenerator.class)
     public final native Class<?> asJavaClass();
+
+    @JSProperty
+    abstract MutablePlatformObject getPrototype();
+
+    @JSProperty
+    abstract void setPrototype(PlatformObject prototype);
+
+    @JSBody(params = {}, script = "return new this();")
+    public native final PlatformObject newInstance();
+
+    @JSProperty("$clinit")
+    abstract void setClinit(JSObject initializer);
 }

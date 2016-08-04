@@ -26,7 +26,7 @@ $rt_startThread(function() {
     loop: while (true) { switch (ptr) {
     case 0:
         try {
-            runTest();
+            TeaVM.runTest();
         } catch (e) {
             message = {};
             makeErrorMessage(message, e);
@@ -50,8 +50,8 @@ function makeErrorMessage(message, e) {
     if (e.$javaException && e.$javaException.constructor.$meta) {
         message.exception = e.$javaException.constructor.$meta.name;
         message.stack = e.$javaException.constructor.$meta.name + ": ";
-        var exceptionMessage = extractException(e.$javaException);
+        var exceptionMessage = TeaVM.extractException(e.$javaException);
         message.stack += exceptionMessage ? $rt_ustr(exceptionMessage) : "";
     }
     message.stack += "\n" + stack;
-};
+}

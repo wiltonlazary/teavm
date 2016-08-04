@@ -514,25 +514,46 @@ public class TeaVM implements TeaVMHost, ServiceRepository {
             for (RendererListener listener : rendererListeners) {
                 listener.begin(renderer, target);
             }
+
+            sourceWriter.append("var TeaVM = (function($global$)").ws().append("{").indent().newLine();
             sourceWriter.append("\"use strict\";").newLine();
             renderer.render(clsNodes);
             renderer.renderStringPool();
             renderer.renderStringConstants();
+            renderer.renderRuntimeInitializer();
+
+            sourceWriter.append("return").ws().append("{").indent();
+            boolean first = true;
             for (Map.Entry<String, TeaVMEntryPoint> entry : entryPoints.entrySet()) {
-                sourceWriter.append("var ").append(entry.getKey()).ws().append("=").ws();
+                if (!first) {
+                    sourceWriter.append(",");
+                }
+                first = false;
+                sourceWriter.softNewLine();
+                sourceWriter.append(entry.getKey()).ws().append(":").ws();
                 MethodReference ref = entry.getValue().reference;
                 sourceWriter.append(naming.getFullNameFor(ref));
-                sourceWriter.append(";").newLine();
             }
             for (Map.Entry<String, String> entry : exportedClasses.entrySet()) {
-                sourceWriter.append("var ").append(entry.getKey()).ws().append("=").ws()
-                        .appendClass(entry.getValue()).append(";").newLine();
+                if (!first) {
+                    sourceWriter.append(",");
+                }
+                first = false;
+                sourceWriter.softNewLine();
+                sourceWriter.append(entry.getKey()).ws().append(":").ws()
+                        .appendClass(entry.getValue()).newLine();
             }
+            if (!first) {
+                sourceWriter.softNewLine();
+            }
+            sourceWriter.outdent().append("}").newLine();
+
+            sourceWriter.outdent().append("})(this);").newLine();
             for (RendererListener listener : rendererListeners) {
                 listener.complete();
             }
         } catch (IOException e) {
-            throw new RenderingException("IO Error occured", e);
+            throw new RenderingException("IO Error occurred", e);
         }
     }
 

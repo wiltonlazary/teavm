@@ -92,4 +92,10 @@ public abstract class JSArray<T extends JSObject> implements JSArrayReader<T> {
         }
         return array;
     }
+
+    @JSBody(params = "item", script = "return [item];")
+    public static native <S extends JSObject> JSArray<S> singleton(S item);
+
+    @JSBody(params = "object", script = "return object instanceof Array;")
+    public static native boolean isInstance(JSObject object);
 }

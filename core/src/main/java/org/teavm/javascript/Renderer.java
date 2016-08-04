@@ -211,6 +211,24 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
         this.properties.putAll(properties);
     }
 
+    public void renderRuntimeInitializer() throws RenderingException {
+        try {
+            String[] runtimeClasses = {PlatformNames.RUNTIME, PlatformNames.CLASS, PlatformNames.EXCEPTION,
+                    PlatformNames.OBJECT, PlatformNames.STRING, PlatformNames.LONG};
+            for (String className : runtimeClasses) {
+                ClassReader cls = classSource.get(className);
+                if (cls == null) {
+                    continue;
+                }
+                if (cls.getMethod(new MethodDescriptor("<clinit>", ValueType.VOID)) != null) {
+                    writer.appendClass(cls.getName()).append("_$callClinit();").softNewLine();
+                }
+            }
+        } catch (IOException e) {
+            throw new RenderingException("IO error", e);
+        }
+    }
+
     public void renderStringPool() throws RenderingException {
         if (stringPool.isEmpty()) {
             return;
@@ -238,54 +256,6 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
         } catch (IOException e) {
             throw new RenderingException("IO error", e);
         }
-    }
-
-    public void renderRuntime() throws RenderingException {
-        try {
-            renderRuntimeObjcls();
-            renderRuntimeIntern();
-            renderRuntimeThreads();
-        } catch (NamingException e) {
-            throw new RenderingException("Error rendering runtime methods. See a cause for details", e);
-        } catch (IOException e) {
-            throw new RenderingException("IO error", e);
-        }
-    }
-
-    private void renderRuntimeIntern() throws IOException {
-        writer.append("function $rt_intern(str) {").indent().softNewLine();
-        writer.append("return ").appendMethodBody(new MethodReference(String.class, "intern", String.class))
-            .append("(str);").softNewLine();
-        writer.outdent().append("}").newLine();
-    }
-
-    private void renderRuntimeObjcls() throws IOException {
-        writer.append("function $rt_objcls() { return ").appendClass("java.lang.Object").append("; }").newLine();
-    }
-
-    private void renderRuntimeThreads() throws IOException {
-        writer.append("function $rt_getThread()").ws().append("{").indent().softNewLine();
-        writer.append("return ").appendMethodBody(Thread.class, "currentThread", Thread.class).append("();")
-                .softNewLine();
-        writer.outdent().append("}").newLine();
-
-        writer.append("function $rt_setThread(t)").ws().append("{").indent().softNewLine();
-        writer.append("return ").appendMethodBody(Thread.class, "setCurrentThread", Thread.class, void.class)
-                .append("(t);").softNewLine();
-        writer.outdent().append("}").newLine();
-    }
-
-    private void renderRuntimeAliases() throws IOException {
-        String[] names = { "$rt_nativeThread", "$rt_suspending", "$rt_resuming", "$rt_invalidPointer" };
-        boolean first = true;
-        for (String name : names) {
-            if (!first) {
-                writer.softNewLine();
-            }
-            first = false;
-            writer.append("var ").appendFunction(name).ws().append('=').ws().append(name).append(";").softNewLine();
-        }
-        writer.newLine();
     }
 
     public void render(List<ClassNode> classes) throws RenderingException {

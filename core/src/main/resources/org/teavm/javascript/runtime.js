@@ -15,12 +15,6 @@
  */
 "use strict";
 
-function $rt_assertNotNaN(value) {
-    if (typeof value === 'number' && isNaN(value)) {
-        throw "NaN";
-    }
-    return value;
-}
 var $rt_stdoutBuffer = "";
 function $rt_putStdout(ch) {
     if (ch == 0xA) {
