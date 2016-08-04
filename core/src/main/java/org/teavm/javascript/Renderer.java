@@ -127,6 +127,7 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
     private final List<String> cachedVariableNames = new ArrayList<>();
     private boolean end;
     private int currentPart;
+    private List<PostponedFieldInitializer> postponedFieldInitializers = new ArrayList<>();
 
     private static class InjectorHolder {
         public final Injector injector;
@@ -228,6 +229,120 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
         }
     }
 
+    public void renderStringConstants() throws RenderingException {
+        try {
+            for (PostponedFieldInitializer initializer : postponedFieldInitializers) {
+                writer.appendStaticField(initializer.field).ws().append("=").ws()
+                        .append(constantToString(initializer.value)).append(";").softNewLine();
+            }
+        } catch (IOException e) {
+            throw new RenderingException("IO error", e);
+        }
+    }
+
+    public void renderRuntime() throws RenderingException {
+        try {
+            renderRuntimeCls();
+            renderRuntimeString();
+            renderRuntimeUnwrapString();
+            renderRuntimeObjcls();
+            renderRuntimeNullCheck();
+            renderRuntimeIntern();
+            renderRuntimeThreads();
+        } catch (NamingException e) {
+            throw new RenderingException("Error rendering runtime methods. See a cause for details", e);
+        } catch (IOException e) {
+            throw new RenderingException("IO error", e);
+        }
+    }
+
+    private void renderRuntimeCls() throws IOException {
+        writer.append("function $rt_cls(cls)").ws().append("{").softNewLine().indent();
+        writer.append("return ").appendMethodBody("java.lang.Class", "getClass",
+                ValueType.object("org.teavm.platform.PlatformClass"),
+                ValueType.object("java.lang.Class")).append("(cls);")
+                .softNewLine();
+        writer.outdent().append("}").newLine();
+    }
+
+    private void renderRuntimeString() throws IOException {
+        MethodReference stringCons = new MethodReference(String.class, "<init>", char[].class, void.class);
+        writer.append("function $rt_str(str) {").indent().softNewLine();
+        writer.append("if (str===null){").indent().softNewLine();
+        writer.append("return null;").softNewLine();
+        writer.outdent().append("}").softNewLine();
+        writer.append("var characters = $rt_createCharArray(str.length);").softNewLine();
+        writer.append("var charsBuffer = characters.data;").softNewLine();
+        writer.append("for (var i = 0; i < str.length; i = (i + 1) | 0) {").indent().softNewLine();
+        writer.append("charsBuffer[i] = str.charCodeAt(i) & 0xFFFF;").softNewLine();
+        writer.outdent().append("}").softNewLine();
+        writer.append("return ").append(naming.getNameForInit(stringCons)).append("(characters);").softNewLine();
+        writer.outdent().append("}").newLine();
+    }
+
+    private void renderRuntimeUnwrapString() throws IOException {
+        MethodReference stringLen = new MethodReference(String.class, "length", int.class);
+        MethodReference getChars = new MethodReference(String.class, "getChars", int.class, int.class,
+                char[].class, int.class, void.class);
+        writer.append("function $rt_ustr(str) {").indent().softNewLine();
+        writer.append("var result = \"\";").softNewLine();
+        writer.append("var sz = ").appendMethodBody(stringLen).append("(str);").softNewLine();
+        writer.append("var array = $rt_createCharArray(sz);").softNewLine();
+        writer.appendMethodBody(getChars).append("(str, 0, sz, array, 0);").softNewLine();
+        writer.append("for (var i = 0; i < sz; i = (i + 1) | 0) {").indent().softNewLine();
+        writer.append("result += String.fromCharCode(array.data[i]);").softNewLine();
+        writer.outdent().append("}").softNewLine();
+        writer.append("return result;").softNewLine();
+        writer.outdent().append("}").newLine();
+    }
+
+    private void renderRuntimeNullCheck() throws IOException {
+        writer.append("function $rt_nullCheck(val) {").indent().softNewLine();
+        writer.append("if (val === null) {").indent().softNewLine();
+        writer.append("$rt_throw(").append(naming.getNameForInit(new MethodReference(NullPointerException.class,
+                "<init>", void.class))).append("());").softNewLine();
+        writer.outdent().append("}").softNewLine();
+        writer.append("return val;").softNewLine();
+        writer.outdent().append("}").newLine();
+    }
+
+    private void renderRuntimeIntern() throws IOException {
+        writer.append("function $rt_intern(str) {").indent().softNewLine();
+        writer.append("return ").appendMethodBody(new MethodReference(String.class, "intern", String.class))
+            .append("(str);").softNewLine();
+        writer.outdent().append("}").newLine();
+    }
+
+    private void renderRuntimeObjcls() throws IOException {
+        writer.append("function $rt_objcls() { return ").appendClass("java.lang.Object").append("; }").newLine();
+    }
+
+    private void renderRuntimeThreads() throws IOException {
+        writer.append("function $rt_getThread()").ws().append("{").indent().softNewLine();
+        writer.append("return ").appendMethodBody(Thread.class, "currentThread", Thread.class).append("();")
+                .softNewLine();
+        writer.outdent().append("}").newLine();
+
+        writer.append("function $rt_setThread(t)").ws().append("{").indent().softNewLine();
+        writer.append("return ").appendMethodBody(Thread.class, "setCurrentThread", Thread.class, void.class)
+                .append("(t);").softNewLine();
+        writer.outdent().append("}").newLine();
+    }
+
+    private void renderRuntimeAliases() throws IOException {
+        String[] names = { "$rt_throw", "$rt_compare", "$rt_nullCheck", "$rt_cls", "$rt_createArray",
+                "$rt_isInstance", "$rt_nativeThread", "$rt_suspending", "$rt_resuming", "$rt_invalidPointer" };
+        boolean first = true;
+        for (String name : names) {
+            if (!first) {
+                writer.softNewLine();
+            }
+            first = false;
+            writer.append("var ").appendFunction(name).ws().append('=').ws().append(name).append(";").softNewLine();
+        }
+        writer.newLine();
+    }
+
     public void render(List<ClassNode> classes) throws RenderingException {
         if (minifying) {
             NamingOrderer orderer = new NamingOrderer();
@@ -294,6 +409,11 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
                     value = getDefaultValue(field.getType());
                 }
                 FieldReference fieldRef = new FieldReference(cls.getName(), field.getName());
+                if (value instanceof String) {
+                    constantToString(value);
+                    postponedFieldInitializers.add(new PostponedFieldInitializer(fieldRef, (String) value));
+                    value = null;
+                }
                 writer.append("var ").appendStaticField(fieldRef).ws().append("=").ws()
                         .append(constantToString(value)).append(";").softNewLine();
             }
@@ -2281,5 +2401,15 @@ public class Renderer implements ExprVisitor, StatementVisitor, RenderingContext
     @Override
     public <T> T getService(Class<T> type) {
         return services.getService(type);
+    }
+
+    private static class PostponedFieldInitializer {
+        FieldReference field;
+        String value;
+
+        public PostponedFieldInitializer(FieldReference field, String value) {
+            this.field = field;
+            this.value = value;
+        }
     }
 }
