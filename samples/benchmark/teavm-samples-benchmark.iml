@@ -65,4 +65,10 @@
     <orderEntry type="library" scope="PROVIDED" name="Maven: org.netbeans.html:net.java.html.geo:1.2.3" level="project" />
     <orderEntry type="library" scope="PROVIDED" name="Maven: org.netbeans.html:net.java.html.sound:1.2.3" level="project" />
   </component>
+  <component name="teavm">
+    <option name="enabled" value="true" />
+    <option name="mainClass" value="org.teavm.samples.benchmark.teavm.BenchmarkStarter" />
+    <option name="minifying" value="true" />
+    <option name="targetDirectory" value="$MODULE_DIR$/target/generated/js/teavm" />
+  </component>
 </module>

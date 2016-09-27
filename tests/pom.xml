@@ -50,10 +50,8 @@
     </dependency>
     <dependency>
       <groupId>org.teavm</groupId>
-      <artifactId>teavm-jso-apis</artifactId>
+      <artifactId>teavm-jsinterop</artifactId>
       <version>${project.version}</version>
-      <classifier>tests</classifier>
-      <scope>compile</scope>
     </dependency>
     <dependency>
       <groupId>org.teavm</groupId>

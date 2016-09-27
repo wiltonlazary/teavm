@@ -26,10 +26,6 @@ import org.teavm.model.MethodDescriptor;
 import org.teavm.vm.BuildTarget;
 import org.teavm.vm.spi.RendererListener;
 
-/**
- *
- * @author Alexey Andreev
- */
 class JSAliasRenderer implements RendererListener {
     private static String variableChars = "abcdefghijklmnopqrstuvwxyz";
     private JSDependencyListener dependencyListener;
@@ -41,9 +37,9 @@ class JSAliasRenderer implements RendererListener {
     }
 
     @Override
-    public void begin(RenderingManager context, BuildTarget buildTarget) throws IOException {
-        writer = context.getWriter();
-        classSource = context.getClassSource();
+    public void begin(RenderingManager manager, BuildTarget buildTarget) throws IOException {
+        writer = manager.getWriter();
+        classSource = manager.getClassSource();
     }
 
     @Override

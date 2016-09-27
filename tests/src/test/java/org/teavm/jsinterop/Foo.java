@@ -1,5 +1,5 @@
 /*
- *  Copyright 2014 Alexey Andreev.
+ *  Copyright 2016 Alexey Andreev.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -13,14 +13,16 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package org.teavm.vm.spi;
+package org.teavm.jsinterop;
 
-import java.io.IOException;
-import org.teavm.backend.javascript.rendering.RenderingManager;
-import org.teavm.vm.BuildTarget;
+import jsinterop.annotations.JsType;
 
-public interface RendererListener {
-    void begin(RenderingManager manager, BuildTarget buildTarget) throws IOException;
+@JsType
+public class Foo {
+    public void foo(int x) {
+    }
 
-    void complete() throws IOException;
+    public String bar() {
+        return "";
+    }
 }

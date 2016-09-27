@@ -17,6 +17,7 @@
         <module name="teavm-extras-slf4j" />
         <module name="teavm-html4j" />
         <module name="teavm-interop" />
+        <module name="teavm-jsinterop" />
         <module name="teavm-jso" />
         <module name="teavm-jso-apis" />
         <module name="teavm-jso-impl" />
@@ -46,6 +47,7 @@
       <module name="teavm-extras-slf4j" target="1.8" />
       <module name="teavm-html4j" target="1.8" />
       <module name="teavm-interop" target="1.8" />
+      <module name="teavm-jsinterop" target="1.8" />
       <module name="teavm-jso" target="1.8" />
       <module name="teavm-jso-apis" target="1.8" />
       <module name="teavm-jso-impl" target="1.8" />

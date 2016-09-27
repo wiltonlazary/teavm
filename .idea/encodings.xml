@@ -7,6 +7,7 @@
     <file url="file://$PROJECT_DIR$/extras-slf4j" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/html4j" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/interop/core" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/jsinterop" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/jso/apis" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/jso/core" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/jso/impl" charset="UTF-8" />

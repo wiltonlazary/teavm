@@ -86,6 +86,7 @@
     <module>jso/core</module>
     <module>jso/apis</module>
     <module>jso/impl</module>
+    <module>jsinterop</module>
     <module>html4j</module>
     <module>samples</module>
     <module>platform</module>
