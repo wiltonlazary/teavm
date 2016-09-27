@@ -19,14 +19,14 @@ import java.io.IOException;
 import java.util.Map;
 import org.teavm.backend.javascript.codegen.SourceWriter;
 import org.teavm.backend.javascript.rendering.RenderingManager;
+import org.teavm.backend.javascript.spi.AbstractRendererListener;
 import org.teavm.jso.impl.JSDependencyListener.ExposedClass;
 import org.teavm.model.ClassReader;
 import org.teavm.model.ClassReaderSource;
 import org.teavm.model.MethodDescriptor;
 import org.teavm.vm.BuildTarget;
-import org.teavm.vm.spi.RendererListener;
 
-class JSAliasRenderer implements RendererListener {
+class JSAliasRenderer extends AbstractRendererListener {
     private static String variableChars = "abcdefghijklmnopqrstuvwxyz";
     private JSDependencyListener dependencyListener;
     private SourceWriter writer;

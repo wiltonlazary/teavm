@@ -22,9 +22,11 @@ import java.util.List;
 import java.util.Map;
 import org.teavm.backend.javascript.codegen.SourceWriter;
 import org.teavm.backend.javascript.rendering.RenderingManager;
+import org.teavm.backend.javascript.spi.AbstractRendererListener;
 import org.teavm.model.ClassReader;
+import org.teavm.model.ElementModifier;
+import org.teavm.model.MethodReader;
 import org.teavm.vm.BuildTarget;
-import org.teavm.vm.spi.AbstractRendererListener;
 
 public class JsInteropPostProcessor extends AbstractRendererListener {
     private RenderingManager manager;
@@ -103,6 +105,26 @@ public class JsInteropPostProcessor extends AbstractRendererListener {
 
     private void renderClassWrappers(SourceWriter writer, ClassReader cls, JsClass jsClass) throws IOException {
         writer.append(cls.getName()).ws().append("=").ws().appendClass(cls.getName()).append(";").newLine();
+        for (MethodReader method : cls.getMethods()) {
+            if (method.getName().equals("<init>") || method.getName().equals("<clinit>")) {
+                continue;
+            }
+            writer.appendClass(cls.getName()).append(".");
+            if (!method.hasModifier(ElementModifier.STATIC)) {
+                writer.append("prototype.");
+            }
+            writer.append(method.getName()).ws().append("=").ws();
+            renderMethod(writer, method);
+        }
+    }
+
+    private void renderMethod(SourceWriter writer, MethodReader method) throws IOException {
+        if (method.hasModifier(ElementModifier.STATIC)) {
+            writer.appendMethodBody(method.getReference());
+        } else {
+            writer.appendClass(method.getOwnerName()).append(".prototype.").appendMethod(method.getDescriptor());
+        }
+        writer.append(";").newLine();
     }
 
     static class JsPackage {

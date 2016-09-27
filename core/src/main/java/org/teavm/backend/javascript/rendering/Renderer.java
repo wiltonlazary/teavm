@@ -35,6 +35,7 @@ import org.teavm.backend.javascript.codegen.NamingOrderer;
 import org.teavm.backend.javascript.codegen.NamingStrategy;
 import org.teavm.backend.javascript.codegen.SourceWriter;
 import org.teavm.backend.javascript.spi.GeneratorContext;
+import org.teavm.backend.javascript.spi.RendererListener;
 import org.teavm.common.ServiceRepository;
 import org.teavm.debugging.information.DebugInformationEmitter;
 import org.teavm.debugging.information.DummyDebugInformationEmitter;
@@ -62,6 +63,7 @@ public class Renderer implements RenderingManager {
     private final Diagnostics diagnostics;
     private RenderingContext context;
     private List<PostponedFieldInitializer> postponedFieldInitializers = new ArrayList<>();
+    private List<RendererListener> listeners = new ArrayList<>();
 
     public Renderer(SourceWriter writer, Set<MethodReference> asyncMethods, Set<MethodReference> asyncFamilyMethods,
             Diagnostics diagnostics, RenderingContext context) {
@@ -74,6 +76,10 @@ public class Renderer implements RenderingManager {
         this.asyncFamilyMethods = new HashSet<>(asyncFamilyMethods);
         this.diagnostics = diagnostics;
         this.context = context;
+    }
+
+    public void addListener(RendererListener listener) {
+        listeners.add(listener);
     }
 
     @Override
@@ -277,8 +283,6 @@ public class Renderer implements RenderingManager {
         }
         for (ClassNode cls : classes) {
             renderDeclaration(cls);
-        }
-        for (ClassNode cls : classes) {
             renderMethodBodies(cls);
         }
         renderClassMetadata(classes);
@@ -320,6 +324,10 @@ public class Renderer implements RenderingManager {
 
             if (cls.getName().equals("java.lang.Object")) {
                 writer.append("this.$id").ws().append('=').ws().append("0;").softNewLine();
+            }
+
+            for (RendererListener listener : listeners) {
+                listener.classConstructor(cls.getName());
             }
 
             writer.outdent().append("}").newLine();

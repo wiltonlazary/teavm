@@ -28,5 +28,6 @@ public class JsInteropPlugin implements TeaVMPlugin {
         JsInteropContext context = classTransformer.getContext();
         TeaVMJavaScriptHost jsHost = host.getExtension(TeaVMJavaScriptHost.class);
         jsHost.add(new JsInteropPostProcessor(context));
+        jsHost.add(new ConstructorInjector());
     }
 }

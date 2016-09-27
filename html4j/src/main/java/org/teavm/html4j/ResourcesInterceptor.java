@@ -24,8 +24,8 @@ import java.util.Set;
 import org.apache.commons.io.IOUtils;
 import org.teavm.backend.javascript.codegen.SourceWriter;
 import org.teavm.backend.javascript.rendering.RenderingManager;
+import org.teavm.backend.javascript.spi.AbstractRendererListener;
 import org.teavm.vm.BuildTarget;
-import org.teavm.vm.spi.AbstractRendererListener;
 
 /**
  *

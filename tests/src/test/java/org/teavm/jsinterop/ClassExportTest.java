@@ -15,14 +15,25 @@
  */
 package org.teavm.jsinterop;
 
+import static org.junit.Assert.assertEquals;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.teavm.jso.JSBody;
+import org.teavm.junit.SkipJVM;
 import org.teavm.junit.TeaVMTestRunner;
 
 @RunWith(TeaVMTestRunner.class)
+@SkipJVM
 public class ClassExportTest {
     @Test
     public void simple() {
-        new Foo();
+        new Foo().bar();
+        assertEquals(23, testFoo());
     }
+
+    @JSBody(params = {}, script = ""
+            + "var Foo = org.teavm.jsinterop.Foo;"
+            + "var instance = new Foo();"
+            + "return instance.bar();")
+    private static native int testFoo();
 }

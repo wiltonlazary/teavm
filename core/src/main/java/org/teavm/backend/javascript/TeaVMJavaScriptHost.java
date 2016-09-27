@@ -17,14 +17,17 @@ package org.teavm.backend.javascript;
 
 import org.teavm.backend.javascript.spi.Generator;
 import org.teavm.backend.javascript.spi.Injector;
+import org.teavm.backend.javascript.spi.InjectorProvider;
+import org.teavm.backend.javascript.spi.RendererListener;
 import org.teavm.model.MethodReference;
-import org.teavm.vm.spi.RendererListener;
 import org.teavm.vm.spi.TeaVMHostExtension;
 
 public interface TeaVMJavaScriptHost extends TeaVMHostExtension {
     void add(MethodReference methodRef, Generator generator);
 
     void add(MethodReference methodRef, Injector injector);
+
+    void add(InjectorProvider injectorProvider);
 
     void add(RendererListener listener);
 }

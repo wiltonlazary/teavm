@@ -19,10 +19,7 @@ import jsinterop.annotations.JsType;
 
 @JsType
 public class Foo {
-    public void foo(int x) {
-    }
-
-    public String bar() {
-        return "";
+    public int bar() {
+        return 23;
     }
 }

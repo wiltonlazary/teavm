@@ -42,6 +42,8 @@ import org.teavm.backend.javascript.spi.GeneratedBy;
 import org.teavm.backend.javascript.spi.Generator;
 import org.teavm.backend.javascript.spi.InjectedBy;
 import org.teavm.backend.javascript.spi.Injector;
+import org.teavm.backend.javascript.spi.InjectorProvider;
+import org.teavm.backend.javascript.spi.RendererListener;
 import org.teavm.debugging.information.DebugInformationEmitter;
 import org.teavm.debugging.information.DummyDebugInformationEmitter;
 import org.teavm.debugging.information.SourceLocation;
@@ -74,7 +76,6 @@ import org.teavm.vm.RenderingException;
 import org.teavm.vm.TeaVMEntryPoint;
 import org.teavm.vm.TeaVMTarget;
 import org.teavm.vm.TeaVMTargetController;
-import org.teavm.vm.spi.RendererListener;
 import org.teavm.vm.spi.TeaVMHostExtension;
 
 public class JavaScriptTarget implements TeaVMTarget, TeaVMJavaScriptHost {
@@ -87,6 +88,7 @@ public class JavaScriptTarget implements TeaVMTarget, TeaVMJavaScriptHost {
     private MethodNodeCache astCache = new EmptyRegularMethodNodeCache();
     private final Set<MethodReference> asyncMethods = new HashSet<>();
     private final Set<MethodReference> asyncFamilyMethods = new HashSet<>();
+    private List<InjectorProvider> injectorProviders = new ArrayList<>();
 
     @Override
     public List<ClassHolderTransformer> getTransformers() {
@@ -116,6 +118,11 @@ public class JavaScriptTarget implements TeaVMTarget, TeaVMJavaScriptHost {
     @Override
     public void add(MethodReference methodRef, Injector injector) {
         methodInjectors.put(methodRef, injector);
+    }
+
+    @Override
+    public void add(InjectorProvider injectorProvider) {
+        injectorProviders.add(injectorProvider);
     }
 
     /**
@@ -256,9 +263,13 @@ public class JavaScriptTarget implements TeaVMTarget, TeaVMJavaScriptHost {
         for (Map.Entry<MethodReference, Injector> entry : methodInjectors.entrySet()) {
             renderingContext.addInjector(entry.getKey(), entry.getValue());
         }
+        for (InjectorProvider provider : injectorProviders) {
+            renderingContext.addInjectorProvider(provider);
+        }
         try {
             for (RendererListener listener : rendererListeners) {
                 listener.begin(renderer, target);
+                renderer.addListener(listener);
             }
             sourceWriter.append("\"use strict\";").newLine();
             renderer.renderRuntime();
@@ -299,9 +310,8 @@ public class JavaScriptTarget implements TeaVMTarget, TeaVMJavaScriptHost {
         for (MethodReference injectedMethod : methodInjectors.keySet()) {
             decompiler.addMethodToSkip(injectedMethod);
         }
-        List<String> classOrder = decompiler.getClassOrdering(classes.getClassNames());
         List<ClassNode> classNodes = new ArrayList<>();
-        for (String className : classOrder) {
+        for (String className : classes.getClassNames()) {
             ClassHolder cls = classes.get(className);
             for (MethodHolder method : cls.getMethods()) {
                 preprocessNativeMethod(method);

@@ -18,7 +18,6 @@ package org.teavm.ast.decompilation;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
@@ -109,10 +108,6 @@ public class Decompiler {
         this.regularMethodCache = regularMethodCache;
     }
 
-    public int getGraphSize() {
-        return this.graph.size();
-    }
-
     static class Block {
         public Block parent;
         public int parentOffset;
@@ -138,52 +133,12 @@ public class Decompiler {
         int exceptionHandler;
     }
 
-    public List<ClassNode> decompile(Collection<String> classNames) {
-        List<String> sequence = new ArrayList<>();
-        Set<String> visited = new HashSet<>();
-        for (String className : classNames) {
-            orderClasses(className, visited, sequence);
-        }
-        final List<ClassNode> result = new ArrayList<>();
-        for (int i = 0; i < sequence.size(); ++i) {
-            final String className = sequence.get(i);
-            result.add(decompile(classSource.get(className)));
-        }
-        return result;
-    }
-
-    public List<String> getClassOrdering(Collection<String> classNames) {
-        List<String> sequence = new ArrayList<>();
-        Set<String> visited = new HashSet<>();
-        for (String className : classNames) {
-            orderClasses(className, visited, sequence);
-        }
-        return sequence;
-    }
-
     public void addGenerator(MethodReference method, Generator generator) {
         generators.put(method, generator);
     }
 
     public void addMethodToSkip(MethodReference method) {
         methodsToSkip.add(method);
-    }
-
-    private void orderClasses(String className, Set<String> visited, List<String> order) {
-        if (!visited.add(className)) {
-            return;
-        }
-        ClassHolder cls = classSource.get(className);
-        if (cls == null) {
-            return;
-        }
-        if (cls.getParent() != null) {
-            orderClasses(cls.getParent(), visited, order);
-        }
-        for (String iface : cls.getInterfaces()) {
-            orderClasses(iface, visited, order);
-        }
-        order.add(className);
     }
 
     public ClassNode decompile(ClassHolder cls) {

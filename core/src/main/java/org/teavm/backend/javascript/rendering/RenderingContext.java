@@ -28,6 +28,7 @@ import java.util.Properties;
 import org.teavm.backend.javascript.codegen.NamingStrategy;
 import org.teavm.backend.javascript.spi.InjectedBy;
 import org.teavm.backend.javascript.spi.Injector;
+import org.teavm.backend.javascript.spi.InjectorProvider;
 import org.teavm.common.ServiceRepository;
 import org.teavm.debugging.information.DebugInformationEmitter;
 import org.teavm.model.AnnotationReader;
@@ -50,6 +51,7 @@ public class RenderingContext {
     private final List<String> stringPool = new ArrayList<>();
     private final List<String> readonlyStringPool = Collections.unmodifiableList(stringPool);
     private final Map<MethodReference, InjectorHolder> injectorMap = new HashMap<>();
+    private final List<InjectorProvider> injectorProviders = new ArrayList<>();
     private boolean minifying;
 
     public RenderingContext(DebugInformationEmitter debugEmitter, ListableClassReaderSource classSource,
@@ -239,6 +241,10 @@ public class RenderingContext {
         injectorMap.put(method, new InjectorHolder(injector));
     }
 
+    public void addInjectorProvider(InjectorProvider injectorProvider) {
+        injectorProviders.add(injectorProvider);
+    }
+
     public Injector getInjector(MethodReference ref) {
         InjectorHolder holder = injectorMap.get(ref);
         if (holder == null) {
@@ -250,7 +256,15 @@ public class RenderingContext {
                     AnnotationReader injectedByAnnot = method.getAnnotations().get(InjectedBy.class.getName());
                     if (injectedByAnnot != null) {
                         ValueType type = injectedByAnnot.getValue("value").getJavaClass();
-                        holder = new InjectorHolder(instantiateInjector(((ValueType.Object) type).getClassName()));
+                        holder.injector = instantiateInjector(((ValueType.Object) type).getClassName());
+                    }
+                }
+            }
+            if (holder.injector == null) {
+                for (InjectorProvider provider : injectorProviders) {
+                    holder.injector = provider.getFor(ref);
+                    if (holder.injector != null) {
+                        break;
                     }
                 }
             }
@@ -274,7 +288,7 @@ public class RenderingContext {
     }
 
     private static class InjectorHolder {
-        public final Injector injector;
+        public Injector injector;
 
         private InjectorHolder(Injector injector) {
             this.injector = injector;
