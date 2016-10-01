@@ -17,33 +17,36 @@ package org.teavm.backend.javascript.rendering;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import org.teavm.ast.AsyncMethodNode;
-import org.teavm.ast.AsyncMethodPart;
 import org.teavm.ast.ClassNode;
-import org.teavm.ast.FieldNode;
 import org.teavm.ast.MethodNode;
-import org.teavm.ast.MethodNodeVisitor;
-import org.teavm.ast.NativeMethodNode;
-import org.teavm.ast.RegularMethodNode;
+import org.teavm.ast.MethodNodePart;
 import org.teavm.ast.VariableNode;
 import org.teavm.backend.javascript.codegen.NamingException;
 import org.teavm.backend.javascript.codegen.NamingOrderer;
 import org.teavm.backend.javascript.codegen.NamingStrategy;
 import org.teavm.backend.javascript.codegen.SourceWriter;
+import org.teavm.backend.javascript.spi.Generator;
 import org.teavm.backend.javascript.spi.GeneratorContext;
 import org.teavm.backend.javascript.spi.RendererListener;
 import org.teavm.common.ServiceRepository;
 import org.teavm.debugging.information.DebugInformationEmitter;
 import org.teavm.debugging.information.DummyDebugInformationEmitter;
 import org.teavm.diagnostics.Diagnostics;
+import org.teavm.model.ClassHolder;
+import org.teavm.model.ClassReader;
 import org.teavm.model.ElementModifier;
+import org.teavm.model.FieldHolder;
 import org.teavm.model.FieldReference;
 import org.teavm.model.ListableClassReaderSource;
 import org.teavm.model.MethodDescriptor;
+import org.teavm.model.MethodHolder;
 import org.teavm.model.MethodReader;
 import org.teavm.model.MethodReference;
 import org.teavm.model.ValueType;
@@ -64,6 +67,7 @@ public class Renderer implements RenderingManager {
     private RenderingContext context;
     private List<PostponedFieldInitializer> postponedFieldInitializers = new ArrayList<>();
     private List<RendererListener> listeners = new ArrayList<>();
+    private Map<MethodDescriptor, MethodNode> methodNodeMap = new HashMap<>();
 
     public Renderer(SourceWriter writer, Set<MethodReference> asyncMethods, Set<MethodReference> asyncFamilyMethods,
             Diagnostics diagnostics, RenderingContext context) {
@@ -289,14 +293,15 @@ public class Renderer implements RenderingManager {
     }
 
     private void renderDeclaration(ClassNode cls) throws RenderingException {
-        debugEmitter.addClass(cls.getName(), cls.getParentName());
+        ClassHolder classHolder = cls.getClassHolder();
+        debugEmitter.addClass(classHolder.getName(), classHolder.getParent());
         try {
-            writer.append("function ").appendClass(cls.getName()).append("()").ws().append("{")
+            writer.append("function ").appendClass(classHolder.getName()).append("()").ws().append("{")
                     .indent().softNewLine();
             boolean thisAliased = false;
-            List<FieldNode> nonStaticFields = new ArrayList<>();
-            List<FieldNode> staticFields = new ArrayList<>();
-            for (FieldNode field : cls.getFields()) {
+            List<FieldHolder> nonStaticFields = new ArrayList<>();
+            List<FieldHolder> staticFields = new ArrayList<>();
+            for (FieldHolder field : classHolder.getFields()) {
                 if (field.getModifiers().contains(ElementModifier.STATIC)) {
                     staticFields.add(field);
                 } else {
@@ -307,37 +312,37 @@ public class Renderer implements RenderingManager {
                 thisAliased = true;
                 writer.append("var a").ws().append("=").ws().append("this;").ws();
             }
-            if (cls.getParentName() != null) {
-                writer.appendClass(cls.getParentName()).append(".call(").append(thisAliased ? "a" : "this")
+            if (classHolder.getParent() != null) {
+                writer.appendClass(classHolder.getParent()).append(".call(").append(thisAliased ? "a" : "this")
                         .append(");").softNewLine();
             }
-            for (FieldNode field : nonStaticFields) {
+            for (FieldHolder field : nonStaticFields) {
                 Object value = field.getInitialValue();
                 if (value == null) {
                     value = getDefaultValue(field.getType());
                 }
-                FieldReference fieldRef = new FieldReference(cls.getName(), field.getName());
+                FieldReference fieldRef = new FieldReference(classHolder.getName(), field.getName());
                 writer.append(thisAliased ? "a" : "this").append(".").appendField(fieldRef).ws()
                         .append("=").ws().append(context.constantToString(value)).append(";").softNewLine();
                 debugEmitter.addField(field.getName(), naming.getNameFor(fieldRef));
             }
 
-            if (cls.getName().equals("java.lang.Object")) {
+            if (classHolder.getName().equals("java.lang.Object")) {
                 writer.append("this.$id").ws().append('=').ws().append("0;").softNewLine();
             }
 
             for (RendererListener listener : listeners) {
-                listener.classConstructor(cls.getName());
+                listener.classConstructor(classHolder.getName());
             }
 
             writer.outdent().append("}").newLine();
 
-            for (FieldNode field : staticFields) {
+            for (FieldHolder field : staticFields) {
                 Object value = field.getInitialValue();
                 if (value == null) {
                     value = getDefaultValue(field.getType());
                 }
-                FieldReference fieldRef = new FieldReference(cls.getName(), field.getName());
+                FieldReference fieldRef = new FieldReference(classHolder.getName(), field.getName());
                 if (value instanceof String) {
                     context.constantToString(value);
                     postponedFieldInitializers.add(new PostponedFieldInitializer(fieldRef, (String) value));
@@ -347,21 +352,28 @@ public class Renderer implements RenderingManager {
                         .append(context.constantToString(value)).append(";").softNewLine();
             }
         } catch (NamingException e) {
-            throw new RenderingException("Error rendering class " + cls.getName() + ". See cause for details", e);
+            throw new RenderingException("Error rendering class " + classHolder.getName()
+                    + ". See cause for details", e);
         } catch (IOException e) {
             throw new RenderingException("IO error occurred", e);
         }
     }
 
     private void renderMethodBodies(ClassNode cls) throws RenderingException {
-        debugEmitter.emitClass(cls.getName());
+        ClassHolder classHolder = cls.getClassHolder();
+        debugEmitter.emitClass(classHolder.getName());
+
+        for (MethodNode methodNode : cls.getMethods()) {
+            methodNodeMap.put(methodNode.getReference().getDescriptor(), methodNode);
+        }
+
         try {
-            List<MethodNode> nonInitMethods = new ArrayList<>();
-            MethodReader clinit = classSource.get(cls.getName()).getMethod(
+            List<MethodHolder> nonInitMethods = new ArrayList<>();
+            MethodReader clinit = classSource.get(classHolder.getName()).getMethod(
                     new MethodDescriptor("<clinit>", ValueType.VOID));
             boolean needsClinit = clinit != null;
-            List<MethodNode> clinitMethods = new ArrayList<>();
-            for (MethodNode method : cls.getMethods()) {
+            List<MethodHolder> clinitMethods = new ArrayList<>();
+            for (MethodHolder method : classHolder.getMethods()) {
                 if (needsClinit && (method.getModifiers().contains(ElementModifier.STATIC)
                         || method.getReference().getName().equals("<init>"))) {
                     clinitMethods.add(method);
@@ -371,20 +383,20 @@ public class Renderer implements RenderingManager {
             }
 
             if (needsClinit) {
-                writer.append("function ").appendClass(cls.getName()).append("_$callClinit()").ws()
+                writer.append("function ").appendClass(classHolder.getName()).append("_$callClinit()").ws()
                         .append("{").softNewLine().indent();
-                writer.appendClass(cls.getName()).append("_$callClinit").ws().append("=").ws()
+                writer.appendClass(classHolder.getName()).append("_$callClinit").ws().append("=").ws()
                         .append("function(){};").newLine();
-                for (MethodNode method : clinitMethods) {
+                for (MethodHolder method : clinitMethods) {
                     renderBody(method, true);
                 }
-                writer.appendMethodBody(new MethodReference(cls.getName(), clinit.getDescriptor()))
+                writer.appendMethodBody(new MethodReference(classHolder.getName(), clinit.getDescriptor()))
                         .append("();").softNewLine();
                 writer.outdent().append("}").newLine();
             }
-            if (!cls.getModifiers().contains(ElementModifier.INTERFACE)) {
-                for (MethodNode method : cls.getMethods()) {
-                    cls.getMethods();
+
+            if (!classHolder.hasModifier(ElementModifier.INTERFACE)) {
+                for (MethodHolder method : classHolder.getMethods()) {
                     if (!method.getModifiers().contains(ElementModifier.STATIC)) {
                         if (method.getReference().getName().equals("<init>")) {
                             renderInitializer(method);
@@ -393,60 +405,78 @@ public class Renderer implements RenderingManager {
                 }
             }
 
-            for (MethodNode method : nonInitMethods) {
+            for (MethodHolder method : nonInitMethods) {
                 renderBody(method, false);
             }
         } catch (NamingException e) {
-            throw new RenderingException("Error rendering class " + cls.getName() + ". See a cause for details", e);
+            throw new RenderingException("Error rendering class " + classHolder.getName()
+                    + ". See a cause for details", e);
         } catch (IOException e) {
             throw new RenderingException("IO error occurred", e);
         }
+
+        methodNodeMap.clear();
         debugEmitter.emitClass(null);
     }
 
     private void renderClassMetadata(List<ClassNode> classes) {
         try {
+            Map<String, ClassNode> classMap = new HashMap<>();
+            for (ClassNode cls : classes) {
+                classMap.put(cls.getClassHolder().getName(), cls);
+            }
+
             writer.append("$rt_metadata([");
             boolean first = true;
-            for (ClassNode cls : classes) {
+            for (String className : orderClasses()) {
+                ClassNode cls = classMap.get(className);
+                if (cls == null) {
+                    continue;
+                }
+
                 if (!first) {
                     writer.append(',').softNewLine();
                 }
                 first = false;
-                writer.appendClass(cls.getName()).append(",").ws();
-                writer.append("\"").append(RenderingUtil.escapeString(cls.getName())).append("\",").ws();
-                if (cls.getParentName() != null) {
-                    writer.appendClass(cls.getParentName());
+
+                ClassHolder classHolder = cls.getClassHolder();
+                writer.appendClass(classHolder.getName()).append(",").ws();
+                writer.append("\"").append(RenderingUtil.escapeString(classHolder.getName())).append("\",").ws();
+                if (classHolder.getParent() != null) {
+                    writer.appendClass(classHolder.getParent());
                 } else {
                     writer.append("0");
                 }
                 writer.append(',').ws();
+
                 writer.append("[");
-                for (int i = 0; i < cls.getInterfaces().size(); ++i) {
-                    String iface = cls.getInterfaces().get(i);
-                    if (i > 0) {
+                boolean firstInterface = true;
+                for (String iface : classHolder.getInterfaces()) {
+                    if (!firstInterface) {
                         writer.append(",").ws();
                     }
+                    firstInterface = false;
                     writer.appendClass(iface);
                 }
                 writer.append("],").ws();
+
                 int flags = 0;
-                if (cls.getModifiers().contains(ElementModifier.ENUM)) {
+                if (classHolder.hasModifier(ElementModifier.ENUM)) {
                     flags |= 1;
                 }
                 writer.append(flags).append(',').ws();
-                MethodReader clinit = classSource.get(cls.getName()).getMethod(
+                MethodReader clinit = classSource.get(classHolder.getName()).getMethod(
                         new MethodDescriptor("<clinit>", ValueType.VOID));
                 if (clinit != null) {
-                    writer.appendClass(cls.getName()).append("_$callClinit");
+                    writer.appendClass(classHolder.getName()).append("_$callClinit");
                 } else {
                     writer.append('0');
                 }
                 writer.append(',').ws();
 
                 List<String> stubNames = new ArrayList<>();
-                List<MethodNode> virtualMethods = new ArrayList<>();
-                for (MethodNode method : cls.getMethods()) {
+                List<MethodHolder> virtualMethods = new ArrayList<>();
+                for (MethodHolder method : classHolder.getMethods()) {
                     if (clinit != null && (method.getModifiers().contains(ElementModifier.STATIC)
                             || method.getReference().getName().equals("<init>"))) {
                         stubNames.add(naming.getFullNameFor(method.getReference()));
@@ -479,6 +509,26 @@ public class Renderer implements RenderingManager {
         }
     }
 
+    private Collection<String> orderClasses() {
+        List<String> result = new ArrayList<>();
+        Set<String> visited = new HashSet<>();
+        for (String className : classSource.getClassNames()) {
+            orderClassesRec(className, visited, result);
+        }
+        return result;
+    }
+
+    private void orderClassesRec(String className, Set<String> visited, List<String> result) {
+        if (!visited.add(className)) {
+            return;
+        }
+        ClassReader cls = classSource.get(className);
+        if (cls != null && cls.getParent() != null) {
+            orderClassesRec(cls.getParent(), visited, result);
+        }
+        result.add(className);
+    }
+
     private static Object getDefaultValue(ValueType type) {
         if (type instanceof ValueType.Primitive) {
             ValueType.Primitive primitive = (ValueType.Primitive) type;
@@ -504,7 +554,7 @@ public class Renderer implements RenderingManager {
         return null;
     }
 
-    private void renderInitializer(MethodNode method) throws IOException {
+    private void renderInitializer(MethodHolder method) throws IOException {
         MethodReference ref = method.getReference();
         debugEmitter.emitMethod(ref.getDescriptor());
         writer.append("function ").append(naming.getNameForInit(ref)).append("(");
@@ -532,10 +582,10 @@ public class Renderer implements RenderingManager {
         return minifying ? RenderingUtil.indexToId(index) : "var_" + index;
     }
 
-    private void renderVirtualDeclarations(List<MethodNode> methods) throws NamingException, IOException {
+    private void renderVirtualDeclarations(List<MethodHolder> methods) throws NamingException, IOException {
         writer.append("[");
         boolean first = true;
-        for (MethodNode method : methods) {
+        for (MethodHolder method : methods) {
             debugEmitter.emitMethod(method.getReference().getDescriptor());
             MethodReference ref = method.getReference();
             if (!first) {
@@ -574,11 +624,21 @@ public class Renderer implements RenderingManager {
         writer.append(");").ws().append("}");
     }
 
-    private void renderBody(MethodNode method, boolean inner) throws IOException {
+    private void renderBody(MethodHolder methodHolder, boolean inner) throws IOException {
+        if (context.getInjector(methodHolder.getReference()) != null) {
+            return;
+        }
+
+        MethodNode method = methodNodeMap.get(methodHolder.getDescriptor());
+        Generator generator = context.getGenerator(methodHolder);
+        if (method == null && generator == null) {
+            return;
+        }
+
         StatementRenderer statementRenderer = new StatementRenderer(context, writer);
         statementRenderer.setCurrentMethod(method);
 
-        MethodReference ref = method.getReference();
+        MethodReference ref = methodHolder.getReference();
         debugEmitter.emitMethod(ref.getDescriptor());
         String name = naming.getFullNameFor(ref);
         if (inner) {
@@ -587,7 +647,7 @@ public class Renderer implements RenderingManager {
             writer.append("function ").append(name).append("(");
         }
         int startParam = 0;
-        if (method.getModifiers().contains(ElementModifier.STATIC)) {
+        if (methodHolder.getModifiers().contains(ElementModifier.STATIC)) {
             startParam = 1;
         }
         for (int i = startParam; i <= ref.parameterCount(); ++i) {
@@ -597,7 +657,13 @@ public class Renderer implements RenderingManager {
             writer.append(statementRenderer.variableName(i));
         }
         writer.append(")").ws().append("{").softNewLine().indent();
-        method.acceptVisitor(new MethodBodyRenderer(statementRenderer));
+
+        if (generator != null) {
+            generator.generate(new MethodBodyRenderer(statementRenderer), writer, methodHolder.getReference());
+        } else {
+            new MethodBodyRenderer(statementRenderer).render(method);
+        }
+
         writer.outdent().append("}");
         if (inner) {
             writer.append(';');
@@ -606,7 +672,7 @@ public class Renderer implements RenderingManager {
         debugEmitter.emitMethod(null);
     }
 
-    private class MethodBodyRenderer implements MethodNodeVisitor, GeneratorContext {
+    private class MethodBodyRenderer implements GeneratorContext {
         private boolean async;
         private StatementRenderer statementRenderer;
 
@@ -614,66 +680,10 @@ public class Renderer implements RenderingManager {
             this.statementRenderer = statementRenderer;
         }
 
-        @Override
-        public void visit(NativeMethodNode methodNode) {
+        public void render(MethodNode methodNode) {
             try {
-                this.async = methodNode.isAsync();
-                statementRenderer.setAsync(methodNode.isAsync());
-                methodNode.getGenerator().generate(this, writer, methodNode.getReference());
-            } catch (IOException e) {
-                throw new RenderingException("IO error occurred", e);
-            }
-        }
-
-        @Override
-        public void visit(RegularMethodNode method) {
-            try {
-                statementRenderer.setAsync(false);
-                this.async = false;
-                MethodReference ref = method.getReference();
-                for (int i = 0; i < method.getVariables().size(); ++i) {
-                    debugEmitter.emitVariable(new String[] { method.getVariables().get(i).getName() },
-                            statementRenderer.variableName(i));
-                }
-
-                int variableCount = 0;
-                for (VariableNode var : method.getVariables()) {
-                    variableCount = Math.max(variableCount, var.getIndex() + 1);
-                }
-                TryCatchFinder tryCatchFinder = new TryCatchFinder();
-                method.getBody().acceptVisitor(tryCatchFinder);
-                boolean hasTryCatch = tryCatchFinder.tryCatchFound;
-                List<String> variableNames = new ArrayList<>();
-                for (int i = ref.parameterCount() + 1; i < variableCount; ++i) {
-                    variableNames.add(statementRenderer.variableName(i));
-                }
-                if (hasTryCatch) {
-                    variableNames.add("$je");
-                }
-                if (!variableNames.isEmpty()) {
-                    writer.append("var ");
-                    for (int i = 0; i < variableNames.size(); ++i) {
-                        if (i > 0) {
-                            writer.append(",").ws();
-                        }
-                        writer.append(variableNames.get(i));
-                    }
-                    writer.append(";").softNewLine();
-                }
-
-                statementRenderer.setEnd(true);
-                statementRenderer.setCurrentPart(0);
-                method.getBody().acceptVisitor(statementRenderer);
-            } catch (IOException e) {
-                throw new RenderingException("IO error occurred", e);
-            }
-        }
-
-        @Override
-        public void visit(AsyncMethodNode methodNode) {
-            try {
-                statementRenderer.setAsync(true);
-                this.async = true;
+                this.async = methodNode.getBody().size() > 1;
+                statementRenderer.setAsync(async);
                 MethodReference ref = methodNode.getReference();
                 for (int i = 0; i < methodNode.getVariables().size(); ++i) {
                     debugEmitter.emitVariable(new String[] { methodNode.getVariables().get(i).getName() },
@@ -688,7 +698,7 @@ public class Renderer implements RenderingManager {
                     variableNames.add(statementRenderer.variableName(i));
                 }
                 TryCatchFinder tryCatchFinder = new TryCatchFinder();
-                for (AsyncMethodPart part : methodNode.getBody()) {
+                for (MethodNodePart part : methodNode.getBody()) {
                     if (!tryCatchFinder.tryCatchFound) {
                         part.getStatement().acceptVisitor(tryCatchFinder);
                     }
@@ -717,65 +727,78 @@ public class Renderer implements RenderingManager {
 
                 String popName = minifying ? "l" : "pop";
                 String pushName = minifying ? "s" : "push";
-                writer.append(context.pointerName()).ws().append('=').ws().append("0;").softNewLine();
-                writer.append("if").ws().append("(").appendFunction("$rt_resuming").append("())").ws()
-                        .append("{").indent().softNewLine();
-                writer.append("var ").append(context.threadName()).ws().append('=').ws()
-                        .appendFunction("$rt_nativeThread").append("();").softNewLine();
-                writer.append(context.pointerName()).ws().append('=').ws().append(context.threadName()).append(".")
-                        .append(popName).append("();");
-                for (int i = variableCount - 1; i >= firstToSave; --i) {
-                    writer.append(statementRenderer.variableName(i)).ws().append('=').ws().append(context.threadName())
-                            .append(".").append(popName).append("();");
-                }
-                writer.softNewLine();
-                writer.outdent().append("}").softNewLine();
 
-                if (methodNode.getModifiers().contains(ElementModifier.SYNCHRONIZED)) {
-                    writer.append("try").ws().append('{').indent().softNewLine();
+                if (async) {
+                    writer.append(context.pointerName()).ws().append('=').ws().append("0;").softNewLine();
+                    writer.append("if").ws().append("(").appendFunction("$rt_resuming").append("())").ws()
+                            .append("{").indent().softNewLine();
+                    writer.append("var ").append(context.threadName()).ws().append('=').ws()
+                            .appendFunction("$rt_nativeThread").append("();").softNewLine();
+                    writer.append(context.pointerName()).ws().append('=').ws().append(context.threadName()).append(".")
+                            .append(popName).append("();");
+                    for (int i = variableCount - 1; i >= firstToSave; --i) {
+                        writer.append(statementRenderer.variableName(i)).ws().append('=').ws()
+                                .append(context.threadName())
+                                .append(".").append(popName).append("();");
+                    }
+                    writer.softNewLine();
+                    writer.outdent().append("}").softNewLine();
+
+                    if (methodNode.getModifiers().contains(ElementModifier.SYNCHRONIZED)) {
+                        writer.append("try").ws().append('{').indent().softNewLine();
+                    }
+                    writer.append(context.mainLoopName()).append(":").ws().append("while").ws().append("(true)")
+                            .ws().append("{").ws();
+                    writer.append("switch").ws().append("(").append(context.pointerName()).append(")").ws()
+                            .append('{').softNewLine();
                 }
-                writer.append(context.mainLoopName()).append(":").ws().append("while").ws().append("(true)")
-                        .ws().append("{").ws();
-                writer.append("switch").ws().append("(").append(context.pointerName()).append(")").ws()
-                        .append('{').softNewLine();
+
                 for (int i = 0; i < methodNode.getBody().size(); ++i) {
-                    writer.append("case ").append(i).append(":").indent().softNewLine();
-                    if (i == 0 && methodNode.getModifiers().contains(ElementModifier.SYNCHRONIZED)) {
-                        writer.appendMethodBody(new MethodReference(Object.class, "monitorEnter",
+                    if (async) {
+                        writer.append("case ").append(i).append(":").indent().softNewLine();
+                        if (i == 0 && methodNode.getModifiers().contains(ElementModifier.SYNCHRONIZED)) {
+                            writer.appendMethodBody(new MethodReference(Object.class, "monitorEnter",
+                                    Object.class, void.class));
+                            writer.append("(");
+                            appendMonitor(statementRenderer, methodNode);
+                            writer.append(");").softNewLine();
+                            statementRenderer.emitSuspendChecker();
+                        }
+                    }
+                    MethodNodePart part = methodNode.getBody().get(i);
+                    statementRenderer.setEnd(true);
+                    statementRenderer.setCurrentPart(i);
+                    part.getStatement().acceptVisitor(statementRenderer);
+                    if (async) {
+                        writer.outdent();
+                    }
+                }
+                if (async) {
+                    writer.append("default:").ws().appendFunction("$rt_invalidPointer").append("();").softNewLine();
+                    writer.append("}}").softNewLine();
+                }
+
+                if (async) {
+                    if (methodNode.getModifiers().contains(ElementModifier.SYNCHRONIZED)) {
+                        writer.outdent().append("}").ws().append("finally").ws().append('{').indent().softNewLine();
+                        writer.append("if").ws().append("(!").appendFunction("$rt_suspending").append("())")
+                                .ws().append("{").indent().softNewLine();
+                        writer.appendMethodBody(new MethodReference(Object.class, "monitorExit",
                                 Object.class, void.class));
                         writer.append("(");
                         appendMonitor(statementRenderer, methodNode);
                         writer.append(");").softNewLine();
-                        statementRenderer.emitSuspendChecker();
+                        writer.outdent().append('}').softNewLine();
+                        writer.outdent().append('}').softNewLine();
                     }
-                    AsyncMethodPart part = methodNode.getBody().get(i);
-                    statementRenderer.setEnd(true);
-                    statementRenderer.setCurrentPart(i);
-                    part.getStatement().acceptVisitor(statementRenderer);
-                    writer.outdent();
-                }
-                writer.append("default:").ws().appendFunction("$rt_invalidPointer").append("();").softNewLine();
-                writer.append("}}").softNewLine();
 
-                if (methodNode.getModifiers().contains(ElementModifier.SYNCHRONIZED)) {
-                    writer.outdent().append("}").ws().append("finally").ws().append('{').indent().softNewLine();
-                    writer.append("if").ws().append("(!").appendFunction("$rt_suspending").append("())")
-                            .ws().append("{").indent().softNewLine();
-                    writer.appendMethodBody(new MethodReference(Object.class, "monitorExit",
-                            Object.class, void.class));
-                    writer.append("(");
-                    appendMonitor(statementRenderer, methodNode);
-                    writer.append(");").softNewLine();
-                    writer.outdent().append('}').softNewLine();
-                    writer.outdent().append('}').softNewLine();
+                    writer.appendFunction("$rt_nativeThread").append("().").append(pushName).append("(");
+                    for (int i = firstToSave; i < variableCount; ++i) {
+                        writer.append(statementRenderer.variableName(i)).append(',').ws();
+                    }
+                    writer.append(context.pointerName()).append(");");
+                    writer.softNewLine();
                 }
-
-                writer.appendFunction("$rt_nativeThread").append("().").append(pushName).append("(");
-                for (int i = firstToSave; i < variableCount; ++i) {
-                    writer.append(statementRenderer.variableName(i)).append(',').ws();
-                }
-                writer.append(context.pointerName()).append(");");
-                writer.softNewLine();
             } catch (IOException e) {
                 throw new RenderingException("IO error occurred", e);
             }

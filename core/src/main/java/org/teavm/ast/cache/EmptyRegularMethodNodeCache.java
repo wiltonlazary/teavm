@@ -15,26 +15,16 @@
  */
 package org.teavm.ast.cache;
 
-import org.teavm.ast.AsyncMethodNode;
-import org.teavm.ast.RegularMethodNode;
+import org.teavm.ast.MethodNode;
 import org.teavm.model.MethodReference;
 
 public class EmptyRegularMethodNodeCache implements MethodNodeCache {
     @Override
-    public RegularMethodNode get(MethodReference methodReference) {
+    public MethodNode get(MethodReference methodReference) {
         return null;
     }
 
     @Override
-    public void store(MethodReference methodReference, RegularMethodNode node) {
-    }
-
-    @Override
-    public AsyncMethodNode getAsync(MethodReference methodReference) {
-        return null;
-    }
-
-    @Override
-    public void storeAsync(MethodReference methodReference, AsyncMethodNode node) {
+    public void store(MethodReference methodReference, MethodNode node) {
     }
 }

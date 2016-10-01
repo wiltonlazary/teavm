@@ -106,7 +106,8 @@ public class JsInteropPostProcessor extends AbstractRendererListener {
     private void renderClassWrappers(SourceWriter writer, ClassReader cls, JsClass jsClass) throws IOException {
         writer.append(cls.getName()).ws().append("=").ws().appendClass(cls.getName()).append(";").newLine();
         for (MethodReader method : cls.getMethods()) {
-            if (method.getName().equals("<init>") || method.getName().equals("<clinit>")) {
+            if (method.getName().equals("<init>") || method.getName().equals("<clinit>")
+                    || method.getName().equals("<jsinit>")) {
                 continue;
             }
             writer.appendClass(cls.getName()).append(".");

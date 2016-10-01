@@ -25,15 +25,20 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import org.teavm.ast.decompilation.DecompilationException;
 import org.teavm.backend.javascript.codegen.NamingStrategy;
+import org.teavm.backend.javascript.spi.GeneratedBy;
+import org.teavm.backend.javascript.spi.Generator;
 import org.teavm.backend.javascript.spi.InjectedBy;
 import org.teavm.backend.javascript.spi.Injector;
 import org.teavm.backend.javascript.spi.InjectorProvider;
 import org.teavm.common.ServiceRepository;
 import org.teavm.debugging.information.DebugInformationEmitter;
+import org.teavm.model.AnnotationHolder;
 import org.teavm.model.AnnotationReader;
 import org.teavm.model.ClassReader;
 import org.teavm.model.ListableClassReaderSource;
+import org.teavm.model.MethodHolder;
 import org.teavm.model.MethodReader;
 import org.teavm.model.MethodReference;
 import org.teavm.model.TextLocation;
@@ -52,6 +57,7 @@ public class RenderingContext {
     private final List<String> readonlyStringPool = Collections.unmodifiableList(stringPool);
     private final Map<MethodReference, InjectorHolder> injectorMap = new HashMap<>();
     private final List<InjectorProvider> injectorProviders = new ArrayList<>();
+    private final Map<MethodReference, GeneratorHolder> generatorCache = new HashMap<>();
     private boolean minifying;
 
     public RenderingContext(DebugInformationEmitter debugEmitter, ListableClassReaderSource classSource,
@@ -287,11 +293,44 @@ public class RenderingContext {
         }
     }
 
+    public void addGenerator(MethodReference methodReference, Generator generator) {
+        generatorCache.put(methodReference, new GeneratorHolder(generator));
+    }
+
+    public Generator getGenerator(MethodHolder method) {
+        return generatorCache.computeIfAbsent(method.getReference(),
+                key -> new GeneratorHolder(lookupGenerator(method))).generator;
+    }
+
+    private Generator lookupGenerator(MethodHolder method) {
+        AnnotationHolder annotHolder = method.getAnnotations().get(GeneratedBy.class.getName());
+        if (annotHolder == null) {
+            return null;
+        }
+        ValueType annotValue = annotHolder.getValues().get("value").getJavaClass();
+        String generatorClassName = ((ValueType.Object) annotValue).getClassName();
+        try {
+            Class<?> generatorClass = Class.forName(generatorClassName, true, classLoader);
+            return (Generator) generatorClass.newInstance();
+        } catch (ClassNotFoundException | InstantiationException | IllegalAccessException e) {
+            throw new DecompilationException("Error instantiating generator " + generatorClassName
+                    + " for native method " + method.getOwnerName() + "." + method.getDescriptor());
+        }
+    }
+
     private static class InjectorHolder {
         public Injector injector;
 
         private InjectorHolder(Injector injector) {
             this.injector = injector;
+        }
+    }
+
+    private static class GeneratorHolder {
+        public Generator generator;
+
+        public GeneratorHolder(Generator generator) {
+            this.generator = generator;
         }
     }
 }

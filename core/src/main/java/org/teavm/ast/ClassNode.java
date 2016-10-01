@@ -16,45 +16,22 @@
 package org.teavm.ast;
 
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.List;
-import java.util.Set;
-import org.teavm.model.ElementModifier;
+import org.teavm.model.ClassHolder;
 
 public class ClassNode {
-    private String name;
-    private String parentName;
-    private Set<ElementModifier> modifiers = EnumSet.noneOf(ElementModifier.class);
-    private List<FieldNode> fields = new ArrayList<>();
+    private ClassHolder classHolder;
     private List<MethodNode> methods = new ArrayList<>();
-    private List<String> interfaces = new ArrayList<>();
 
-    public ClassNode(String name, String parentName) {
-        this.name = name;
-        this.parentName = parentName;
+    public ClassNode(ClassHolder classHolder) {
+        this.classHolder = classHolder;
     }
 
-    public String getName() {
-        return name;
-    }
-
-    public String getParentName() {
-        return parentName;
-    }
-
-    public List<FieldNode> getFields() {
-        return fields;
+    public ClassHolder getClassHolder() {
+        return classHolder;
     }
 
     public List<MethodNode> getMethods() {
         return methods;
-    }
-
-    public List<String> getInterfaces() {
-        return interfaces;
-    }
-
-    public Set<ElementModifier> getModifiers() {
-        return modifiers;
     }
 }

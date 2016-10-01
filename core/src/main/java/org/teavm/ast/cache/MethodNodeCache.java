@@ -15,16 +15,11 @@
  */
 package org.teavm.ast.cache;
 
-import org.teavm.ast.AsyncMethodNode;
-import org.teavm.ast.RegularMethodNode;
+import org.teavm.ast.MethodNode;
 import org.teavm.model.MethodReference;
 
 public interface MethodNodeCache {
-    RegularMethodNode get(MethodReference methodReference);
+    MethodNode get(MethodReference methodReference);
 
-    void store(MethodReference methodReference, RegularMethodNode node);
-
-    AsyncMethodNode getAsync(MethodReference methodReference);
-
-    void storeAsync(MethodReference methodReference, AsyncMethodNode node);
+    void store(MethodReference methodReference, MethodNode node);
 }

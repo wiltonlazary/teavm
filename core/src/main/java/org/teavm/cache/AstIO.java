@@ -25,8 +25,6 @@ import java.util.Map;
 import java.util.Set;
 import org.teavm.ast.ArrayType;
 import org.teavm.ast.AssignmentStatement;
-import org.teavm.ast.AsyncMethodNode;
-import org.teavm.ast.AsyncMethodPart;
 import org.teavm.ast.BinaryExpr;
 import org.teavm.ast.BinaryOperation;
 import org.teavm.ast.BlockStatement;
@@ -44,6 +42,8 @@ import org.teavm.ast.InitClassStatement;
 import org.teavm.ast.InstanceOfExpr;
 import org.teavm.ast.InvocationExpr;
 import org.teavm.ast.InvocationType;
+import org.teavm.ast.MethodNode;
+import org.teavm.ast.MethodNodePart;
 import org.teavm.ast.MonitorEnterStatement;
 import org.teavm.ast.MonitorExitStatement;
 import org.teavm.ast.NewArrayExpr;
@@ -52,7 +52,6 @@ import org.teavm.ast.NewMultiArrayExpr;
 import org.teavm.ast.OperationType;
 import org.teavm.ast.PrimitiveCastExpr;
 import org.teavm.ast.QualificationExpr;
-import org.teavm.ast.RegularMethodNode;
 import org.teavm.ast.ReturnStatement;
 import org.teavm.ast.SequentialStatement;
 import org.teavm.ast.Statement;
@@ -91,34 +90,10 @@ public class AstIO {
         this.fileTable = fileTable;
     }
 
-    public void write(DataOutput output, RegularMethodNode method) throws IOException {
-        output.writeInt(packModifiers(method.getModifiers()));
-        output.writeShort(method.getVariables().size());
-        for (VariableNode var : method.getVariables()) {
-            write(output, var);
-        }
-        try {
-            method.getBody().acceptVisitor(new NodeWriter(output));
-        } catch (IOExceptionWrapper e) {
-            throw new IOException("Error writing method body", e.getCause());
-        }
-    }
-
     private void write(DataOutput output, VariableNode variable) throws IOException {
         output.writeShort(variable.getIndex());
         output.writeByte(variable.getType().ordinal());
         output.writeUTF(variable.getName() != null ? variable.getName() : "");
-    }
-
-    public RegularMethodNode read(DataInput input, MethodReference method) throws IOException {
-        RegularMethodNode node = new RegularMethodNode(method);
-        node.getModifiers().addAll(unpackModifiers(input.readInt()));
-        int varCount = input.readShort();
-        for (int i = 0; i < varCount; ++i) {
-            node.getVariables().add(readVariable(input));
-        }
-        node.setBody(readStatement(input));
-        return node;
     }
 
     private VariableNode readVariable(DataInput input) throws IOException {
@@ -135,7 +110,7 @@ public class AstIO {
         return variable;
     }
 
-    public void writeAsync(DataOutput output, AsyncMethodNode method) throws IOException {
+    public void write(DataOutput output, MethodNode method) throws IOException {
         output.writeInt(packModifiers(method.getModifiers()));
         output.writeShort(method.getVariables().size());
         for (VariableNode var : method.getVariables()) {
@@ -151,8 +126,8 @@ public class AstIO {
         }
     }
 
-    public AsyncMethodNode readAsync(DataInput input, MethodReference method) throws IOException {
-        AsyncMethodNode node = new AsyncMethodNode(method);
+    public MethodNode read(DataInput input, MethodReference method) throws IOException {
+        MethodNode node = new MethodNode(method);
         node.getModifiers().addAll(unpackModifiers(input.readInt()));
         int varCount = input.readShort();
         for (int i = 0; i < varCount; ++i) {
@@ -160,7 +135,7 @@ public class AstIO {
         }
         int partCount = input.readShort();
         for (int i = 0; i < partCount; ++i) {
-            AsyncMethodPart part = new AsyncMethodPart();
+            MethodNodePart part = new MethodNodePart();
             part.setStatement(readStatement(input));
             node.getBody().add(part);
         }

@@ -17,40 +17,37 @@ package org.teavm.backend.javascript.rendering;
 
 import java.util.Set;
 import org.teavm.ast.AssignmentStatement;
-import org.teavm.ast.AsyncMethodNode;
-import org.teavm.ast.AsyncMethodPart;
 import org.teavm.ast.BinaryExpr;
 import org.teavm.ast.ClassNode;
 import org.teavm.ast.ConstantExpr;
-import org.teavm.ast.FieldNode;
 import org.teavm.ast.InitClassStatement;
 import org.teavm.ast.InstanceOfExpr;
 import org.teavm.ast.InvocationExpr;
 import org.teavm.ast.MethodNode;
-import org.teavm.ast.MethodNodeVisitor;
+import org.teavm.ast.MethodNodePart;
 import org.teavm.ast.MonitorEnterStatement;
 import org.teavm.ast.MonitorExitStatement;
-import org.teavm.ast.NativeMethodNode;
 import org.teavm.ast.NewArrayExpr;
 import org.teavm.ast.NewExpr;
 import org.teavm.ast.NewMultiArrayExpr;
 import org.teavm.ast.QualificationExpr;
 import org.teavm.ast.RecursiveVisitor;
-import org.teavm.ast.RegularMethodNode;
 import org.teavm.ast.ThrowStatement;
 import org.teavm.ast.TryCatchStatement;
 import org.teavm.ast.UnaryExpr;
 import org.teavm.backend.javascript.codegen.NameFrequencyConsumer;
+import org.teavm.model.ClassHolder;
 import org.teavm.model.ClassReader;
 import org.teavm.model.ClassReaderSource;
 import org.teavm.model.ElementModifier;
+import org.teavm.model.FieldHolder;
 import org.teavm.model.FieldReference;
 import org.teavm.model.MethodDescriptor;
 import org.teavm.model.MethodReader;
 import org.teavm.model.MethodReference;
 import org.teavm.model.ValueType;
 
-class NameFrequencyEstimator extends RecursiveVisitor implements MethodNodeVisitor {
+class NameFrequencyEstimator extends RecursiveVisitor {
     private final NameFrequencyConsumer consumer;
     private final ClassReaderSource classSource;
     private boolean async;
@@ -66,20 +63,19 @@ class NameFrequencyEstimator extends RecursiveVisitor implements MethodNodeVisit
     }
 
     public void estimate(ClassNode cls) {
+        ClassHolder classHolder = cls.getClassHolder();
+
         // Declaration
-        consumer.consume(cls.getName());
-        if (cls.getParentName() != null) {
-            consumer.consume(cls.getParentName());
+        consumer.consume(classHolder.getName());
+        if (classHolder.getParent() != null) {
+            consumer.consume(classHolder.getParent());
         }
-        for (FieldNode field : cls.getFields()) {
-            consumer.consume(new FieldReference(cls.getName(), field.getName()));
-            if (field.getModifiers().contains(ElementModifier.STATIC)) {
-                consumer.consume(cls.getName());
-            }
+        for (FieldHolder field : classHolder.getFields()) {
+            consumer.consume(new FieldReference(classHolder.getName(), field.getName()));
         }
 
         // Methods
-        MethodReader clinit = classSource.get(cls.getName()).getMethod(
+        MethodReader clinit = classSource.get(classHolder.getName()).getMethod(
                 new MethodDescriptor("<clinit>", ValueType.VOID));
         for (MethodNode method : cls.getMethods()) {
             consumer.consume(method.getReference());
@@ -94,41 +90,29 @@ class NameFrequencyEstimator extends RecursiveVisitor implements MethodNodeVisit
                 consumer.consume(method.getReference().getDescriptor());
                 consumer.consume(method.getReference());
             }
-            if (method.isAsync()) {
+
+            async = method.getBody().size() > 1;
+            if (async) {
                 consumer.consumeFunction("$rt_nativeThread");
                 consumer.consumeFunction("$rt_nativeThread");
                 consumer.consumeFunction("$rt_resuming");
                 consumer.consumeFunction("$rt_invalidPointer");
             }
+
+            for (MethodNodePart part : method.getBody()) {
+                part.getStatement().acceptVisitor(this);
+            }
         }
 
         // Metadata
-        consumer.consume(cls.getName());
-        consumer.consume(cls.getName());
-        if (cls.getParentName() != null) {
-            consumer.consume(cls.getParentName());
+        consumer.consume(classHolder.getName());
+        consumer.consume(classHolder.getName());
+        if (classHolder.getParent() != null) {
+            consumer.consume(classHolder.getParent());
         }
-        for (String iface : cls.getInterfaces()) {
+        for (String iface : classHolder.getInterfaces()) {
             consumer.consume(iface);
         }
-    }
-
-    @Override
-    public void visit(RegularMethodNode methodNode) {
-        async = false;
-        methodNode.getBody().acceptVisitor(this);
-    }
-
-    @Override
-    public void visit(AsyncMethodNode methodNode) {
-        async = true;
-        for (AsyncMethodPart part : methodNode.getBody()) {
-            part.getStatement().acceptVisitor(this);
-        }
-    }
-
-    @Override
-    public void visit(NativeMethodNode methodNode) {
     }
 
     @Override

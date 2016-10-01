@@ -20,22 +20,15 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import org.teavm.ast.AsyncMethodNode;
-import org.teavm.ast.AsyncMethodPart;
 import org.teavm.ast.BlockStatement;
-import org.teavm.ast.ClassNode;
-import org.teavm.ast.FieldNode;
 import org.teavm.ast.GotoPartStatement;
 import org.teavm.ast.IdentifiedStatement;
 import org.teavm.ast.MethodNode;
-import org.teavm.ast.NativeMethodNode;
-import org.teavm.ast.RegularMethodNode;
+import org.teavm.ast.MethodNodePart;
 import org.teavm.ast.SequentialStatement;
 import org.teavm.ast.Statement;
 import org.teavm.ast.TryCatchStatement;
@@ -43,27 +36,19 @@ import org.teavm.ast.VariableNode;
 import org.teavm.ast.WhileStatement;
 import org.teavm.ast.cache.MethodNodeCache;
 import org.teavm.ast.optimization.Optimizer;
-import org.teavm.backend.javascript.spi.GeneratedBy;
-import org.teavm.backend.javascript.spi.Generator;
-import org.teavm.backend.javascript.spi.InjectedBy;
 import org.teavm.cache.NoCache;
 import org.teavm.common.Graph;
 import org.teavm.common.GraphIndexer;
 import org.teavm.common.Loop;
 import org.teavm.common.LoopGraph;
 import org.teavm.common.RangeTree;
-import org.teavm.model.AnnotationHolder;
-import org.teavm.model.ClassHolder;
 import org.teavm.model.ClassHolderSource;
-import org.teavm.model.ElementModifier;
-import org.teavm.model.FieldHolder;
 import org.teavm.model.Instruction;
 import org.teavm.model.MethodHolder;
 import org.teavm.model.MethodReference;
 import org.teavm.model.Program;
 import org.teavm.model.TextLocation;
 import org.teavm.model.TryCatchBlock;
-import org.teavm.model.ValueType;
 import org.teavm.model.util.AsyncProgramSplitter;
 import org.teavm.model.util.ListingBuilder;
 import org.teavm.model.util.ProgramUtils;
@@ -71,7 +56,6 @@ import org.teavm.model.util.TypeInferer;
 
 public class Decompiler {
     private ClassHolderSource classSource;
-    private ClassLoader classLoader;
     private Graph graph;
     private LoopGraph loopGraph;
     private GraphIndexer indexer;
@@ -82,30 +66,27 @@ public class Decompiler {
     private RangeTree codeTree;
     private RangeTree.Node currentNode;
     private RangeTree.Node parentNode;
-    private Map<MethodReference, Generator> generators = new HashMap<>();
-    private Set<MethodReference> methodsToSkip = new HashSet<>();
-    private MethodNodeCache regularMethodCache;
+    private MethodNodeCache methodCache;
     private Set<MethodReference> asyncMethods;
     private Set<MethodReference> splitMethods = new HashSet<>();
     private List<TryCatchBookmark> tryCatchBookmarks = new ArrayList<>();
     private Deque<Block> stack;
     private Program program;
 
-    public Decompiler(ClassHolderSource classSource, ClassLoader classLoader, Set<MethodReference> asyncMethods,
+    public Decompiler(ClassHolderSource classSource, Set<MethodReference> asyncMethods,
             Set<MethodReference> asyncFamilyMethods) {
         this.classSource = classSource;
-        this.classLoader = classLoader;
         this.asyncMethods = asyncMethods;
         splitMethods.addAll(asyncMethods);
         splitMethods.addAll(asyncFamilyMethods);
     }
 
-    public MethodNodeCache getRegularMethodCache() {
-        return regularMethodCache;
+    public MethodNodeCache getMethodCache() {
+        return methodCache;
     }
 
-    public void setRegularMethodCache(MethodNodeCache regularMethodCache) {
-        this.regularMethodCache = regularMethodCache;
+    public void setMethodCache(MethodNodeCache methodCache) {
+        this.methodCache = methodCache;
     }
 
     static class Block {
@@ -133,88 +114,31 @@ public class Decompiler {
         int exceptionHandler;
     }
 
-    public void addGenerator(MethodReference method, Generator generator) {
-        generators.put(method, generator);
-    }
-
-    public void addMethodToSkip(MethodReference method) {
-        methodsToSkip.add(method);
-    }
-
-    public ClassNode decompile(ClassHolder cls) {
-        ClassNode clsNode = new ClassNode(cls.getName(), cls.getParent());
-        for (FieldHolder field : cls.getFields()) {
-            FieldNode fieldNode = new FieldNode(field.getName(), field.getType());
-            fieldNode.getModifiers().addAll(field.getModifiers());
-            fieldNode.setInitialValue(field.getInitialValue());
-            clsNode.getFields().add(fieldNode);
-        }
-        for (MethodHolder method : cls.getMethods()) {
-            if (method.getModifiers().contains(ElementModifier.ABSTRACT)) {
-                continue;
-            }
-            if (method.getAnnotations().get(InjectedBy.class.getName()) != null
-                    || methodsToSkip.contains(method.getReference())) {
-                continue;
-            }
-            MethodNode methodNode = decompile(method);
-            clsNode.getMethods().add(methodNode);
-        }
-        clsNode.getInterfaces().addAll(cls.getInterfaces());
-        clsNode.getModifiers().addAll(cls.getModifiers());
-        return clsNode;
-    }
-
     public MethodNode decompile(MethodHolder method) {
-        return method.getModifiers().contains(ElementModifier.NATIVE) ? decompileNative(method)
-                : !asyncMethods.contains(method.getReference()) ? decompileRegular(method) : decompileAsync(method);
+        return !asyncMethods.contains(method.getReference()) ? decompileRegular(method) : decompileAsync(method);
     }
 
-    public NativeMethodNode decompileNative(MethodHolder method) {
-        Generator generator = generators.get(method.getReference());
-        if (generator == null) {
-            AnnotationHolder annotHolder = method.getAnnotations().get(GeneratedBy.class.getName());
-            if (annotHolder == null) {
-                throw new DecompilationException("Method " + method.getOwnerName() + "." + method.getDescriptor()
-                        + " is native, but no " + GeneratedBy.class.getName() + " annotation found");
-            }
-            ValueType annotValue = annotHolder.getValues().get("value").getJavaClass();
-            String generatorClassName = ((ValueType.Object) annotValue).getClassName();
-            try {
-                Class<?> generatorClass = Class.forName(generatorClassName, true, classLoader);
-                generator = (Generator) generatorClass.newInstance();
-            } catch (ClassNotFoundException | InstantiationException | IllegalAccessException e) {
-                throw new DecompilationException("Error instantiating generator " + generatorClassName
-                        + " for native method " + method.getOwnerName() + "." + method.getDescriptor());
-            }
-        }
-        NativeMethodNode methodNode = new NativeMethodNode(new MethodReference(method.getOwnerName(),
-                method.getDescriptor()));
-        methodNode.getModifiers().addAll(method.getModifiers());
-        methodNode.setGenerator(generator);
-        methodNode.setAsync(asyncMethods.contains(method.getReference()));
-        return methodNode;
-    }
-
-    public RegularMethodNode decompileRegular(MethodHolder method) {
-        if (regularMethodCache == null || method.getAnnotations().get(NoCache.class.getName()) != null) {
+    public MethodNode decompileRegular(MethodHolder method) {
+        if (methodCache == null || method.getAnnotations().get(NoCache.class.getName()) != null) {
             return decompileRegularCacheMiss(method);
         }
-        RegularMethodNode node = regularMethodCache.get(method.getReference());
+        MethodNode node = methodCache.get(method.getReference());
         if (node == null) {
             node = decompileRegularCacheMiss(method);
-            regularMethodCache.store(method.getReference(), node);
+            methodCache.store(method.getReference(), node);
         }
         return node;
     }
 
-    public RegularMethodNode decompileRegularCacheMiss(MethodHolder method) {
-        RegularMethodNode methodNode = new RegularMethodNode(method.getReference());
+    public MethodNode decompileRegularCacheMiss(MethodHolder method) {
+        MethodNode methodNode = new MethodNode(method.getReference());
         Program program = method.getProgram();
         int[] targetBlocks = new int[program.basicBlockCount()];
         Arrays.fill(targetBlocks, -1);
         try {
-            methodNode.setBody(getRegularMethodStatement(program, targetBlocks, false).getStatement());
+            MethodNodePart part = new MethodNodePart();
+            part.setStatement(getRegularMethodStatement(program, targetBlocks, false).getStatement());
+            methodNode.getBody().add(part);
         } catch (RuntimeException e) {
             StringBuilder sb = new StringBuilder("Error decompiling method " + method.getReference() + ":\n");
             sb.append(new ListingBuilder().buildListing(program, "  "));
@@ -236,21 +160,21 @@ public class Decompiler {
         return methodNode;
     }
 
-    public AsyncMethodNode decompileAsync(MethodHolder method) {
-        if (regularMethodCache == null || method.getAnnotations().get(NoCache.class.getName()) != null) {
+    public MethodNode decompileAsync(MethodHolder method) {
+        if (methodCache == null || method.getAnnotations().get(NoCache.class.getName()) != null) {
             return decompileAsyncCacheMiss(method);
         }
-        AsyncMethodNode node = regularMethodCache.getAsync(method.getReference());
+        MethodNode node = methodCache.get(method.getReference());
         if (node == null || !checkAsyncRelevant(node)) {
             node = decompileAsyncCacheMiss(method);
-            regularMethodCache.storeAsync(method.getReference(), node);
+            methodCache.store(method.getReference(), node);
         }
         return node;
     }
 
-    private boolean checkAsyncRelevant(AsyncMethodNode node) {
+    private boolean checkAsyncRelevant(MethodNode node) {
         AsyncCallsFinder asyncCallsFinder = new AsyncCallsFinder();
-        for (AsyncMethodPart part : node.getBody()) {
+        for (MethodNodePart part : node.getBody()) {
             part.getStatement().acceptVisitor(asyncCallsFinder);
         }
         for (MethodReference asyncCall : asyncCallsFinder.asyncCalls) {
@@ -267,12 +191,12 @@ public class Decompiler {
         return true;
     }
 
-    private AsyncMethodNode decompileAsyncCacheMiss(MethodHolder method) {
-        AsyncMethodNode node = new AsyncMethodNode(method.getReference());
+    private MethodNode decompileAsyncCacheMiss(MethodHolder method) {
+        MethodNode node = new MethodNode(method.getReference());
         AsyncProgramSplitter splitter = new AsyncProgramSplitter(classSource, splitMethods);
         splitter.split(method.getProgram());
         for (int i = 0; i < splitter.size(); ++i) {
-            AsyncMethodPart part;
+            MethodNodePart part;
             try {
                 part = getRegularMethodStatement(splitter.getProgram(i), splitter.getBlockSuccessors(i), i > 0);
             } catch (RuntimeException e) {
@@ -300,8 +224,8 @@ public class Decompiler {
         return node;
     }
 
-    private AsyncMethodPart getRegularMethodStatement(Program program, int[] targetBlocks, boolean async) {
-        AsyncMethodPart result = new AsyncMethodPart();
+    private MethodNodePart getRegularMethodStatement(Program program, int[] targetBlocks, boolean async) {
+        MethodNodePart result = new MethodNodePart();
         lastBlockId = 1;
         graph = ProgramUtils.buildControlFlowGraph(program);
         int[] weights = new int[graph.size()];

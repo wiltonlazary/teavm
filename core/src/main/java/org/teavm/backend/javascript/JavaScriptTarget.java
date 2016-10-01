@@ -38,9 +38,7 @@ import org.teavm.backend.javascript.codegen.SourceWriter;
 import org.teavm.backend.javascript.codegen.SourceWriterBuilder;
 import org.teavm.backend.javascript.rendering.Renderer;
 import org.teavm.backend.javascript.rendering.RenderingContext;
-import org.teavm.backend.javascript.spi.GeneratedBy;
 import org.teavm.backend.javascript.spi.Generator;
-import org.teavm.backend.javascript.spi.InjectedBy;
 import org.teavm.backend.javascript.spi.Injector;
 import org.teavm.backend.javascript.spi.InjectorProvider;
 import org.teavm.backend.javascript.spi.RendererListener;
@@ -50,8 +48,6 @@ import org.teavm.debugging.information.SourceLocation;
 import org.teavm.dependency.DependencyChecker;
 import org.teavm.dependency.DependencyListener;
 import org.teavm.dependency.MethodDependency;
-import org.teavm.model.BasicBlock;
-import org.teavm.model.CallLocation;
 import org.teavm.model.ClassHolder;
 import org.teavm.model.ClassHolderTransformer;
 import org.teavm.model.ElementModifier;
@@ -63,12 +59,6 @@ import org.teavm.model.MethodReference;
 import org.teavm.model.Program;
 import org.teavm.model.TextLocation;
 import org.teavm.model.ValueType;
-import org.teavm.model.Variable;
-import org.teavm.model.instructions.ConstructInstruction;
-import org.teavm.model.instructions.InvocationType;
-import org.teavm.model.instructions.InvokeInstruction;
-import org.teavm.model.instructions.RaiseInstruction;
-import org.teavm.model.instructions.StringConstantInstruction;
 import org.teavm.model.util.AsyncMethodFinder;
 import org.teavm.model.util.ProgramUtils;
 import org.teavm.vm.BuildTarget;
@@ -266,6 +256,9 @@ public class JavaScriptTarget implements TeaVMTarget, TeaVMJavaScriptHost {
         for (InjectorProvider provider : injectorProviders) {
             renderingContext.addInjectorProvider(provider);
         }
+        for (Map.Entry<MethodReference, Generator> entry : methodGenerators.entrySet()) {
+            renderingContext.addGenerator(entry.getKey(), entry.getValue());
+        }
         try {
             for (RendererListener listener : rendererListeners) {
                 listener.begin(renderer, target);
@@ -301,67 +294,28 @@ public class JavaScriptTarget implements TeaVMTarget, TeaVMJavaScriptHost {
         asyncMethods.addAll(asyncFinder.getAsyncMethods());
         asyncFamilyMethods.addAll(asyncFinder.getAsyncFamilyMethods());
 
-        Decompiler decompiler = new Decompiler(classes, controller.getClassLoader(), asyncMethods, asyncFamilyMethods);
-        decompiler.setRegularMethodCache(controller.isIncremental() ? astCache : null);
+        Decompiler decompiler = new Decompiler(classes, asyncMethods, asyncFamilyMethods);
+        decompiler.setMethodCache(controller.isIncremental() ? astCache : null);
 
-        for (Map.Entry<MethodReference, Generator> entry : methodGenerators.entrySet()) {
-            decompiler.addGenerator(entry.getKey(), entry.getValue());
-        }
-        for (MethodReference injectedMethod : methodInjectors.keySet()) {
-            decompiler.addMethodToSkip(injectedMethod);
-        }
         List<ClassNode> classNodes = new ArrayList<>();
         for (String className : classes.getClassNames()) {
             ClassHolder cls = classes.get(className);
+            ClassNode classNode = new ClassNode(cls);
             for (MethodHolder method : cls.getMethods()) {
-                preprocessNativeMethod(method);
+                if (!method.hasModifier(ElementModifier.NATIVE)
+                        && !method.hasModifier(ElementModifier.ABSTRACT)
+                        && method.getProgram() != null) {
+                    classNode.getMethods().add(decompiler.decompile(method));
+                }
+
                 if (controller.wasCancelled()) {
                     break;
                 }
             }
-            classNodes.add(decompiler.decompile(cls));
+
+            classNodes.add(classNode);
         }
         return classNodes;
-    }
-
-    private void preprocessNativeMethod(MethodHolder method) {
-        if (!method.getModifiers().contains(ElementModifier.NATIVE)
-                || methodGenerators.get(method.getReference()) != null
-                || methodInjectors.get(method.getReference()) != null
-                || method.getAnnotations().get(GeneratedBy.class.getName()) != null
-                || method.getAnnotations().get(InjectedBy.class.getName()) != null) {
-            return;
-        }
-        method.getModifiers().remove(ElementModifier.NATIVE);
-
-        Program program = new Program();
-        method.setProgram(program);
-        BasicBlock block = program.createBasicBlock();
-        Variable exceptionVar = program.createVariable();
-        ConstructInstruction newExceptionInsn = new ConstructInstruction();
-        newExceptionInsn.setType(NoSuchMethodError.class.getName());
-        newExceptionInsn.setReceiver(exceptionVar);
-        block.getInstructions().add(newExceptionInsn);
-
-        Variable constVar = program.createVariable();
-        StringConstantInstruction constInsn = new StringConstantInstruction();
-        constInsn.setConstant("Native method implementation not found: " + method.getReference());
-        constInsn.setReceiver(constVar);
-        block.getInstructions().add(constInsn);
-
-        InvokeInstruction initExceptionInsn = new InvokeInstruction();
-        initExceptionInsn.setInstance(exceptionVar);
-        initExceptionInsn.setMethod(new MethodReference(NoSuchMethodError.class, "<init>", String.class, void.class));
-        initExceptionInsn.setType(InvocationType.SPECIAL);
-        initExceptionInsn.getArguments().add(constVar);
-        block.getInstructions().add(initExceptionInsn);
-
-        RaiseInstruction raiseInsn = new RaiseInstruction();
-        raiseInsn.setException(exceptionVar);
-        block.getInstructions().add(raiseInsn);
-
-        controller.getDiagnostics().error(new CallLocation(method.getReference()),
-                "Native method {{m0}} has no implementation",  method.getReference());
     }
 
     private void emitCFG(DebugInformationEmitter emitter, Program program) {

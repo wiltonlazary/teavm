@@ -15,7 +15,7 @@
  */
 package org.teavm.backend.wasm.generate;
 
-import org.teavm.ast.RegularMethodNode;
+import org.teavm.ast.MethodNode;
 import org.teavm.ast.VariableNode;
 import org.teavm.ast.decompilation.Decompiler;
 import org.teavm.backend.wasm.model.WasmFunction;
@@ -46,7 +46,7 @@ public class WasmGenerator {
         ClassHolder cls = classSource.get(methodReference.getClassName());
         MethodHolder method = cls.getMethod(methodReference.getDescriptor());
 
-        RegularMethodNode methodAst = decompiler.decompileRegular(bodyMethod);
+        MethodNode methodAst = decompiler.decompileRegular(bodyMethod);
         WasmFunction function = new WasmFunction(WasmMangling.mangleMethod(methodReference));
         int firstVariable = method.hasModifier(ElementModifier.STATIC) ? 1 : 0;
         for (int i = firstVariable; i < methodAst.getVariables().size(); ++i) {
@@ -66,7 +66,7 @@ public class WasmGenerator {
 
         WasmGenerationVisitor visitor = new WasmGenerationVisitor(context, classGenerator, function, methodReference,
                 firstVariable);
-        methodAst.getBody().acceptVisitor(visitor);
+        methodAst.getBody().get(0).getStatement().acceptVisitor(visitor);
         function.getBody().add(visitor.result);
 
         return function;

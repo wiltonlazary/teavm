@@ -15,15 +15,18 @@
  */
 package org.teavm.ast;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import org.teavm.model.ElementModifier;
 import org.teavm.model.MethodReference;
 
-public abstract class MethodNode {
+public class MethodNode {
     private MethodReference reference;
     private Set<ElementModifier> modifiers = EnumSet.noneOf(ElementModifier.class);
+    private List<MethodNodePart> body = new ArrayList<>();
+    private List<VariableNode> variables = new ArrayList<>();
 
     public MethodNode(MethodReference reference) {
         this.reference = reference;
@@ -38,9 +41,11 @@ public abstract class MethodNode {
         return modifiers;
     }
 
-    public abstract void acceptVisitor(MethodNodeVisitor visitor);
+    public List<MethodNodePart> getBody() {
+        return body;
+    }
 
-    public abstract boolean isAsync();
-
-    public abstract List<VariableNode> getVariables();
+    public List<VariableNode> getVariables() {
+        return variables;
+    }
 }

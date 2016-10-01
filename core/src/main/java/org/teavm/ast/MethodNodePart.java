@@ -15,14 +15,14 @@
  */
 package org.teavm.ast;
 
-/**
- *
- * @author Alexey Andreev
- */
-public interface MethodNodeVisitor {
-    void visit(RegularMethodNode methodNode);
+public class MethodNodePart {
+    private Statement statement;
 
-    void visit(AsyncMethodNode methodNode);
+    public Statement getStatement() {
+        return statement;
+    }
 
-    void visit(NativeMethodNode methodNode);
+    public void setStatement(Statement statement) {
+        this.statement = statement;
+    }
 }

@@ -17,9 +17,9 @@ package org.teavm.ast.optimization;
 
 import java.util.BitSet;
 import java.util.List;
-import org.teavm.ast.AsyncMethodNode;
-import org.teavm.ast.AsyncMethodPart;
-import org.teavm.ast.RegularMethodNode;
+import org.teavm.ast.MethodNode;
+import org.teavm.ast.MethodNodePart;
+import org.teavm.ast.Statement;
 import org.teavm.common.Graph;
 import org.teavm.model.Instruction;
 import org.teavm.model.Program;
@@ -31,7 +31,7 @@ import org.teavm.model.util.ProgramUtils;
 import org.teavm.model.util.UsageExtractor;
 
 public class Optimizer {
-    public void optimize(RegularMethodNode method, Program program) {
+    public void optimize(MethodNode method, Program program) {
         ReadWriteStatsBuilder stats = new ReadWriteStatsBuilder(method.getVariables().size());
         stats.analyze(program);
         boolean[] preservedVars = new boolean[stats.writes.length];
@@ -41,26 +41,28 @@ public class Optimizer {
             }
         }
         BreakEliminator breakEliminator = new BreakEliminator();
-        breakEliminator.eliminate(method.getBody());
+
+        Statement body = method.getBody().get(0).getStatement();
+        breakEliminator.eliminate(body);
         OptimizingVisitor optimizer = new OptimizingVisitor(preservedVars, stats.reads);
-        method.getBody().acceptVisitor(optimizer);
-        method.setBody(optimizer.resultStmt);
+        body.acceptVisitor(optimizer);
+        method.getBody().get(0).setStatement(optimizer.resultStmt);
         int paramCount = method.getReference().parameterCount();
 
         UnusedVariableEliminator unusedEliminator = new UnusedVariableEliminator(paramCount, method.getVariables());
-        method.getBody().acceptVisitor(unusedEliminator);
+        body.acceptVisitor(unusedEliminator);
         method.getVariables().clear();
         method.getVariables().addAll(unusedEliminator.getReorderedVariables());
 
         RedundantLabelEliminator labelEliminator = new RedundantLabelEliminator();
-        method.getBody().acceptVisitor(labelEliminator);
+        body.acceptVisitor(labelEliminator);
 
         for (int i = 0; i < method.getVariables().size(); ++i) {
             method.getVariables().get(i).setIndex(i);
         }
     }
 
-    public void optimize(AsyncMethodNode method, AsyncProgramSplitter splitter) {
+    public void optimize(MethodNode method, AsyncProgramSplitter splitter) {
         LivenessAnalyzer liveness = new LivenessAnalyzer();
         liveness.analyze(splitter.getOriginalProgram());
 
@@ -76,7 +78,7 @@ public class Optimizer {
                 }
             }
 
-            AsyncMethodPart part = method.getBody().get(i);
+            MethodNodePart part = method.getBody().get(i);
             BreakEliminator breakEliminator = new BreakEliminator();
             breakEliminator.eliminate(part.getStatement());
             findEscapingLiveVars(liveness, cfg, splitter, i, preservedVars);
@@ -87,14 +89,14 @@ public class Optimizer {
 
         int paramCount = method.getReference().parameterCount();
         UnusedVariableEliminator unusedEliminator = new UnusedVariableEliminator(paramCount, method.getVariables());
-        for (AsyncMethodPart part : method.getBody()) {
+        for (MethodNodePart part : method.getBody()) {
             part.getStatement().acceptVisitor(unusedEliminator);
         }
         method.getVariables().clear();
         method.getVariables().addAll(unusedEliminator.getReorderedVariables());
 
         RedundantLabelEliminator labelEliminator = new RedundantLabelEliminator();
-        for (AsyncMethodPart part : method.getBody()) {
+        for (MethodNodePart part : method.getBody()) {
             part.getStatement().acceptVisitor(labelEliminator);
         }
         for (int i = 0; i < method.getVariables().size(); ++i) {
