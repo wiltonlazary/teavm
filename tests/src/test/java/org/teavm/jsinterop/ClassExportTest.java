@@ -49,4 +49,16 @@ public class ClassExportTest {
             + "var b = new WithConstructor(3, ',', null);"
             + "return a.test() + ';' + b.test();")
     private static native String callConstructor();
+
+    @Test
+    public void exportedByMembers() {
+        assertEquals("WithExportedMembers", WithExportedMembers.class.getSimpleName());
+        assertEquals(4, callExportedMembers());
+    }
+
+    @JSBody(params = {}, script = ""
+            + "var WithExportedMembers = org.teavm.jsinterop.WithExportedMembers;"
+            + "var a = new WithExportedMembers();"
+            + "return a.test(true);")
+    private static native int callExportedMembers();
 }

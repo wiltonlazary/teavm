@@ -24,40 +24,30 @@ import org.teavm.model.CallLocation;
 import org.teavm.model.ClassHolder;
 import org.teavm.model.ClassHolderTransformer;
 import org.teavm.model.ClassReaderSource;
-import org.teavm.model.FieldHolder;
+import org.teavm.model.FieldReader;
 import org.teavm.model.FieldReference;
-import org.teavm.model.MemberHolder;
-import org.teavm.model.MethodHolder;
+import org.teavm.model.MemberReader;
+import org.teavm.model.MethodReader;
 import org.teavm.model.MethodReference;
 
 public class JsInteropClassTransformer implements ClassHolderTransformer {
-    private JsInteropContext context = new JsInteropContext();
-
-    public JsInteropContext getContext() {
-        return context;
-    }
-
     @Override
     public void transformClass(ClassHolder cls, ClassReaderSource innerSource, Diagnostics diagnostics) {
-        context.classSource = innerSource;
-        JsClass jsClass = context.getClass(cls.getName());
-        if (jsClass.isJsType()) {
-            validateClass(cls, diagnostics);
-        }
+        validateClass(cls, diagnostics);
     }
 
     public void validateClass(ClassHolder cls, Diagnostics diagnostics) {
-        Map<String, MemberHolder> names = new HashMap<>();
-        Set<MemberHolder> collisionReported = new HashSet<>();
-        Set<MemberHolder> members = new HashSet<>();
-        members.addAll(cls.getMethods());
-        members.addAll(cls.getFields());
+        Map<String, MemberReader> names = new HashMap<>();
+        Set<MemberReader> collisionReported = new HashSet<>();
+        Set<MemberReader> members = new HashSet<>();
+        members.addAll(JsInteropUtil.getJsMethods(cls));
+        members.addAll(JsInteropUtil.getJsConstructors(cls));
 
-        for (MemberHolder member : members) {
-            if (!JsInteropUtil.isJsMember(member)) {
+        for (MemberReader member : members) {
+            if (!JsInteropUtil.isAutoJsMember(member)) {
                 continue;
             }
-            MemberHolder existingMember = names.get(member.getName());
+            MemberReader existingMember = names.get(member.getName());
             if (existingMember != null) {
                 if (collisionReported.add(existingMember)) {
                     reportCollision(existingMember, diagnostics);
@@ -69,13 +59,13 @@ public class JsInteropClassTransformer implements ClassHolderTransformer {
         }
     }
 
-    private void reportCollision(MemberHolder member, Diagnostics diagnostics) {
-        if (member instanceof MethodHolder) {
-            MethodReference methodRef = ((MethodHolder) member).getReference();
+    private void reportCollision(MemberReader member, Diagnostics diagnostics) {
+        if (member instanceof MethodReader) {
+            MethodReference methodRef = ((MethodReader) member).getReference();
             CallLocation location = new CallLocation(methodRef);
             diagnostics.error(location, "JS name collision detected on method {{m0}}", methodRef);
-        } else if (member instanceof FieldHolder) {
-            FieldReference fieldRef = ((FieldHolder) member).getReference();
+        } else if (member instanceof FieldReader) {
+            FieldReference fieldRef = ((FieldReader) member).getReference();
             diagnostics.error(null, "JS name collision detected on file {{f0}}", fieldRef);
         }
     }

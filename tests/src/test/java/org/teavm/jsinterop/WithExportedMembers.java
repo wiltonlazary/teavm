@@ -15,25 +15,16 @@
  */
 package org.teavm.jsinterop;
 
-public class JsClass {
-    String name;
-    boolean jsType;
-    boolean isNative;
-    boolean jsTypeCompatible;
+import jsinterop.annotations.JsConstructor;
+import jsinterop.annotations.JsMethod;
 
-    public String getName() {
-        return name;
+public class WithExportedMembers {
+    @JsConstructor
+    public WithExportedMembers() {
     }
 
-    public boolean isJsType() {
-        return jsType;
-    }
-
-    public boolean isNative() {
-        return isNative;
-    }
-
-    public boolean isJsTypeCompatible() {
-        return jsTypeCompatible;
+    @JsMethod
+    public int test(Boolean b) {
+        return b.toString().length();
     }
 }

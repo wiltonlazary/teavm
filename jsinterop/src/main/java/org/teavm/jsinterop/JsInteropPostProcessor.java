@@ -33,11 +33,6 @@ import org.teavm.vm.BuildTarget;
 
 public class JsInteropPostProcessor extends AbstractRendererListener {
     private RenderingManager manager;
-    private JsInteropContext jsInteropContext;
-
-    public JsInteropPostProcessor(JsInteropContext jsInteropContext) {
-        this.jsInteropContext = jsInteropContext;
-    }
 
     @Override
     public void begin(RenderingManager manager, BuildTarget buildTarget) throws IOException {
@@ -48,33 +43,33 @@ public class JsInteropPostProcessor extends AbstractRendererListener {
     public void complete() throws IOException {
         SourceWriter writer = manager.getWriter();
 
-        List<JsClass> jsClasses = getJsClasses();
+        List<String> jsClasses = getJsClasses();
         JsPackage rootPackage = buildRootPackage(jsClasses);
         for (JsPackage topLevelPackage : rootPackage.subpackages.values()) {
             renderPackage(writer, topLevelPackage, "");
         }
         writer.newLine();
-        for (JsClass jsClass : jsClasses) {
-            ClassReader cls = manager.getClassSource().get(jsClass.getName());
+        for (String jsClass : jsClasses) {
+            ClassReader cls = manager.getClassSource().get(jsClass);
             renderClassWrappers(writer, cls);
         }
         writer.newLine();
     }
 
-    private List<JsClass> getJsClasses() {
-        List<JsClass> jsClasses = new ArrayList<>();
+    private List<String> getJsClasses() {
+        List<String> jsClasses = new ArrayList<>();
         for (String className : manager.getClassSource().getClassNames()) {
-            JsClass jsClass = jsInteropContext.getClass(className);
-            if (jsClass.jsType && !jsClass.isNative) {
-                jsClasses.add(jsClass);
+            ClassReader cls = manager.getClassSource().get(className);
+            if (JsInteropUtil.isExportedToJs(cls)) {
+                jsClasses.add(className);
             }
         }
         return jsClasses;
     }
 
-    private JsPackage buildRootPackage(List<JsClass> jsClasses) {
+    private JsPackage buildRootPackage(List<String> jsClasses) {
         JsPackage jsPackage = new JsPackage(null);
-        jsClasses.forEach(jsClass -> addClassToPackage(jsPackage, jsClass.getName()));
+        jsClasses.forEach(jsClass -> addClassToPackage(jsPackage, jsClass));
         return jsPackage;
     }
 
@@ -120,7 +115,7 @@ public class JsInteropPostProcessor extends AbstractRendererListener {
         }
 
         for (MethodReader method : cls.getMethods()) {
-            if (!JsInteropUtil.isJsMember(method)) {
+            if (!JsInteropUtil.isAutoJsMember(method)) {
                 continue;
             }
             writer.appendClass(cls.getName()).append(".");

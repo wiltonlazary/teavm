@@ -15,13 +15,12 @@
  */
 package org.teavm.jsinterop;
 
-import jsinterop.annotations.JsType;
+import java.util.ArrayList;
+import java.util.List;
 import org.teavm.dependency.AbstractDependencyListener;
 import org.teavm.dependency.DependencyAgent;
 import org.teavm.dependency.DependencyNode;
 import org.teavm.dependency.MethodDependency;
-import org.teavm.model.AnnotationReader;
-import org.teavm.model.AnnotationValue;
 import org.teavm.model.CallLocation;
 import org.teavm.model.ClassReader;
 import org.teavm.model.MethodReader;
@@ -32,27 +31,19 @@ public class JsInteropDependencyListener extends AbstractDependencyListener {
     @Override
     public void classReached(DependencyAgent agent, String className, CallLocation location) {
         ClassReader cls = agent.getClassSource().get(className);
-        if (isExportedToJs(cls)) {
+        if (JsInteropUtil.isExportedToJs(cls)) {
             exposeClass(agent, cls, location);
         }
     }
 
-    private boolean isExportedToJs(ClassReader cls) {
-        AnnotationReader jsTypeAnnot = cls.getAnnotations().get(JsType.class.getName());
-        if (jsTypeAnnot == null) {
-            return false;
-        }
-        AnnotationValue nativeValue = jsTypeAnnot.getValue("native");
-        return nativeValue == null || !nativeValue.getBoolean();
-    }
-
     private void exposeClass(DependencyAgent agent, ClassReader cls, CallLocation location) {
-        for (MethodReader method : cls.getMethods()) {
-            if (JsInteropUtil.isJsMember(method) || method.getName().equals("<init>")) {
-                MethodDependency methodDep = agent.linkMethod(method.getReference(), location);
-                exposeMethodParameters(agent, methodDep);
-                methodDep.use();
-            }
+        List<MethodReader> methodsAndConstructors = new ArrayList<>();
+        methodsAndConstructors.addAll(JsInteropUtil.getJsMethods(cls));
+        methodsAndConstructors.addAll(JsInteropUtil.getJsConstructors(cls));
+        for (MethodReader method : methodsAndConstructors) {
+            MethodDependency methodDep = agent.linkMethod(method.getReference(), location);
+            exposeMethodParameters(agent, methodDep);
+            methodDep.use();
         }
     }
 
