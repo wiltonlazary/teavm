@@ -13,18 +13,19 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package org.teavm.backend.javascript.spi;
+package org.teavm.jsinterop;
 
-import java.io.IOException;
-import org.teavm.backend.javascript.rendering.RenderingManager;
-import org.teavm.vm.BuildTarget;
+import jsinterop.annotations.JsType;
 
-public abstract class AbstractRendererListener implements RendererListener {
-    @Override
-    public void begin(RenderingManager manager, BuildTarget buildTarget) throws IOException {
+@JsType
+public class WithConstructor {
+    private String result;
+
+    public WithConstructor(int a, String b, Short c) {
+        this.result = a + b + c;
     }
 
-    @Override
-    public void complete() throws IOException {
+    public String test() {
+        return result;
     }
 }

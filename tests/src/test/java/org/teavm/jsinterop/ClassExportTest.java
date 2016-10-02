@@ -27,7 +27,7 @@ import org.teavm.junit.TeaVMTestRunner;
 public class ClassExportTest {
     @Test
     public void simple() {
-        new Foo().bar();
+        assertEquals("Foo", Foo.class.getSimpleName());
         assertEquals(23, testFoo());
     }
 
@@ -36,4 +36,17 @@ public class ClassExportTest {
             + "var instance = new Foo();"
             + "return instance.bar();")
     private static native int testFoo();
+
+    @Test
+    public void constructorCalled() {
+        assertEquals("WithConstructor", WithConstructor.class.getSimpleName());
+        assertEquals("1,2;3,null", callConstructor());
+    }
+
+    @JSBody(params = {}, script = ""
+            + "var WithConstructor = org.teavm.jsinterop.WithConstructor;"
+            + "var a = new WithConstructor(1, ',', 2);"
+            + "var b = new WithConstructor(3, ',', null);"
+            + "return a.test() + ';' + b.test();")
+    private static native String callConstructor();
 }

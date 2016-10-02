@@ -331,10 +331,6 @@ public class Renderer implements RenderingManager {
                 writer.append("this.$id").ws().append('=').ws().append("0;").softNewLine();
             }
 
-            for (RendererListener listener : listeners) {
-                listener.classConstructor(classHolder.getName());
-            }
-
             writer.outdent().append("}").newLine();
 
             for (FieldHolder field : staticFields) {

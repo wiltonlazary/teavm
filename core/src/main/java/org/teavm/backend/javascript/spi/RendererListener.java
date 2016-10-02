@@ -22,7 +22,5 @@ import org.teavm.vm.BuildTarget;
 public interface RendererListener {
     void begin(RenderingManager manager, BuildTarget buildTarget) throws IOException;
 
-    void classConstructor(String className) throws IOException;
-
     void complete() throws IOException;
 }
