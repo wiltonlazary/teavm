@@ -74,14 +74,21 @@ public class JsInteropPostProcessor extends AbstractRendererListener {
     }
 
     private void addClassToPackage(JsPackage jsPackage, String className) {
+        ClassReader cls = manager.getClassSource().get(className);
+        if (cls == null) {
+            return;
+        }
+
+        String packageName = JsInteropUtil.getJsPackageName(cls);
+
         int index = 0;
-        while (true) {
-            int next = className.indexOf('.', index);
+        while (index < packageName.length()) {
+            int next = packageName.indexOf('.', index);
             if (next < 0) {
-                break;
+                next = packageName.length();
             }
-            String packageName = className.substring(index, next);
-            jsPackage = jsPackage.subpackages.computeIfAbsent(packageName, JsPackage::new);
+            String packagePart = packageName.substring(index, next);
+            jsPackage = jsPackage.subpackages.computeIfAbsent(packagePart, JsPackage::new);
             index = next + 1;
         }
     }
@@ -102,13 +109,17 @@ public class JsInteropPostProcessor extends AbstractRendererListener {
     }
 
     private void renderClassWrappers(SourceWriter writer, ClassReader cls) throws IOException {
-        writer.append(cls.getName()).ws().append("=").ws();
+        String packageName = JsInteropUtil.getJsPackageName(cls);
+        String className = JsInteropUtil.getJsClassName(cls);
+        String fqn = !packageName.isEmpty() ? packageName + "." + className : className;
+
+        writer.append(fqn).ws().append("=").ws();
 
         MethodReader contructor = findConstructor(cls);
         if (contructor != null) {
             renderConstructor(writer, contructor);
             writer.append(";").softNewLine();
-            writer.append(cls.getName()).append(".prototype").ws().append("=").ws()
+            writer.append(fqn).append(".prototype").ws().append("=").ws()
                     .appendClass(cls.getName()).append(".prototype;").newLine();
         } else {
             writer.appendClass(cls.getName()).append(";").newLine();

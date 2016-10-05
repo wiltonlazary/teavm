@@ -20,6 +20,7 @@ import java.util.List;
 import jsinterop.annotations.JsConstructor;
 import jsinterop.annotations.JsIgnore;
 import jsinterop.annotations.JsMethod;
+import jsinterop.annotations.JsPackage;
 import jsinterop.annotations.JsType;
 import org.teavm.model.AccessLevel;
 import org.teavm.model.AnnotationReader;
@@ -133,5 +134,34 @@ public final class JsInteropUtil {
         }
 
         return false;
+    }
+
+    public static String getJsPackageName(ClassReader cls) {
+        AnnotationReader annotation = cls.getAnnotations().get(JsType.class.getName());
+        if (annotation != null) {
+            AnnotationValue namespace = annotation.getValue("namespace");
+            if (namespace != null) {
+                String value = namespace.getString();
+                return !value.equals(JsPackage.GLOBAL) ? value : "";
+            }
+        }
+
+        String name = cls.getName();
+        int dotIndex = name.lastIndexOf('.');
+        return dotIndex >= 0 ? name.substring(0, dotIndex) : "";
+    }
+
+    public static String getJsClassName(ClassReader cls) {
+        AnnotationReader annotation = cls.getAnnotations().get(JsType.class.getName());
+        if (annotation != null) {
+            AnnotationValue name = annotation.getValue("name");
+            if (name != null) {
+                return name.getString();
+            }
+        }
+
+        String name = cls.getName();
+        int dotIndex = name.lastIndexOf('.');
+        return dotIndex >= 0 ? name.substring(dotIndex + 1) : name;
     }
 }

@@ -61,4 +61,16 @@ public class ClassExportTest {
             + "var a = new WithExportedMembers();"
             + "return a.test(true);")
     private static native int callExportedMembers();
+
+    @Test
+    public void exportedByName() {
+        assertEquals("ExportedByName", ExportedByName.class.getSimpleName());
+        assertEquals(23, callExportedByName());
+    }
+
+    @JSBody(params = {}, script = ""
+            + "var Bar = foo.Bar;"
+            + "var a = new Bar(23);"
+            + "return a.getResult();")
+    private static native int callExportedByName();
 }
