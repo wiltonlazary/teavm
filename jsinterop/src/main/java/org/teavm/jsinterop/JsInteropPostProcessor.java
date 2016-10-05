@@ -17,7 +17,6 @@ package org.teavm.jsinterop;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,16 +26,16 @@ import org.teavm.backend.javascript.spi.AbstractRendererListener;
 import org.teavm.model.ClassReader;
 import org.teavm.model.ElementModifier;
 import org.teavm.model.MethodReader;
-import org.teavm.model.MethodReference;
-import org.teavm.model.ValueType;
 import org.teavm.vm.BuildTarget;
 
 public class JsInteropPostProcessor extends AbstractRendererListener {
     private RenderingManager manager;
+    private JsInteropConversion conversion;
 
     @Override
     public void begin(RenderingManager manager, BuildTarget buildTarget) throws IOException {
         this.manager = manager;
+        conversion = new JsInteropConversion(manager.getWriter());
     }
 
     @Override
@@ -159,7 +158,7 @@ public class JsInteropPostProcessor extends AbstractRendererListener {
         writer.append(")").ws().append("{").indent().softNewLine();
 
         for (int i = 0; i < method.parameterCount(); ++i) {
-            convertToJava(writer, "p" + i, method.parameterType(i));
+            conversion.convertToJava("p" + i, method.parameterType(i));
         }
 
         writer.appendClass(method.getOwnerName()).append(".call(this);").softNewLine();
@@ -174,7 +173,7 @@ public class JsInteropPostProcessor extends AbstractRendererListener {
     }
 
     private void renderMethod(SourceWriter writer, MethodReader method) throws IOException {
-        if (!shouldWrap(method)) {
+        if (!JsInteropConversion.shouldWrap(method)) {
             if (method.hasModifier(ElementModifier.STATIC)) {
                 writer.appendMethodBody(method.getReference());
             } else {
@@ -195,7 +194,7 @@ public class JsInteropPostProcessor extends AbstractRendererListener {
                 arguments.add("this");
             }
             for (int i = 0; i < method.parameterCount(); ++i) {
-                convertToJava(writer, "p" + i, method.parameterType(i));
+                conversion.convertToJava("p" + i, method.parameterType(i));
                 arguments.add("p" + i);
             }
 
@@ -207,159 +206,12 @@ public class JsInteropPostProcessor extends AbstractRendererListener {
                 writer.append(arguments.get(i));
             }
             writer.append(");").softNewLine();
-            convertToJS(writer, "result", method.getResultType());
+            conversion.convertToJS("result", method.getResultType());
 
             writer.append("return result").softNewLine();
             writer.outdent().append("}");
         }
         writer.append(";").newLine();
-    }
-
-    private void convertToJava(SourceWriter writer, String varName, ValueType type) throws IOException {
-        if (type instanceof ValueType.Object) {
-            String className = ((ValueType.Object) type).getClassName();
-            switch (className) {
-                case "java.lang.Boolean":
-                    convertToJavaWrapper(writer, varName, boolean.class, Boolean.class, () -> {
-                        writer.append("(");
-                        convertBooleanToJava(writer, varName);
-                        writer.append(")");
-                    });
-                    break;
-                case "java.lang.Byte":
-                    convertToJavaWrapper(writer, varName, byte.class, Byte.class, () -> writer.append(varName));
-                    break;
-                case "java.lang.Short":
-                    convertToJavaWrapper(writer, varName, short.class, Short.class, () -> writer.append(varName));
-                    break;
-                case "java.lang.Character":
-                    convertToJavaWrapper(writer, varName, char.class, Character.class, () -> writer.append(varName));
-                    break;
-                case "java.lang.Integer":
-                    convertToJavaWrapper(writer, varName, int.class, Integer.class, () -> writer.append(varName));
-                    break;
-                case "java.lang.Float":
-                    convertToJavaWrapper(writer, varName, float.class, Float.class, () -> writer.append(varName));
-                    break;
-                case "java.lang.Double":
-                    convertToJavaWrapper(writer, varName, double.class, Double.class, () -> writer.append(varName));
-                    break;
-                case "java.lang.String":
-                    convertNullableToJava(writer, varName, () -> writer.append("$rt_str(" + varName + ")"));
-                    break;
-            }
-        } else if (type == ValueType.BOOLEAN) {
-            writer.append(varName).ws().append('=').ws();
-            convertBooleanToJava(writer, varName);
-            writer.append(';').softNewLine();
-        }
-    }
-
-    private void convertToJS(SourceWriter writer, String varName, ValueType type) throws IOException {
-        if (type instanceof ValueType.Object) {
-            String className = ((ValueType.Object) type).getClassName();
-            switch (className) {
-                case "java.lang.Boolean":
-                    convertWrapperToJS(writer, varName, boolean.class, Boolean.class,
-                            () -> convertBooleanToJS(writer, varName));
-                    break;
-                case "java.lang.Byte":
-                    convertWrapperToJS(writer, varName, byte.class, Byte.class, () -> writer.append(varName));
-                    break;
-                case "java.lang.Short":
-                    convertWrapperToJS(writer, varName, short.class, Short.class, () -> writer.append(varName));
-                    break;
-                case "java.lang.Character":
-                    convertWrapperToJS(writer, varName, char.class, Character.class, () -> writer.append(varName));
-                    break;
-                case "java.lang.Integer":
-                    convertWrapperToJS(writer, varName, int.class, Integer.class, () -> writer.append(varName));
-                    break;
-                case "java.lang.Float":
-                    convertWrapperToJS(writer, varName, float.class, Float.class, () -> writer.append(varName));
-                    break;
-                case "java.lang.Double":
-                    convertWrapperToJS(writer, varName, double.class, Double.class, () -> writer.append(varName));
-                    break;
-                case "java.lang.String":
-                    convertNullableToJS(writer, varName, () -> writer.append("$rt_ustr(" + varName + ")"));
-                    break;
-            }
-        }
-    }
-
-    private void convertToJavaWrapper(SourceWriter writer, String varName, Class<?> primitiveClass,
-            Class<?> wrapperClass, Fragment inner) throws IOException {
-        convertNullableToJava(writer, varName, () -> {
-            MethodReference wrapperMethod = new MethodReference(wrapperClass, "valueOf", primitiveClass, wrapperClass);
-            writer.appendMethodBody(wrapperMethod).append("(");
-            inner.emit();
-            writer.append(")");
-        });
-    }
-
-    private void convertBooleanToJava(SourceWriter writer, String varName) throws IOException {
-        writer.append(varName).ws().append('?').ws().append('1').ws().append(':').ws().append('0');
-    }
-
-    private void convertNullableToJava(SourceWriter writer, String varName, Fragment fragment) throws IOException {
-        writer.append(varName).ws().append('=').ws()
-                .append(varName).ws().append("!=").ws().append("null").ws().append("?").ws();
-        fragment.emit();
-        writer.ws().append(":").ws().append("null;").softNewLine();
-    }
-
-    private void convertWrapperToJS(SourceWriter writer, String varName, Class<?> primitiveClass,
-            Class<?> wrapperClass, Fragment inner) throws IOException {
-        convertNullableToJS(writer, varName, () -> {
-            MethodReference wrapperMethod = new MethodReference(wrapperClass, primitiveClass.getName() + "Value",
-                    primitiveClass);
-            writer.appendMethodBody(wrapperMethod).append("(");
-            inner.emit();
-            writer.append(")");
-        });
-    }
-
-    private void convertNullableToJS(SourceWriter writer, String varName, Fragment fragment) throws IOException {
-        writer.append(varName).ws().append('=').ws()
-                .append(varName).ws().append("!==").ws().append("null").ws().append("?").ws();
-        fragment.emit();
-        writer.ws().append(":").ws().append("null;").softNewLine();
-    }
-
-    private void convertBooleanToJS(SourceWriter writer, String varName) throws IOException {
-        writer.append(varName).ws().append("!==").ws().append('0');
-    }
-
-    private interface Fragment {
-        void emit() throws IOException;
-    }
-
-    private boolean shouldWrap(MethodReader method) {
-        return Arrays.stream(method.getSignature()).anyMatch(this::shouldWrap);
-    }
-
-    private boolean shouldWrap(ValueType type) {
-        if (type instanceof ValueType.Object) {
-            String className = ((ValueType.Object) type).getClassName();
-            switch (className) {
-                case "java.lang.Boolean":
-                case "java.lang.Byte":
-                case "java.lang.Short":
-                case "java.lang.Character":
-                case "java.lang.Integer":
-                case "java.lang.Float":
-                case "java.lang.Double":
-                case "java.lang.String":
-                    return true;
-            }
-        } else if (type instanceof ValueType.Array) {
-            return true;
-        } else if (type == ValueType.BOOLEAN) {
-            return true;
-        }
-
-        return false;
     }
 
     static class JsPackage {
