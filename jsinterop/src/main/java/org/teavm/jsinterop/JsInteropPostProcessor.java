@@ -129,11 +129,12 @@ public class JsInteropPostProcessor extends AbstractRendererListener {
             if (!JsInteropUtil.isAutoJsMember(method)) {
                 continue;
             }
-            writer.appendClass(cls.getName()).append(".");
             if (!method.hasModifier(ElementModifier.STATIC)) {
-                writer.append("prototype.");
+                writer.appendClass(cls.getName()).append(".").append("prototype.");
+            } else {
+                writer.append(fqn).append(".");
             }
-            writer.append(method.getName()).ws().append("=").ws();
+            writer.append(JsInteropUtil.getJsMethodName(method)).ws().append("=").ws();
             renderMethod(writer, method);
         }
     }

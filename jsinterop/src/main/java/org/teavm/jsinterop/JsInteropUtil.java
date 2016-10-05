@@ -164,4 +164,16 @@ public final class JsInteropUtil {
         int dotIndex = name.lastIndexOf('.');
         return dotIndex >= 0 ? name.substring(dotIndex + 1) : name;
     }
+
+    public static String getJsMethodName(MethodReader method) {
+        AnnotationReader annotation = method.getAnnotations().get(JsMethod.class.getName());
+        if (annotation != null) {
+            AnnotationValue name = annotation.getValue("name");
+            if (name != null) {
+                return name.getString();
+            }
+        }
+
+        return method.getName();
+    }
 }

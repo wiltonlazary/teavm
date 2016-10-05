@@ -73,4 +73,16 @@ public class ClassExportTest {
             + "var a = new Bar(23);"
             + "return a.getResult();")
     private static native int callExportedByName();
+
+    @Test
+    public void methodExportedByName() {
+        assertEquals("MethodExportedByName", MethodExportedByName.class.getSimpleName());
+        assertEquals("foo();bar()", callMethodExportedByName());
+    }
+
+    @JSBody(params = {}, script = ""
+            + "var Class = org.teavm.jsinterop.MethodExportedByName;"
+            + "var instance = new Class();"
+            + "return instance.boo() + ';' + Class.far();")
+    private static native String callMethodExportedByName();
 }
