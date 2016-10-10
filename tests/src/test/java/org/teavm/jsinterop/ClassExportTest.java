@@ -85,4 +85,20 @@ public class ClassExportTest {
             + "var instance = new Class();"
             + "return instance.boo() + ';' + Class.far();")
     private static native String callMethodExportedByName();
+
+    @Test
+    public void fieldsExportedByName() {
+        assertEquals("WithFieldsExportedByName", WithFieldsExportedByName.class.getSimpleName());
+        assertEquals("23;42|42;23", callFieldsExportedByName());
+    }
+
+    @JSBody(params = {}, script = ""
+            + "var Class = org.teavm.jsinterop.WithFieldsExportedByName;"
+            + "var instance = new Class();"
+            + "var first = Class.boo + ';' + instance.far;"
+            + "Class.boo = 42;"
+            + "instance.far = '23';"
+            + "var second = instance.baz();"
+            + "return first + '|' + second;")
+    private static native String callFieldsExportedByName();
 }

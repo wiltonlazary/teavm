@@ -22,9 +22,12 @@ import java.util.List;
 import java.util.Map;
 import org.teavm.backend.javascript.codegen.SourceWriter;
 import org.teavm.backend.javascript.rendering.RenderingManager;
+import org.teavm.backend.javascript.rendering.RenderingUtil;
 import org.teavm.backend.javascript.spi.AbstractRendererListener;
 import org.teavm.model.ClassReader;
 import org.teavm.model.ElementModifier;
+import org.teavm.model.FieldReader;
+import org.teavm.model.MemberReader;
 import org.teavm.model.MethodReader;
 import org.teavm.vm.BuildTarget;
 
@@ -114,9 +117,9 @@ public class JsInteropPostProcessor extends AbstractRendererListener {
 
         writer.append(fqn).ws().append("=").ws();
 
-        MethodReader contructor = findConstructor(cls);
-        if (contructor != null) {
-            renderConstructor(writer, contructor);
+        MethodReader constructor = findConstructor(cls);
+        if (constructor != null) {
+            renderConstructor(writer, constructor);
             writer.append(";").softNewLine();
             writer.append(fqn).append(".prototype").ws().append("=").ws()
                     .appendClass(cls.getName()).append(".prototype;").newLine();
@@ -124,17 +127,50 @@ public class JsInteropPostProcessor extends AbstractRendererListener {
             writer.appendClass(cls.getName()).append(";").newLine();
         }
 
+        boolean autoExport = JsInteropUtil.isJsType(cls);
         for (MethodReader method : cls.getMethods()) {
-            if (!JsInteropUtil.isAutoJsMember(method)) {
-                continue;
-            }
-            if (!method.hasModifier(ElementModifier.STATIC)) {
-                writer.appendClass(cls.getName()).append(".").append("prototype.");
+            if (autoExport) {
+                if (!JsInteropUtil.isAutoJsMember(method)) {
+                    continue;
+                }
             } else {
-                writer.append(fqn).append(".");
+                if (!JsInteropUtil.isJsMethod(method)) {
+                    continue;
+                }
             }
-            writer.append(JsInteropUtil.getJsMethodName(method)).ws().append("=").ws();
+
+            renderTarget(writer, method, cls, fqn);
+            writer.append(".").append(JsInteropUtil.getJsMethodName(method)).ws().append("=").ws();
             renderMethod(writer, method);
+        }
+
+        for (FieldReader field : cls.getFields()) {
+            if (autoExport) {
+                if (!JsInteropUtil.isAutoJsMember(field)) {
+                    continue;
+                }
+            } else {
+                if (!JsInteropUtil.isJsField(field)) {
+                    continue;
+                }
+            }
+
+            writer.append("Object.defineProperty(");
+            renderTarget(writer, field, cls, fqn);
+            String fieldName = JsInteropUtil.getJsFieldName(field);
+            writer.append(",").ws().append("\"").append(RenderingUtil.escapeString(fieldName)).append("\"");
+            writer.append(",").ws();
+            renderField(writer, field);
+            writer.append(");").softNewLine();
+        }
+    }
+
+    private void renderTarget(SourceWriter writer, MemberReader member, ClassReader cls, String fqn)
+            throws IOException {
+        if (!member.hasModifier(ElementModifier.STATIC)) {
+            writer.appendClass(cls.getName()).append(".prototype");
+        } else {
+            writer.append(fqn);
         }
     }
 
@@ -212,6 +248,42 @@ public class JsInteropPostProcessor extends AbstractRendererListener {
             writer.outdent().append("}");
         }
         writer.append(";").newLine();
+    }
+
+    private void renderField(SourceWriter writer, FieldReader field) throws IOException {
+        writer.append("{").indent().softNewLine();
+
+        writer.append("get:").ws().append("function()").ws().append("{").indent().softNewLine();
+        if (field.hasModifier(ElementModifier.STATIC)) {
+            writer.appendClass(field.getOwnerName()).append("_$callClinit();").softNewLine();
+            writer.append("var result").ws().append("=").ws()
+                    .append(writer.getNaming().getFullNameFor(field.getReference()))
+                    .append(";").softNewLine();
+        } else {
+            writer.append("var result").ws().append("=").ws().append("this.")
+                    .append(writer.getNaming().getNameFor(field.getReference()))
+                    .append(";").softNewLine();
+        }
+        conversion.convertToJS("result", field.getType());
+        writer.append("return result;").softNewLine();
+        writer.outdent().append("}");
+
+        if (!field.hasModifier(ElementModifier.FINAL)) {
+            writer.append(",").softNewLine();
+            writer.append("set:").ws().append("function(value)").ws().append("{").indent().softNewLine();
+            conversion.convertToJava("value", field.getType());
+            if (field.hasModifier(ElementModifier.STATIC)) {
+                writer.appendClass(field.getOwnerName()).append("_$callClinit();").softNewLine();
+                writer.append(writer.getNaming().getFullNameFor(field.getReference())).ws().append('=').ws()
+                        .append("value;").softNewLine();
+            } else {
+                writer.append("this.").append(writer.getNaming().getNameFor(field.getReference())).ws()
+                        .append('=').ws().append("value;").softNewLine();
+            }
+            writer.outdent().append("}");
+        }
+
+        writer.softNewLine().outdent().append("}");
     }
 
     static class JsPackage {

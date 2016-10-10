@@ -21,11 +21,13 @@ import jsinterop.annotations.JsConstructor;
 import jsinterop.annotations.JsIgnore;
 import jsinterop.annotations.JsMethod;
 import jsinterop.annotations.JsPackage;
+import jsinterop.annotations.JsProperty;
 import jsinterop.annotations.JsType;
 import org.teavm.model.AccessLevel;
 import org.teavm.model.AnnotationReader;
 import org.teavm.model.AnnotationValue;
 import org.teavm.model.ClassReader;
+import org.teavm.model.FieldReader;
 import org.teavm.model.MemberReader;
 import org.teavm.model.MethodHolder;
 import org.teavm.model.MethodReader;
@@ -103,6 +105,10 @@ public final class JsInteropUtil {
         return method.getAnnotations().get(JsMethod.class.getName()) != null;
     }
 
+    public static boolean isJsField(FieldReader field) {
+        return field.getAnnotations().get(JsProperty.class.getName()) != null;
+    }
+
     public static boolean isJsConstructor(MethodReader method) {
         return method.getAnnotations().get(JsConstructor.class.getName()) != null;
     }
@@ -175,5 +181,17 @@ public final class JsInteropUtil {
         }
 
         return method.getName();
+    }
+
+    public static String getJsFieldName(FieldReader field) {
+        AnnotationReader annotation = field.getAnnotations().get(JsProperty.class.getName());
+        if (annotation != null) {
+            AnnotationValue name = annotation.getValue("name");
+            if (name != null) {
+                return name.getString();
+            }
+        }
+
+        return field.getName();
     }
 }

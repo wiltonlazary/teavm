@@ -42,12 +42,7 @@ public class DefaultNamingStrategy implements NamingStrategy {
     @Override
     public String getNameFor(MethodDescriptor method) {
         String key = method.toString();
-        String alias = aliases.get(key);
-        if (alias == null) {
-            alias = aliasProvider.getMethodAlias(method);
-            aliases.put(key, alias);
-        }
-        return alias;
+        return aliases.computeIfAbsent(key, k -> aliasProvider.getMethodAlias(method));
     }
 
     @Override
