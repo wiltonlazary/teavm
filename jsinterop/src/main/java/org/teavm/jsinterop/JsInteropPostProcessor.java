@@ -127,6 +127,12 @@ public class JsInteropPostProcessor extends AbstractRendererListener {
             writer.appendClass(cls.getName()).append(";").newLine();
         }
 
+        renderMethods(writer, cls, fqn);
+        renderFields(writer, cls, fqn);
+        renderProperties(writer, cls, fqn);
+    }
+
+    private void renderMethods(SourceWriter writer, ClassReader cls, String fqn) throws IOException {
         boolean autoExport = JsInteropUtil.isJsType(cls);
         for (MethodReader method : cls.getMethods()) {
             if (autoExport) {
@@ -143,7 +149,10 @@ public class JsInteropPostProcessor extends AbstractRendererListener {
             writer.append(".").append(JsInteropUtil.getJsMethodName(method)).ws().append("=").ws();
             renderMethod(writer, method);
         }
+    }
 
+    private void renderFields(SourceWriter writer, ClassReader cls, String fqn) throws IOException {
+        boolean autoExport = JsInteropUtil.isJsType(cls);
         for (FieldReader field : cls.getFields()) {
             if (autoExport) {
                 if (!JsInteropUtil.isAutoJsMember(field)) {
@@ -163,6 +172,10 @@ public class JsInteropPostProcessor extends AbstractRendererListener {
             renderField(writer, field);
             writer.append(");").softNewLine();
         }
+    }
+
+    private void renderProperties(SourceWriter writer, ClassReader cls, String fqn) throws IOException {
+
     }
 
     private void renderTarget(SourceWriter writer, MemberReader member, ClassReader cls, String fqn)

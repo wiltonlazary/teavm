@@ -16,7 +16,9 @@
 package org.teavm.jsinterop;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import jsinterop.annotations.JsConstructor;
 import jsinterop.annotations.JsIgnore;
 import jsinterop.annotations.JsMethod;
@@ -27,10 +29,11 @@ import org.teavm.model.AccessLevel;
 import org.teavm.model.AnnotationReader;
 import org.teavm.model.AnnotationValue;
 import org.teavm.model.ClassReader;
-import org.teavm.model.FieldReader;
+import org.teavm.model.ElementModifier;
 import org.teavm.model.MemberReader;
 import org.teavm.model.MethodHolder;
 import org.teavm.model.MethodReader;
+import org.teavm.model.ValueType;
 
 public final class JsInteropUtil {
     private JsInteropUtil() {
@@ -105,7 +108,7 @@ public final class JsInteropUtil {
         return method.getAnnotations().get(JsMethod.class.getName()) != null;
     }
 
-    public static boolean isJsField(FieldReader field) {
+    public static boolean isJsField(MemberReader field) {
         return field.getAnnotations().get(JsProperty.class.getName()) != null;
     }
 
@@ -124,6 +127,15 @@ public final class JsInteropUtil {
         }
         AnnotationValue nativeValue = jsTypeAnnot.getValue("native");
         return nativeValue == null || !nativeValue.getBoolean();
+    }
+
+    public static boolean isNativeJsType(ClassReader cls) {
+        AnnotationReader jsTypeAnnot = cls.getAnnotations().get(JsType.class.getName());
+        if (jsTypeAnnot == null) {
+            return false;
+        }
+        AnnotationValue nativeValue = jsTypeAnnot.getValue("native");
+        return nativeValue != null && nativeValue.getBoolean();
     }
 
     public static boolean isExportedToJs(ClassReader cls) {
@@ -183,7 +195,7 @@ public final class JsInteropUtil {
         return method.getName();
     }
 
-    public static String getJsFieldName(FieldReader field) {
+    public static String getJsFieldName(MemberReader field) {
         AnnotationReader annotation = field.getAnnotations().get(JsProperty.class.getName());
         if (annotation != null) {
             AnnotationValue name = annotation.getValue("name");
@@ -193,5 +205,94 @@ public final class JsInteropUtil {
         }
 
         return field.getName();
+    }
+
+    public static Map<String, JsInteropProperty> collectProperties(ClassReader cls, boolean isStatic,
+            PropertyCollisionConsumer collisionConsumer) {
+        boolean jsType = isJsType(cls);
+        Map<String, JsInteropProperty> properties = new HashMap<>();
+        for (MethodReader method : cls.getMethods()) {
+            if (method.hasModifier(ElementModifier.STATIC) != isStatic) {
+                continue;
+            }
+
+            String fieldName = isJsField(method) ? getJsFieldName(method) : null;
+            if (fieldName == null && jsType) {
+                if (isGetter(method)) {
+                    fieldName = getGetterName(method);
+                } else if (isSetter(method)) {
+                    fieldName = getSetterName(method);
+                }
+            }
+            if (fieldName == null) {
+                continue;
+            }
+
+            boolean isGetter = method.getResultType() != ValueType.VOID && method.parameterCount() == 0;
+            boolean isSetter = method.getResultType() == ValueType.VOID && method.parameterCount() == 1;
+            if (isGetter || isSetter) {
+                JsInteropProperty property = properties.computeIfAbsent(fieldName, JsInteropProperty::new);
+                if (isGetter) {
+                    if (property.getter == null) {
+                        property.getter = method;
+                    } else {
+                        collisionConsumer.accept(property.getter, method, property.name, true);
+                    }
+                } else {
+                    if (property.setter == null) {
+                        property.setter = method;
+                    } else {
+                        collisionConsumer.accept(property.setter, method, property.name, false);
+                    }
+                }
+            }
+        }
+        return properties;
+    }
+
+    public static boolean isGetter(MethodReader method) {
+        if (method.getResultType() == ValueType.VOID || method.parameterCount() > 0) {
+            return false;
+        }
+        return getGetterName(method) != null;
+    }
+
+    public static boolean isSetter(MethodReader method) {
+        if (method.parameterCount() != 1 || method.getResultType() != ValueType.VOID) {
+            return false;
+        }
+        return getSetterName(method) != null;
+    }
+
+    public static String getGetterName(MethodReader method) {
+        String name;
+        if (method.getName().length() > 3 && method.getName().startsWith("get")) {
+            name = method.getName().substring(3);
+        } else if (method.getName().length() > 2 && method.getName().startsWith("is")
+                && method.getResultType() == ValueType.BOOLEAN) {
+            name = method.getName().substring(2);
+        } else {
+            return null;
+        }
+        return decapitalize(name);
+    }
+
+    public static String getSetterName(MethodReader method) {
+        if (method.getName().length() > 3 && method.getName().startsWith("get")) {
+            return decapitalize(method.getName().substring(3));
+        } else {
+            return null;
+        }
+    }
+
+    private static String decapitalize(String name) {
+        char c = name.charAt(0);
+        if (!Character.isAlphabetic(c) || Character.isUpperCase(c)) {
+            return null;
+        }
+        if (name.length() > 1 && Character.isUpperCase(name.charAt(1))) {
+            return name;
+        }
+        return name;
     }
 }
