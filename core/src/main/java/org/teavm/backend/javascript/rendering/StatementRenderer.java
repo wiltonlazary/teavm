@@ -86,7 +86,8 @@ public class StatementRenderer implements ExprVisitor, StatementVisitor {
     private static final Set<String> keywords = new HashSet<>(Arrays.asList("break", "case", "catch",
             "class", "const", "continue", "debugger", "default", "delete", "do", "else", "export",
             "extends", "finally", "for", "function", "if", "import", "in", "instanceof", "new", "return",
-            "super", "switch", "this", "throw", "try", "typeof", "var", "void", "while", "with", "yield"));
+            "super", "switch", "this", "throw", "try", "typeof", "var", "void", "while", "with", "yield",
+            "arguments"));
     private RenderingContext context;
     private SourceWriter writer;
     private ClassReaderSource classSource;

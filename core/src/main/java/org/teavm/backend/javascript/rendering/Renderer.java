@@ -407,21 +407,29 @@ public class Renderer implements RenderingManager {
                 first = false;
                 writer.appendClass(cls.getName()).append(",").ws();
                 writer.append("\"").append(RenderingUtil.escapeString(cls.getName())).append("\",").ws();
-                if (cls.getParentName() != null) {
+
+                if (cls.getParentName() != null && classSource.get(cls.getParentName()) != null) {
                     writer.appendClass(cls.getParentName());
                 } else {
                     writer.append("0");
                 }
                 writer.append(',').ws();
+
                 writer.append("[");
+                boolean firstInterface = true;
                 for (int i = 0; i < cls.getInterfaces().size(); ++i) {
                     String iface = cls.getInterfaces().get(i);
-                    if (i > 0) {
+                    if (classSource.get(iface) == null) {
+                        continue;
+                    }
+                    if (!firstInterface) {
                         writer.append(",").ws();
                     }
+                    firstInterface = false;
                     writer.appendClass(iface);
                 }
                 writer.append("],").ws();
+
                 int flags = 0;
                 if (cls.getModifiers().contains(ElementModifier.ENUM)) {
                     flags |= 1;

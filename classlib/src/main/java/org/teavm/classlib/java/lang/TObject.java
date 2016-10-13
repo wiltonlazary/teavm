@@ -59,7 +59,7 @@ public class TObject {
         boolean expired();
     }
 
-    static void monitorEnterSync(TObject o) {
+    public static void monitorEnterSync(TObject o) {
         if (o.monitor == null) {
             o.monitor = new Monitor();
         }
@@ -71,7 +71,7 @@ public class TObject {
         o.monitor.count++;
     }
 
-    static void monitorExitSync(TObject o) {
+    public static void monitorExitSync(TObject o) {
         if (o.isEmptyMonitor() || o.monitor.owner != TThread.currentThread()) {
             throw new TIllegalMonitorStateException();
         }
@@ -81,11 +81,11 @@ public class TObject {
         o.isEmptyMonitor();
     }
 
-    static void monitorEnter(TObject o) {
+    public static void monitorEnter(TObject o) {
         monitorEnter(o, 1);
     }
 
-    static void monitorEnter(TObject o, int count) {
+    public static void monitorEnter(TObject o, int count) {
         if (o.monitor == null) {
             o.monitor = new Monitor();
         }
@@ -96,6 +96,22 @@ public class TObject {
             monitorEnterWait(o, count);
         } else {
             o.monitor.count += count;
+        }
+    }
+
+    @Sync
+    public static boolean tryLock(TObject o) {
+        if (o.monitor == null) {
+            o.monitor = new Monitor();
+        }
+        if (o.monitor.owner == null) {
+            o.monitor.owner = TThread.currentThread();
+        }
+        if (o.monitor.owner == TThread.currentThread()) {
+            o.monitor.count++;
+            return true;
+        } else {
+            return false;
         }
     }
 

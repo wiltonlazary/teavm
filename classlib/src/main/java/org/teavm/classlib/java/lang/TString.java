@@ -15,6 +15,7 @@
  */
 package org.teavm.classlib.java.lang;
 
+import java.util.Locale;
 import org.teavm.classlib.java.io.TSerializable;
 import org.teavm.classlib.java.io.TUnsupportedEncodingException;
 import org.teavm.classlib.java.nio.TByteBuffer;
@@ -597,6 +598,10 @@ public class TString extends TObject implements TSerializable, TComparable<TStri
             }
         }
         return new TString(codePoints, 0, codePointCount);
+    }
+
+    public TString toLowerCase(Locale locale) {
+        return toLowerCase();
     }
 
     public TString toUpperCase() {
