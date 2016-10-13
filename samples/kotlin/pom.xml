@@ -30,8 +30,24 @@
   <description>A sample application written in Kotlin and compiled by TeaVM</description>
 
   <properties>
-    <kotlin.version>1.0.3</kotlin.version>
+    <kotlin.version>1.1.0-dev-3584</kotlin.version>
   </properties>
+
+  <repositories>
+    <repository>
+      <id>kotlin</id>
+      <name>Kotlin repository</name>
+      <url>https://dl.bintray.com/kotlin/kotlin-dev/</url>
+    </repository>
+  </repositories>
+
+  <pluginRepositories>
+    <pluginRepository>
+      <id>kotlin</id>
+      <name>Kotlin repository</name>
+      <url>https://dl.bintray.com/kotlin/kotlin-dev/</url>
+    </pluginRepository>
+  </pluginRepositories>
 
   <dependencies>
     <dependency>
@@ -56,6 +72,11 @@
       <artifactId>teavm-jso-apis</artifactId>
       <version>${project.version}</version>
       <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jetbrains.kotlin</groupId>
+      <artifactId>kotlin-compiler</artifactId>
+      <version>${kotlin.version}</version>
     </dependency>
   </dependencies>
 

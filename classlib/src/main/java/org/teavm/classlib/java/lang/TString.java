@@ -646,4 +646,8 @@ public class TString extends TObject implements TSerializable, TComparable<TStri
     public String replaceFirst(String regex, String replacement) {
         return TPattern.compile(regex).matcher(toString()).replaceFirst(replacement);
     }
+
+    public static String format(String format, Object... parameters) {
+        return format;
+    }
 }

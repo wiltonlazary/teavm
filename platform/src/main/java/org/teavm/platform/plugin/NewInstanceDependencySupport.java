@@ -19,21 +19,16 @@ import org.teavm.dependency.*;
 import org.teavm.model.*;
 import org.teavm.platform.Platform;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class NewInstanceDependencySupport extends AbstractDependencyListener {
-    private DependencyNode allClassesNode;
+    private DependencyAgent agent;
 
     @Override
     public void started(DependencyAgent agent) {
-        allClassesNode = agent.createNode();
+        this.agent = agent;
     }
 
-    @Override
-    public void classReached(DependencyAgent agent, String className, CallLocation location) {
-        ClassReader cls = agent.getClassSource().get(className);
+    private void reachClass(DependencyAgent agent, DependencyType type, DependencyNode targetNode) {
+        ClassReader cls = agent.getClassSource().get(type.getName());
         if (cls == null) {
             return;
         }
@@ -42,7 +37,7 @@ public class NewInstanceDependencySupport extends AbstractDependencyListener {
         }
         MethodReader method = cls.getMethod(new MethodDescriptor("<init>", void.class));
         if (method != null) {
-            allClassesNode.propagate(agent.getType(className));
+            targetNode.propagate(type);
         }
     }
 
@@ -50,10 +45,11 @@ public class NewInstanceDependencySupport extends AbstractDependencyListener {
     public void methodReached(DependencyAgent agent, MethodDependency method, CallLocation location) {
         MethodReader reader = method.getMethod();
         if (reader.getOwnerName().equals(Platform.class.getName()) && reader.getName().equals("newInstanceImpl")) {
-            allClassesNode.connect(method.getResult());
             MethodReference methodRef = reader.getReference();
-            method.getResult().addConsumer(type -> attachConstructor(agent, type.getName(),
-                    new CallLocation(methodRef)));
+            DependencyNode classNode = method.getVariable(1).getClassValueNode();
+            DependencyNode resultNode = method.getResult();
+            classNode.addConsumer(type -> reachClass(agent, type, resultNode));
+            resultNode.addConsumer(type -> attachConstructor(agent, type.getName(), new CallLocation(methodRef)));
         }
     }
 

@@ -6,6 +6,9 @@
         <element id="directory" name="classes">
           <element id="module-output" name="teavm-samples-kotlin" />
         </element>
+        <element id="directory" name="lib">
+          <element id="library" level="project" name="Maven: org.jetbrains.kotlin:kotlin-compiler:1.1.0-dev-3584" />
+        </element>
       </element>
       <element id="directory" name="META-INF">
         <element id="file-copy" path="$PROJECT_DIR$/samples/kotlin/target/teavm-samples-kotlin-1.0.0-SNAPSHOT/META-INF/MANIFEST.MF" />
