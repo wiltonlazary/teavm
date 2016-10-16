@@ -303,6 +303,11 @@ class JSClassProcessor {
             return false;
         }
 
+        ClassReader cls = classSource.get(method.getOwnerName());
+        if (cls.getAnnotations().get(JSFunctor.class.getName()) != null) {
+            return processFunctorInvocation(method, callLocation, invoke);
+        }
+
         if (method.hasModifier(ElementModifier.STATIC)) {
             return false;
         }
@@ -394,6 +399,26 @@ class JSClassProcessor {
 
         if (methodToProcess.getAnnotations().get(NoCache.class.getName()) == null) {
             methodToProcess.getAnnotations().add(new AnnotationHolder(NoCache.class.getName()));
+        }
+
+        return true;
+    }
+
+    private boolean processFunctorInvocation(MethodReader method, CallLocation location, InvokeInstruction invoke) {
+        ValueType[] signature = new ValueType[method.parameterCount() + 2];
+        Arrays.fill(signature, ValueType.object(JSObject.class.getName()));
+
+        InvokeInstruction insn = new InvokeInstruction();
+        insn.setType(InvocationType.SPECIAL);
+        insn.setMethod(new MethodReference(JS.class.getName(), "apply", signature));
+        insn.setReceiver(invoke.getReceiver());
+        insn.getArguments().add(invoke.getInstance());
+        insn.setLocation(location.getSourceLocation());
+        replacement.add(insn);
+
+        for (int i = 0; i < invoke.getArguments().size(); ++i) {
+            Variable arg = wrapArgument(location, invoke.getArguments().get(i), method.parameterType(i));
+            insn.getArguments().add(arg);
         }
 
         return true;

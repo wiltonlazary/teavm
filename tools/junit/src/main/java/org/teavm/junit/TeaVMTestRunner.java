@@ -253,7 +253,7 @@ public class TeaVMTestRunner extends Runner {
         CompileResult compileResult;
         try {
             compileResult = compileTest(child);
-        } catch (IOException e) {
+        } catch (Exception e) {
             notifier.fireTestFailure(new Failure(description, e));
             return false;
         }
