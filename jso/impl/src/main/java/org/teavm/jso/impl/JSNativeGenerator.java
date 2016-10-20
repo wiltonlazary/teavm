@@ -98,6 +98,17 @@ public class JSNativeGenerator implements Injector, DependencyPlugin, Generator 
                 }
                 writer.append(')');
                 break;
+            case "apply":
+                context.writeExpr(context.getArgument(0), Precedence.GROUPING);
+                writer.append('(');
+                for (int i = 1; i < context.argumentCount(); ++i) {
+                    if (i > 1) {
+                        writer.append(',').ws();
+                    }
+                    context.writeExpr(context.getArgument(i), Precedence.min());
+                }
+                writer.append(')');
+                break;
             case "instantiate":
                 if (context.getPrecedence().ordinal() >= Precedence.FUNCTION_CALL.ordinal()) {
                     writer.append("(");

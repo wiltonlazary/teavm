@@ -16,13 +16,31 @@
 package org.teavm.classlib.java.lang;
 
 import java.io.InputStream;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import org.teavm.backend.javascript.spi.GeneratedBy;
+import org.teavm.backend.javascript.spi.InjectedBy;
 import org.teavm.classlib.impl.DeclaringClassMetadataGenerator;
+import org.teavm.classlib.impl.reflection.Flags;
+import org.teavm.classlib.impl.reflection.JSClass;
+import org.teavm.classlib.impl.reflection.JSField;
+import org.teavm.classlib.impl.reflection.JSMethodMember;
 import org.teavm.classlib.java.lang.annotation.TAnnotation;
 import org.teavm.classlib.java.lang.reflect.TAnnotatedElement;
+import org.teavm.classlib.java.lang.reflect.TConstructor;
+import org.teavm.classlib.java.lang.reflect.TField;
+import org.teavm.classlib.java.lang.reflect.TModifier;
+import org.teavm.dependency.PluggableDependency;
+import org.teavm.jso.core.JSArray;
 import org.teavm.platform.Platform;
 import org.teavm.platform.PlatformClass;
+import org.teavm.platform.PlatformSequence;
 import org.teavm.platform.metadata.ClassResource;
 import org.teavm.platform.metadata.ClassScopedMetadataProvider;
 
@@ -32,6 +50,10 @@ public class TClass<T> extends TObject implements TAnnotatedElement {
     private PlatformClass platformClass;
     private TAnnotation[] annotationsCache;
     private Map<TClass<?>, TAnnotation> annotationsByType;
+    private TField[] declaredFields;
+    private TField[] fields;
+    private TConstructor<T>[] declaredConstructors;
+    private static boolean reflectionInitialized;
 
     private TClass(PlatformClass platformClass) {
         this.platformClass = platformClass;
@@ -104,8 +126,192 @@ public class TClass<T> extends TObject implements TAnnotatedElement {
         return platformClass.getMetadata().isEnum();
     }
 
+    public boolean isInterface() {
+        return (platformClass.getMetadata().getFlags() & Flags.INTERFACE) != 0;
+    }
+
     public TClass<?> getComponentType() {
         return getClass(Platform.getArrayItem(platformClass));
+    }
+
+    public TField[] getDeclaredFields() throws TSecurityException {
+        if (declaredFields == null) {
+            initReflection();
+            JSClass jsClass = (JSClass) getPlatformClass().getMetadata();
+            JSArray<JSField> jsFields = jsClass.getFields();
+            declaredFields = new TField[jsFields.getLength()];
+            for (int i = 0; i < jsFields.getLength(); ++i) {
+                JSField jsField = jsFields.get(i);
+                declaredFields[i] = new TField(this, jsField.getName(), jsField.getModifiers(),
+                        jsField.getAccessLevel(), TClass.getClass(jsField.getType()), jsField.getGetter(),
+                        jsField.getSetter());
+            }
+        }
+        return declaredFields;
+    }
+
+    private static void initReflection() {
+        if (!reflectionInitialized) {
+            reflectionInitialized = true;
+            createMetadata();
+        }
+    }
+
+    @GeneratedBy(ClassGenerator.class)
+    private static native void createMetadata();
+
+    public TField[] getFields() throws TSecurityException {
+        if (fields == null) {
+            List<TField> fieldList = new ArrayList<>();
+            TClass<?> cls = this;
+
+            if (cls.isInterface()) {
+                getFieldsOfInterfaces(cls, fieldList, new HashSet<>());
+            } else {
+                while (cls != null) {
+                    for (TField field : declaredFields) {
+                        if (Modifier.isPublic(field.getModifiers())) {
+                            fieldList.add(field);
+                        }
+                    }
+                    cls = cls.getSuperclass();
+                }
+            }
+
+            fields = fieldList.toArray(new TField[fieldList.size()]);
+        }
+        return fields;
+    }
+
+    public TField getDeclaredField(String name) throws TNoSuchFieldError {
+        for (TField field : getDeclaredFields()) {
+            if (field.getName().equals(name)) {
+                return field;
+            }
+        }
+        throw new TNoSuchFieldError();
+    }
+
+    public TField getField(String name) throws TNoSuchFieldError {
+        TField result = findField(name, new HashSet<>());
+        if (result == null) {
+            throw new TNoSuchFieldError();
+        }
+        return result;
+    }
+
+    private TField findField(String name, Set<String> visited) {
+        if (!visited.add(name)) {
+            return null;
+        }
+
+        for (TField field : getDeclaredFields()) {
+            if (TModifier.isPublic(field.getModifiers()) && field.getName().equals(name)) {
+                return field;
+            }
+        }
+
+        for (TClass<?> iface : getInterfaces()) {
+            TField field = iface.findField(name, visited);
+            if (field != null) {
+                return field;
+            }
+        }
+
+        TClass<?> superclass = getSuperclass();
+        if (superclass != null) {
+            TField field = superclass.findField(name, visited);
+            if (field != null) {
+                return field;
+            }
+        }
+
+        return null;
+    }
+
+    @InjectedBy(ClassGenerator.class)
+    @PluggableDependency(ClassGenerator.class)
+    public native <T> T newEmptyInstance();
+
+    @SuppressWarnings({ "raw", "unchecked" })
+    public TConstructor<?>[] getDeclaredConstructors() throws TSecurityException {
+        if (declaredConstructors == null) {
+            initReflection();
+            JSClass jsClass = (JSClass) getPlatformClass().getMetadata();
+            JSArray<JSMethodMember> jsMethods = jsClass.getMethods();
+            declaredConstructors = new TConstructor[jsMethods.getLength()];
+            int count = 0;
+            for (int i = 0; i < jsMethods.getLength(); ++i) {
+                JSMethodMember jsMethod = jsMethods.get(i);
+                if (!jsMethod.getName().equals("<init>")) {
+                    continue;
+                }
+                PlatformSequence<PlatformClass> jsParameterTypes = jsMethod.getParameterTypes();
+                TClass<?>[] parameterTypes = new TClass<?>[jsParameterTypes.getLength()];
+                for (int j = 0; j < parameterTypes.length; ++j) {
+                    parameterTypes[j] = getClass(jsParameterTypes.get(j));
+                }
+                declaredConstructors[count++] = new TConstructor<T>(this, jsMethod.getName(), jsMethod.getModifiers(),
+                        jsMethod.getAccessLevel(), parameterTypes, jsMethod.getCallable());
+            }
+            declaredConstructors = Arrays.copyOf(declaredConstructors, count);
+        }
+        return declaredConstructors;
+    }
+
+    public TConstructor<?>[] getConstructors() throws TSecurityException {
+        TConstructor<?>[] declaredConstructors = getDeclaredConstructors();
+        TConstructor<?>[] constructors = new TConstructor<?>[declaredConstructors.length];
+
+        int sz = 0;
+        for (TConstructor<?> constructor : declaredConstructors) {
+            if (TModifier.isPublic(constructor.getModifiers())) {
+                constructors[sz++] = constructor;
+            }
+        }
+
+        if (sz < constructors.length) {
+            constructors = Arrays.copyOf(constructors, sz);
+        }
+
+        return constructors;
+    }
+
+    @SuppressWarnings({ "raw", "unchecked" })
+    public TConstructor<T> getDeclaredConstructor(TClass<?>... parameterTypes)
+            throws TSecurityException, TNoSuchMethodException {
+        for (TConstructor<?> constructor : getDeclaredConstructors()) {
+            if (Arrays.equals(constructor.getParameterTypes(), parameterTypes)) {
+                return (TConstructor<T>) constructor;
+            }
+        }
+        throw new TNoSuchMethodException();
+    }
+
+    @SuppressWarnings({ "raw", "unchecked" })
+    public TConstructor<T> getConstructor(TClass<?>... parameterTypes)
+            throws TSecurityException, TNoSuchMethodException {
+        for (TConstructor<?> constructor : getDeclaredConstructors()) {
+            if (TModifier.isPublic(constructor.getModifiers())
+                    && Arrays.equals(constructor.getParameterTypes(), parameterTypes)) {
+                return (TConstructor<T>) constructor;
+            }
+        }
+        throw new TNoSuchMethodException();
+    }
+
+    private static void getFieldsOfInterfaces(TClass<?> iface, List<TField> fields, Set<TClass<?>> visited) {
+        if (!visited.add(iface)) {
+            return;
+        }
+        for (TField field : iface.getDeclaredFields()) {
+            if (Modifier.isPublic(field.getModifiers())) {
+                fields.add(field);
+            }
+        }
+        for (TClass<?> superInterface : iface.getInterfaces()) {
+            getFieldsOfInterfaces(superInterface, fields, visited);
+        }
     }
 
     public boolean desiredAssertionStatus() {
@@ -115,6 +321,24 @@ public class TClass<T> extends TObject implements TAnnotatedElement {
     @SuppressWarnings("unchecked")
     public TClass<? super T> getSuperclass() {
         return (TClass<? super T>) getClass(platformClass.getMetadata().getSuperclass());
+    }
+
+    @SuppressWarnings("unchecked")
+    public TClass<? super T>[] getInterfaces() {
+        PlatformSequence<PlatformClass> supertypes = platformClass.getMetadata().getSupertypes();
+
+        TClass<? super T>[] filteredSupertypes = (TClass<? super T>[]) new TClass<?>[supertypes.getLength()];
+        int j = 0;
+        for (int i = 0; i < supertypes.getLength(); ++i) {
+            if (supertypes.get(i) != platformClass.getMetadata().getSuperclass()) {
+                filteredSupertypes[j++] = (TClass<? super T>) getClass(supertypes.get(j));
+            }
+        }
+
+        if (filteredSupertypes.length > j) {
+            filteredSupertypes = Arrays.copyOf(filteredSupertypes, j);
+        }
+        return filteredSupertypes;
     }
 
     @SuppressWarnings("unchecked")
