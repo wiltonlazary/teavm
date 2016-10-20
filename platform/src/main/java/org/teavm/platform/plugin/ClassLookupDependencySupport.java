@@ -19,10 +19,6 @@ import org.teavm.dependency.*;
 import org.teavm.model.*;
 import org.teavm.platform.Platform;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class ClassLookupDependencySupport extends AbstractDependencyListener {
     private DependencyNode allClasses;
 
@@ -32,24 +28,23 @@ public class ClassLookupDependencySupport extends AbstractDependencyListener {
     }
 
     @Override
-    public void classReached(DependencyAgent agent, String className, CallLocation location) {
-        allClasses.propagate(agent.getType(className));
-    }
-
-    @Override
     public void methodReached(DependencyAgent agent, MethodDependency method, CallLocation location) {
         MethodReference ref = method.getReference();
-        if (ref.getClassName().equals(Platform.class.getName()) && ref.getName().equals("lookupClass")) {
-            allClasses.addConsumer(type -> {
-                ClassReader cls = agent.getClassSource().get(type.getName());
-                if (cls == null) {
-                    return;
-                }
-                MethodReader initMethod = cls.getMethod(new MethodDescriptor("<clinit>", void.class));
-                if (initMethod != null) {
-                    agent.linkMethod(initMethod.getReference(), location).use();
-                }
-            });
+        if (ref.getClassName().equals(Platform.class.getName())) {
+            if (ref.getName().equals("lookupClass")) {
+                allClasses.addConsumer(type -> {
+                    ClassReader cls = agent.getClassSource().get(type.getName());
+                    if (cls == null) {
+                        return;
+                    }
+                    MethodReader initMethod = cls.getMethod(new MethodDescriptor("<clinit>", void.class));
+                    if (initMethod != null) {
+                        agent.linkMethod(initMethod.getReference(), location).use();
+                    }
+                });
+            } else if (ref.getName().equals("publishByName")) {
+                method.getVariable(1).getClassValueNode().addConsumer(type -> allClasses.propagate(type));
+            }
         }
     }
 }

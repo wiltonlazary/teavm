@@ -18,17 +18,19 @@ package org.teavm.samples.kotlin.patch
 
 import org.teavm.diagnostics.Diagnostics
 import org.teavm.model.*
-import org.teavm.model.instructions.GetFieldInstruction
-import org.teavm.model.instructions.InitClassInstruction
-import org.teavm.model.instructions.InvokeInstruction
-import org.teavm.model.instructions.PutFieldInstruction
-import org.teavm.samples.kotlin.replacements.CLibrary
-import org.teavm.samples.kotlin.replacements.SystemInfo
+import org.teavm.model.instructions.*
+import org.teavm.samples.kotlin.replacements.*
 
 object Replacements : ClassHolderTransformer {
     val classNameMap = mapOf(
             "com.intellij.openapi.util.SystemInfo" to SystemInfo::class.java.name,
-            "org.fusesource.jansi.internal.CLibrary" to CLibrary::class.java.name
+            "org.fusesource.jansi.internal.CLibrary" to CLibrary::class.java.name,
+            "com.intellij.util.containers.ConcurrentWeakValueIntObjectHashMap" to
+                    ConcurrentIntObjectMapImpl::class.java.name,
+            "com.intellij.util.containers.LockFreeCopyOnWriteArrayList" to "java.util.ArrayList",
+            "kotlin.SafePublicationLazyImpl" to SimpleLazy::class.java.name,
+            "com.intellij.util.containers.ConcurrentWeakHashMap" to ConcurrentHashMap::class.java.name,
+            "java.util.concurrent.ConcurrentHashMap" to ConcurrentHashMap::class.java.name
     )
 
     override fun transformClass(cls: ClassHolder, innerSource: ClassReaderSource, diagnostics: Diagnostics) {
@@ -65,6 +67,12 @@ object Replacements : ClassHolderTransformer {
                         val mappedClass = classNameMap[instruction.className]
                         if (mappedClass != null) {
                             instruction.className = mappedClass
+                        }
+                    }
+                    is ConstructInstruction -> {
+                        val mappedClass = classNameMap[instruction.type]
+                        if (mappedClass != null) {
+                            instruction.type = mappedClass
                         }
                     }
                 }

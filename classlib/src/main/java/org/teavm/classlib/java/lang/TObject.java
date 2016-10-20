@@ -93,7 +93,9 @@ public class TObject {
             o.monitor.owner = TThread.currentThread();
         }
         if (o.monitor.owner != TThread.currentThread()) {
+            TThread.currentThread().setState(TThread.State.BLOCKED);
             monitorEnterWait(o, count);
+            TThread.currentThread().setState(TThread.State.RUNNABLE);
         } else {
             o.monitor.count += count;
         }
@@ -319,7 +321,17 @@ public class TObject {
         if (!holdsLock(this)) {
             throw new TIllegalMonitorStateException();
         }
-        waitImpl(timeout, nanos);
+        boolean shouldChangeState = TThread.currentThread().getState() == TThread.State.RUNNABLE;
+        if (shouldChangeState) {
+            TThread.currentThread().setState(TThread.State.TIMED_WAITING);
+        }
+        try {
+            waitImpl(timeout, nanos);
+        } finally {
+            if (shouldChangeState) {
+                TThread.currentThread().setState(TThread.State.RUNNABLE);
+            }
+        }
     }
 
     @Async
@@ -395,10 +407,13 @@ public class TObject {
 
     @Rename("wait")
     public final void wait0() throws TInterruptedException {
+        TThread.currentThread().setState(TThread.State.WAITING);
         try {
             wait(0L);
         } catch (InterruptedException ex) {
             throw new TInterruptedException();
+        } finally {
+            TThread.currentThread().setState(TThread.State.RUNNABLE);
         }
     }
 

@@ -36,6 +36,7 @@ public class TThread extends TObject implements TRunnable {
     private final Object finishedLock = new Object();
     private boolean interruptedFlag;
     private TThreadInterruptHandler interruptHandler;
+    private State state = State.NEW;
 
     private TString name;
     TRunnable target;
@@ -61,12 +62,14 @@ public class TThread extends TObject implements TRunnable {
     public void start() {
         Platform.startThread(() -> {
             try {
+                state = State.RUNNABLE;
                 activeCount++;
                 setCurrentThread(TThread.this);
                 TThread.this.run();
             } finally {
                 activeCount--;
                 setCurrentThread(mainThread);
+                state = State.TERMINATED;
             }
         });
     }
@@ -219,5 +222,22 @@ public class TThread extends TObject implements TRunnable {
 
     public TStackTraceElement[] getStackTrace() {
         return new TStackTraceElement[0];
+    }
+
+    public State getState() {
+        return state;
+    }
+
+    public void setState(State state) {
+        this.state = state;
+    }
+
+    public enum State {
+        NEW,
+        RUNNABLE,
+        BLOCKED,
+        WAITING,
+        TIMED_WAITING,
+        TERMINATED
     }
 }

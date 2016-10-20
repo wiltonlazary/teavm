@@ -23,6 +23,12 @@ public final class SystemInfo {
     public static final boolean isFreeBSD = false;
     public static final boolean isSolaris = false;
     public static final boolean isUnix = false;
+    public static final String OS_NAME = "JS";
+    public static final boolean is32Bit = true;
+    public static final boolean isOracleJvm = false;
+    public static final boolean isSunJvm = false;
+    public static final boolean isAppleJvm = false;
+    public static final String JAVA_VERSION = "1.6";
 
     private SystemInfo() {
     }

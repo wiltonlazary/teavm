@@ -31,9 +31,10 @@ import com.intellij.psi.PsiManager
 import com.intellij.psi.augment.PsiAugmentProvider
 import com.intellij.psi.augment.TypeAnnotationModifier
 import org.jetbrains.kotlin.cli.common.CLIConfigurationKeys
+import org.jetbrains.kotlin.cli.common.messages.CompilerMessageLocation
+import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
 import org.jetbrains.kotlin.cli.common.messages.GroupingMessageCollector
-import org.jetbrains.kotlin.cli.common.messages.MessageRenderer
-import org.jetbrains.kotlin.cli.common.messages.PrintingMessageCollector
+import org.jetbrains.kotlin.cli.common.messages.MessageCollector
 import org.jetbrains.kotlin.config.CommonConfigurationKeys
 import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.idea.KotlinFileType
@@ -44,11 +45,10 @@ import org.jetbrains.kotlin.js.config.LibrarySourcesConfig
 import org.jetbrains.kotlin.parsing.KotlinParserDefinition
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.script.KotlinScriptDefinitionProvider
-import org.jetbrains.kotlin.script.KotlinScriptExternalImportsProvider
 import org.jetbrains.kotlin.serialization.js.ModuleKind
 
 fun main(args: Array<String>) {
-    val collector = PrintingMessageCollector(System.err, MessageRenderer.PLAIN_FULL_PATHS, false)
+    val collector = MessageCollectorImpl
     val groupingCollector = GroupingMessageCollector(collector)
 
     val configuration = CompilerConfiguration()
@@ -101,8 +101,8 @@ private fun createEnvironment(disposable: Disposable): CoreProjectEnvironment {
 
     val kotlinScriptDefinitionProvider = KotlinScriptDefinitionProvider()
     projectEnv.project.registerService(KotlinScriptDefinitionProvider::class.java, kotlinScriptDefinitionProvider)
-    projectEnv.project.registerService(KotlinScriptExternalImportsProvider::class.java,
-            KotlinScriptExternalImportsProvider(projectEnv.project, kotlinScriptDefinitionProvider))
+    /*projectEnv.project.registerService(KotlinScriptExternalImportsProvider::class.java,
+            KotlinScriptExternalImportsProvider(projectEnv.project, kotlinScriptDefinitionProvider))*/
 
     return projectEnv
 }
@@ -118,4 +118,21 @@ private fun getSourceFiles(project: Project): List<KtFile> {
         }
     }
     return files
+}
+
+private object MessageCollectorImpl : MessageCollector {
+    private var errors = false
+
+    override fun clear() {
+        errors = false
+    }
+
+    override fun report(severity: CompilerMessageSeverity, message: String, location: CompilerMessageLocation) {
+        if (severity.isError) {
+            errors = true
+        }
+        println("at $location [${severity.name}] $message")
+    }
+
+    override fun hasErrors() = errors
 }

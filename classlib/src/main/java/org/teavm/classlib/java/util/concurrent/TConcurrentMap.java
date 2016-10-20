@@ -13,16 +13,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
+package org.teavm.classlib.java.util.concurrent;
 
-package org.teavm.samples.kotlin.patch
+import org.teavm.classlib.java.util.TMap;
 
-import org.teavm.vm.spi.TeaVMHost
-import org.teavm.vm.spi.TeaVMPlugin
+public interface TConcurrentMap<K, V> extends TMap<K, V> {
+    V putIfAbsent(K key, V value);
 
-class KotlinCompilerPlugin : TeaVMPlugin {
-    override fun install(host: TeaVMHost) {
-        host.add(SynchronizationRemoval())
-        host.add(Replacements)
-        host.add(BadInvocationRemoval)
-    }
+    boolean remove(Object key, Object value);
 }

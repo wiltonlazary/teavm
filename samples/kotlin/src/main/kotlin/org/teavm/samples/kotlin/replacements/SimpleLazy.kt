@@ -14,15 +14,20 @@
  *  limitations under the License.
  */
 
-package org.teavm.samples.kotlin.patch
+package org.teavm.samples.kotlin.replacements
 
-import org.teavm.vm.spi.TeaVMHost
-import org.teavm.vm.spi.TeaVMPlugin
+class SimpleLazy<out T>(initializer: () -> T) : Lazy<T> {
+    private var initializer: (() -> T)? = initializer
+    private var valueImpl: T? = null
 
-class KotlinCompilerPlugin : TeaVMPlugin {
-    override fun install(host: TeaVMHost) {
-        host.add(SynchronizationRemoval())
-        host.add(Replacements)
-        host.add(BadInvocationRemoval)
-    }
+    override val value: T
+        get() {
+            if (initializer != null) {
+                valueImpl = initializer!!()
+                initializer = null
+            }
+            return valueImpl!!
+        }
+
+    override fun isInitialized() = initializer != null
 }

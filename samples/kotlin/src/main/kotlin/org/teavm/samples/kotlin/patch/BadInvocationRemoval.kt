@@ -16,24 +16,23 @@
 
 package org.teavm.samples.kotlin.patch
 
-import org.fusesource.jansi.internal.CLibrary
 import org.teavm.diagnostics.Diagnostics
 import org.teavm.model.*
 import org.teavm.model.instructions.*
 
 object BadInvocationRemoval : ClassHolderTransformer {
-    val methodsToRemove = setOf(
-            MethodReference(CLibrary::class.java, "isatty", Int::class.java, Int::class.java)
-    )
-    val classesToRemove = setOf(
-            CLibrary::class.java.name
-    )
+    val methodsToRemove = setOf<MethodReference>()
+    val classesToRemove = setOf("com.intellij.openapi.util.text.StringUtil\$MyHtml2Text")
 
     override fun transformClass(cls: ClassHolder, innerSource: ClassReaderSource, diagnostics: Diagnostics) {
         for (method in cls.methods) {
             method.program?.let { transformProgram(it) }
             method.modifiers -= ElementModifier.SYNCHRONIZED
         }
+    }
+
+    private fun shouldRemove(method: MethodReference): Boolean {
+        return method in methodsToRemove || method.className in classesToRemove
     }
 
     private fun transformProgram(program: Program) {
@@ -43,7 +42,7 @@ object BadInvocationRemoval : ClassHolderTransformer {
                 when (instruction) {
                     is InvokeInstruction -> {
                         val method = instruction.method
-                        if (method in methodsToRemove) {
+                        if (shouldRemove(method)) {
                             block.instructions[index] = createReplacement(instruction.receiver, method.returnType).apply {
                                 location = instruction.location
                             }
@@ -53,6 +52,14 @@ object BadInvocationRemoval : ClassHolderTransformer {
                         if (instruction.className in classesToRemove) {
                             block.instructions[index] = EmptyInstruction().apply {
                                 location = instruction.location
+                            }
+                        }
+                    }
+                    is ConstructInstruction -> {
+                        if (instruction.type in classesToRemove) {
+                            block.instructions[index] = NullConstantInstruction().apply {
+                                location = instruction.location
+                                receiver = instruction.receiver
                             }
                         }
                     }

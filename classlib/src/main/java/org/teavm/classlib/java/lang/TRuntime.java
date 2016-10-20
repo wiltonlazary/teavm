@@ -85,4 +85,8 @@ public class TRuntime {
     private long totalMemoryLowLevel() {
         return GC.availableBytes();
     }
+
+    public int availableProcessors() {
+        return 1;
+    }
 }

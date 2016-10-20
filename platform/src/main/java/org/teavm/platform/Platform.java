@@ -171,4 +171,7 @@ public final class Platform {
     public static String getName(PlatformClass cls) {
         return cls.getMetadata().getName();
     }
+
+    public static void publishByName(Class<?> cls) {
+    }
 }
