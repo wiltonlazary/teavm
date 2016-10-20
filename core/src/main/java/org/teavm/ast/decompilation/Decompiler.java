@@ -207,6 +207,7 @@ public class Decompiler {
         }
         clsNode.getInterfaces().addAll(cls.getInterfaces());
         clsNode.getModifiers().addAll(cls.getModifiers());
+        clsNode.setAccessLevel(cls.getLevel());
         return clsNode;
     }
 
