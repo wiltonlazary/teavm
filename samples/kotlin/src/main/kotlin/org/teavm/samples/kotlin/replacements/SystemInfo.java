@@ -15,6 +15,8 @@
  */
 package org.teavm.samples.kotlin.replacements;
 
+import com.intellij.openapi.util.text.StringUtil;
+
 public final class SystemInfo {
     public static final boolean isWindows = false;
     public static final boolean isMac = false;
@@ -29,7 +31,14 @@ public final class SystemInfo {
     public static final boolean isSunJvm = false;
     public static final boolean isAppleJvm = false;
     public static final String JAVA_VERSION = "1.6";
+    public static final String JAVA_RUNTIME_VERSION = "1.6";
+    public static final boolean isXWindow = false;
+    public static final boolean isFileSystemCaseSensitive = true;
 
     private SystemInfo() {
+    }
+
+    public static boolean isJavaVersionAtLeast(String v) {
+        return StringUtil.compareVersionNumbers(JAVA_RUNTIME_VERSION, v) >= 0;
     }
 }

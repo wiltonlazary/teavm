@@ -22,7 +22,10 @@ import org.teavm.model.instructions.*
 
 object BadInvocationRemoval : ClassHolderTransformer {
     val methodsToRemove = setOf<MethodReference>()
-    val classesToRemove = setOf("com.intellij.openapi.util.text.StringUtil\$MyHtml2Text")
+    val classesToRemove = setOf(
+            "com.intellij.openapi.util.text.StringUtil\$MyHtml2Text",
+            "com.intellij.util.concurrency.AtomicFieldUpdater"
+    )
 
     override fun transformClass(cls: ClassHolder, innerSource: ClassReaderSource, diagnostics: Diagnostics) {
         for (method in cls.methods) {
