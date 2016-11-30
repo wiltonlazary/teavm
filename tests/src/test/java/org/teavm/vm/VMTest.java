@@ -116,6 +116,46 @@ public class VMTest {
         assertEquals(x, id(23));
     }
 
+    @Test
+    public void asyncClinit() {
+        assertEquals(0, initCount);
+        assertEquals("foo", AsyncClinitClass.foo());
+        assertEquals(1, initCount);
+        assertEquals("ok", AsyncClinitClass.state);
+        assertEquals("bar", AsyncClinitClass.bar());
+        assertEquals(1, initCount);
+        assertEquals("ok", AsyncClinitClass.state);
+    }
+
+    @Test
+    public void asyncClinitField() {
+        assertEquals("ok", AsyncClinitClass.state);
+    }
+
+    static int initCount = 0;
+
+    private static class AsyncClinitClass {
+        static String state = "";
+
+        static {
+            initCount++;
+            try {
+                Thread.sleep(1);
+                state += "ok";
+            } catch (InterruptedException e) {
+                state += "error";
+            }
+        }
+
+        public static String foo() {
+            return "foo";
+        }
+
+        public static String bar() {
+            return "bar";
+        }
+    }
+
     private void throwException() {
         throw new RuntimeException();
     }
