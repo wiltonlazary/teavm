@@ -15,7 +15,7 @@
  */
 package org.teavm.classlib.java.text;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.util.Calendar;
@@ -26,8 +26,10 @@ import java.util.TimeZone;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.teavm.junit.TeaVMTestRunner;
+import org.teavm.junit.WholeClassCompilation;
 
 @RunWith(TeaVMTestRunner.class)
+@WholeClassCompilation
 public class DateFormatTest {
     public DateFormatTest() {
         TimeZone.setDefault(TimeZone.getTimeZone("GMT"));

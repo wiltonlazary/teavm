@@ -15,15 +15,21 @@
  */
 package org.teavm.platform.plugin;
 
-import org.teavm.dependency.*;
-import org.teavm.model.*;
+import org.teavm.dependency.AbstractDependencyListener;
+import org.teavm.dependency.DependencyAgent;
+import org.teavm.dependency.DependencyNode;
+import org.teavm.dependency.MethodDependency;
+import org.teavm.model.CallLocation;
+import org.teavm.model.ClassReader;
+import org.teavm.model.ElementModifier;
+import org.teavm.model.MethodDescriptor;
+import org.teavm.model.MethodReader;
+import org.teavm.model.MethodReference;
+import org.teavm.model.ValueType;
 import org.teavm.platform.Platform;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class NewInstanceDependencySupport extends AbstractDependencyListener {
+    private static final MethodDescriptor INIT_METHOD = new MethodDescriptor("<init>", void.class);
     private DependencyNode allClassesNode;
 
     @Override
@@ -32,7 +38,7 @@ public class NewInstanceDependencySupport extends AbstractDependencyListener {
     }
 
     @Override
-    public void classReached(DependencyAgent agent, String className, CallLocation location) {
+    public void classReached(DependencyAgent agent, String className) {
         ClassReader cls = agent.getClassSource().get(className);
         if (cls == null) {
             return;
@@ -40,14 +46,14 @@ public class NewInstanceDependencySupport extends AbstractDependencyListener {
         if (cls.hasModifier(ElementModifier.ABSTRACT) || cls.hasModifier(ElementModifier.INTERFACE)) {
             return;
         }
-        MethodReader method = cls.getMethod(new MethodDescriptor("<init>", void.class));
+        MethodReader method = cls.getMethod(INIT_METHOD);
         if (method != null) {
             allClassesNode.propagate(agent.getType(className));
         }
     }
 
     @Override
-    public void methodReached(DependencyAgent agent, MethodDependency method, CallLocation location) {
+    public void methodReached(DependencyAgent agent, MethodDependency method) {
         MethodReader reader = method.getMethod();
         if (reader.getOwnerName().equals(Platform.class.getName()) && reader.getName().equals("newInstanceImpl")) {
             allClassesNode.connect(method.getResult());
@@ -57,10 +63,11 @@ public class NewInstanceDependencySupport extends AbstractDependencyListener {
         }
     }
 
-    private void attachConstructor(DependencyAgent checker, String type, CallLocation location) {
+    private void attachConstructor(DependencyAgent agent, String type, CallLocation location) {
         MethodReference ref = new MethodReference(type, "<init>", ValueType.VOID);
-        MethodDependency methodDep = checker.linkMethod(ref, location);
-        methodDep.getVariable(0).propagate(checker.getType(type));
+        MethodDependency methodDep = agent.linkMethod(ref);
+        methodDep.addLocation(location);
+        methodDep.getVariable(0).propagate(agent.getType(type));
         methodDep.use();
     }
 }

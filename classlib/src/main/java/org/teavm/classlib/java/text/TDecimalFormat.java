@@ -19,17 +19,11 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.text.DecimalFormatSymbols;
 import java.util.Arrays;
-
 import org.teavm.classlib.impl.unicode.CLDRHelper;
 import org.teavm.classlib.java.lang.TArithmeticException;
 import org.teavm.classlib.java.lang.TDouble;
-import org.teavm.classlib.java.lang.TString;
 import org.teavm.classlib.java.util.TLocale;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class TDecimalFormat extends TNumberFormat {
     private static final long[] POW10_ARRAY = { 1, 10, 100, 1000, 1_0000, 1_0_0000, 1_00_0000,
             1_000_0000, 1_0000_0000, 1_0_0000_0000, 1_00_0000_0000L, 1_000_0000_0000L, 1_0000_0000_0000L,
@@ -51,6 +45,7 @@ public class TDecimalFormat extends TNumberFormat {
     private boolean decimalSeparatorAlwaysShown;
     private boolean parseBigDecimal;
     int exponentDigits;
+    String pattern;
 
     public TDecimalFormat() {
         this(CLDRHelper.resolveNumberFormat(TLocale.getDefault().getLanguage(), TLocale.getDefault().getCountry()));
@@ -69,10 +64,19 @@ public class TDecimalFormat extends TNumberFormat {
         TDecimalFormatParser parser = new TDecimalFormatParser();
         parser.parse(pattern);
         parser.apply(this);
+        this.pattern = pattern;
+    }
+
+    String toPattern() {
+        return pattern;
     }
 
     public DecimalFormatSymbols getDecimalFormatSymbols() {
         return (DecimalFormatSymbols) symbols.clone();
+    }
+
+    public void setDecimalFormatSymbols(DecimalFormatSymbols symbols) {
+        this.symbols = (TDecimalFormatSymbols) symbols.clone();
     }
 
     private StringBuffer fieldsToText(FormatField[] fields, StringBuffer buffer) {
@@ -982,7 +986,7 @@ public class TDecimalFormat extends TNumberFormat {
                 break;
             case UNNECESSARY:
                 if (mantissa % rounding != 0) {
-                    throw new TArithmeticException(TString.wrap("Can't avoid rounding"));
+                    throw new TArithmeticException("Can't avoid rounding");
                 }
                 break;
             case HALF_DOWN:
@@ -1038,7 +1042,7 @@ public class TDecimalFormat extends TNumberFormat {
                 break;
             case UNNECESSARY:
                 if (mantissa.remainder(rounding).equals(BigInteger.ZERO)) {
-                    throw new TArithmeticException(TString.wrap("Can't avoid rounding"));
+                    throw new TArithmeticException("Can't avoid rounding");
                 }
                 break;
             case HALF_DOWN:
@@ -1224,6 +1228,23 @@ public class TDecimalFormat extends TNumberFormat {
         public void render(TDecimalFormat format, StringBuffer buffer) {
             buffer.append(text);
         }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (!(obj instanceof TextField)) {
+                return false;
+            }
+            TextField other = (TextField) obj;
+            return text.equals(other.text);
+        }
+
+        @Override
+        public int hashCode() {
+            return text.hashCode();
+        }
     }
 
     static class CurrencyField implements FormatField {
@@ -1235,12 +1256,32 @@ public class TDecimalFormat extends TNumberFormat {
                 buffer.append(format.getCurrency().getSymbol(format.symbols.getLocale()));
             }
         }
+
+        @Override
+        public boolean equals(Object obj) {
+            return obj instanceof CurrencyField;
+        }
+
+        @Override
+        public int hashCode() {
+            return 0;
+        }
     }
 
     static class PercentField implements FormatField {
         @Override
         public void render(TDecimalFormat format, StringBuffer buffer) {
             buffer.append(format.symbols.getPercent());
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            return obj instanceof PercentField;
+        }
+
+        @Override
+        public int hashCode() {
+            return 1;
         }
     }
 
@@ -1249,12 +1290,32 @@ public class TDecimalFormat extends TNumberFormat {
         public void render(TDecimalFormat format, StringBuffer buffer) {
             buffer.append(format.symbols.getPerMill());
         }
+
+        @Override
+        public boolean equals(Object obj) {
+            return obj instanceof PerMillField;
+        }
+
+        @Override
+        public int hashCode() {
+            return 2;
+        }
     }
 
     static class MinusField implements FormatField {
         @Override
         public void render(TDecimalFormat format, StringBuffer buffer) {
             buffer.append(format.symbols.getMinusSign());
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            return obj instanceof MinusField;
+        }
+
+        @Override
+        public int hashCode() {
+            return 3;
         }
     }
 }

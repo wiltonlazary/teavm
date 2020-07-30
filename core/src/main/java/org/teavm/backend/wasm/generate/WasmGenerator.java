@@ -18,15 +18,12 @@ package org.teavm.backend.wasm.generate;
 import org.teavm.ast.RegularMethodNode;
 import org.teavm.ast.VariableNode;
 import org.teavm.ast.decompilation.Decompiler;
+import org.teavm.backend.lowlevel.generate.NameProvider;
 import org.teavm.backend.wasm.binary.BinaryWriter;
 import org.teavm.backend.wasm.model.WasmFunction;
 import org.teavm.backend.wasm.model.WasmLocal;
 import org.teavm.backend.wasm.model.WasmType;
-import org.teavm.backend.wasm.model.expression.WasmExpression;
-import org.teavm.backend.wasm.model.expression.WasmFloat32Constant;
-import org.teavm.backend.wasm.model.expression.WasmFloat64Constant;
-import org.teavm.backend.wasm.model.expression.WasmInt32Constant;
-import org.teavm.backend.wasm.model.expression.WasmInt64Constant;
+import org.teavm.backend.wasm.model.expression.WasmBlock;
 import org.teavm.interop.Export;
 import org.teavm.model.AnnotationReader;
 import org.teavm.model.ClassHolder;
@@ -42,6 +39,7 @@ public class WasmGenerator {
     private WasmGenerationContext context;
     private WasmClassGenerator classGenerator;
     private BinaryWriter binaryWriter;
+    private NameProvider names;
 
     public WasmGenerator(Decompiler decompiler, ClassHolderSource classSource,
             WasmGenerationContext context, WasmClassGenerator classGenerator, BinaryWriter binaryWriter) {
@@ -50,12 +48,13 @@ public class WasmGenerator {
         this.context = context;
         this.classGenerator = classGenerator;
         this.binaryWriter = binaryWriter;
+        names = classGenerator.names;
     }
 
     public WasmFunction generateDefinition(MethodReference methodReference) {
         ClassHolder cls = classSource.get(methodReference.getClassName());
         MethodHolder method = cls.getMethod(methodReference.getDescriptor());
-        WasmFunction function = new WasmFunction(WasmMangling.mangleMethod(method.getReference()));
+        WasmFunction function = new WasmFunction(names.forMethod(method.getReference()));
 
         if (!method.hasModifier(ElementModifier.STATIC)) {
             function.getParameters().add(WasmType.INT32);
@@ -75,7 +74,7 @@ public class WasmGenerator {
         MethodHolder method = cls.getMethod(methodReference.getDescriptor());
 
         RegularMethodNode methodAst = decompiler.decompileRegular(bodyMethod);
-        WasmFunction function = context.getFunction(WasmMangling.mangleMethod(methodReference));
+        WasmFunction function = context.getFunction(names.forMethod(methodReference));
         int firstVariable = method.hasModifier(ElementModifier.STATIC) ? 1 : 0;
         for (int i = firstVariable; i < methodAst.getVariables().size(); ++i) {
             VariableNode variable = methodAst.getVariables().get(i);
@@ -88,28 +87,10 @@ public class WasmGenerator {
         WasmGenerationVisitor visitor = new WasmGenerationVisitor(context, classGenerator, binaryWriter, function,
                 firstVariable);
         methodAst.getBody().acceptVisitor(visitor);
-        function.getBody().add(visitor.result);
-
-        if (function.getResult() != null) {
-            WasmExpression finalExpr;
-            switch (function.getResult()) {
-                case INT32:
-                    finalExpr = new WasmInt32Constant(0);
-                    break;
-                case INT64:
-                    finalExpr = new WasmInt64Constant(0);
-                    break;
-                case FLOAT32:
-                    finalExpr = new WasmFloat32Constant(0);
-                    break;
-                case FLOAT64:
-                    finalExpr = new WasmFloat64Constant(0);
-                    break;
-                default:
-                    throw new AssertionError();
-            }
-            function.getBody().add(finalExpr);
+        if (visitor.result instanceof WasmBlock) {
+            ((WasmBlock) visitor.result).setType(function.getResult());
         }
+        function.getBody().add(visitor.result);
 
         AnnotationReader exportAnnot = method.getAnnotations().get(Export.class.getName());
         if (exportAnnot != null) {
@@ -120,7 +101,7 @@ public class WasmGenerator {
     }
 
     public WasmFunction generateNative(MethodReference methodReference) {
-        WasmFunction function = context.getFunction(WasmMangling.mangleMethod(methodReference));
+        WasmFunction function = context.getFunction(names.forMethod(methodReference));
 
         WasmGenerationContext.ImportedMethod importedMethod = context.getImportedMethod(methodReference);
         if (importedMethod != null) {

@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import org.teavm.metaprogramming.ReflectClass;
+import org.teavm.metaprogramming.impl.MetaprogrammingImpl;
 import org.teavm.metaprogramming.reflect.ReflectField;
 import org.teavm.metaprogramming.reflect.ReflectMethod;
 import org.teavm.model.AccessLevel;
@@ -38,7 +39,7 @@ import org.teavm.model.ValueType;
 public class ReflectClassImpl<T> implements ReflectClass<T> {
     public final ValueType type;
     private ReflectContext context;
-    private ClassReader classReader;
+    public ClassReader classReader;
     private boolean resolved;
     private Class<?> cls;
     private Map<String, ReflectFieldImpl> declaredFields = new HashMap<>();
@@ -59,7 +60,7 @@ public class ReflectClassImpl<T> implements ReflectClass<T> {
 
     @Override
     public boolean isPrimitive() {
-        return type instanceof ValueType.Primitive;
+        return type instanceof ValueType.Primitive || type == ValueType.VOID;
     }
 
     @Override
@@ -198,6 +199,18 @@ public class ReflectClassImpl<T> implements ReflectClass<T> {
     }
 
     @Override
+    public boolean isAssignableFrom(ReflectClass<?> cls) {
+        return cls == this
+                || cls.getSuperclass() != null && this.isAssignableFrom(cls.getSuperclass())
+                || Arrays.stream(cls.getInterfaces()).anyMatch(this::isAssignableFrom);
+    }
+
+    @Override
+    public boolean isAssignableFrom(Class<?> cls) {
+        return isAssignableFrom(MetaprogrammingImpl.findClass(cls));
+    }
+
+    @Override
     public ReflectMethod[] getDeclaredMethods() {
         resolve();
         if (classReader == null) {
@@ -252,9 +265,8 @@ public class ReflectClassImpl<T> implements ReflectClass<T> {
                 if (candidate == null) {
                     candidate = method;
                 } else {
-                    boolean moreSpecial = context.getClassSource()
-                            .isSuperType(candidate.getResultType(), method.getResultType())
-                            .orElse(false);
+                    boolean moreSpecial = context.getHierarchy().isSuperType(candidate.getResultType(),
+                            method.getResultType(), false);
                     if (moreSpecial) {
                         candidate = method;
                     }
@@ -271,6 +283,22 @@ public class ReflectClassImpl<T> implements ReflectClass<T> {
             MethodReader methodReader = classReader.getMethod(m);
             return methodReader != null ? new ReflectMethodImpl(this, methodReader) : null;
         });
+    }
+
+    @Override
+    public ReflectMethod getDeclaredJMethod(String name, Class<?>... parameterTypes) {
+        ReflectClass<?>[] mappedParamTypes = Arrays.stream(parameterTypes)
+                .map(MetaprogrammingImpl::findClass)
+                .toArray(ReflectClass[]::new);
+        return getDeclaredMethod(name, mappedParamTypes);
+    }
+
+    @Override
+    public ReflectMethod getJMethod(String name, Class<?>... parameterTypes) {
+        ReflectClass<?>[] mappedParamTypes = Arrays.stream(parameterTypes)
+                .map(MetaprogrammingImpl::findClass)
+                .toArray(ReflectClass[]::new);
+        return getMethod(name, mappedParamTypes);
     }
 
     @Override
@@ -306,14 +334,19 @@ public class ReflectClassImpl<T> implements ReflectClass<T> {
     @Override
     public ReflectField[] getFields() {
         if (fieldsCache == null) {
-            Set<String> visited = new HashSet<>();
-            fieldsCache = context.getClassSource()
-                    .getAncestors(classReader.getName())
-                    .flatMap(cls -> cls.getFields().stream().filter(fld -> fld.getLevel() == AccessLevel.PUBLIC))
-                    .filter(fld -> visited.add(fld.getName()))
-                    .map(fld -> context.getClass(ValueType.object(fld.getOwnerName()))
-                            .getDeclaredField(fld.getName()))
-                    .toArray(ReflectField[]::new);
+            resolve();
+            if (classReader == null) {
+                fieldsCache = new ReflectField[0];
+            } else {
+                Set<String> visited = new HashSet<>();
+                fieldsCache = context
+                  .getClassSource()
+                  .getAncestors(classReader.getName())
+                  .flatMap(cls -> cls.getFields().stream().filter(fld -> fld.getLevel() == AccessLevel.PUBLIC))
+                  .filter(fld -> visited.add(fld.getName()))
+                  .map(fld -> context.getClass(ValueType.object(fld.getOwnerName())).getDeclaredField(fld.getName()))
+                  .toArray(ReflectField[]::new);
+            }
         }
         return fieldsCache.clone();
     }
@@ -351,7 +384,7 @@ public class ReflectClassImpl<T> implements ReflectClass<T> {
         return annotations.getAnnotation(type);
     }
 
-    private void resolve() {
+    public void resolve() {
         if (resolved) {
             return;
         }

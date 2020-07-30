@@ -39,12 +39,7 @@ public class ClassTest {
 
     @Test
     public void classSimpleNameEvaluated() {
-        assertEquals("Object", Object.class.getSimpleName());
-        assertEquals("Object[]", Object[].class.getSimpleName());
-        assertEquals("int", int.class.getSimpleName());
-        assertEquals("int[]", int[].class.getSimpleName());
-        assertEquals("InnerClass", InnerClass.class.getSimpleName());
-        assertEquals("", new Object(){}.getClass().getSimpleName());
+
     }
 
     @Test
@@ -111,15 +106,51 @@ public class ClassTest {
 
     @Test
     public void instanceCreatedThroughReflection() throws Exception {
-        Runnable instance = (Runnable)Class.forName(TestObject.class.getName()).newInstance();
+        Runnable instance = (Runnable) Class.forName(TestObject.class.getName()).newInstance();
         instance.run();
         assertEquals(TestObject.class, instance.getClass());
-        assertEquals(1, ((TestObject)instance).getCounter());
+        assertEquals(1, ((TestObject) instance).getCounter());
     }
 
     @Test
-    public void declaringClassFound() {
-        assertEquals(ClassTest.class, new A().getClass().getDeclaringClass());
+    public void instanceCreatedThroughReflectionAsync() throws Exception {
+        Runnable instance = TestObjectAsync.class.newInstance();
+        instance.run();
+        assertEquals(TestObjectAsync.class, instance.getClass());
+        assertEquals(2, ((TestObjectAsync) instance).getCounter());
+    }
+
+    @Test
+    public void classProperties() {
+        class B {
+        }
+
+        @SuppressWarnings("Convert2Lambda")
+        Runnable r = new Runnable() {
+            @Override
+            public void run() {
+            }
+        };
+
+        String testName = "org.teavm.classlib.java.lang.ClassTest";
+
+        testClassProperties(getClass(), "ClassTest", testName, null, null);
+        testClassProperties(new ClassTest[0].getClass(), "ClassTest[]", testName + "[]", null, null);
+        testClassProperties(int.class, "int", "int", null, null);
+        testClassProperties(new int[0].getClass(), "int[]", "int[]", null, null);
+        testClassProperties(new A().getClass(), "A", testName + ".A", ClassTest.class, ClassTest.class);
+        testClassProperties(new A[0].getClass(), "A[]", testName + ".A[]", null, null);
+        testClassProperties(new B().getClass(), "B", null, null, ClassTest.class);
+        testClassProperties(new B[0].getClass(), "B[]", null, null, null);
+        testClassProperties(r.getClass(), "", null, null, ClassTest.class);
+    }
+
+    private void testClassProperties(Class<?> cls, String expectedSimpleName, String expectedCanonicalName,
+            Class<?> expectedDeclaringClass, Class<?> expectedEnclosingClass) {
+        assertEquals(expectedSimpleName, cls.getSimpleName());
+        assertEquals(expectedCanonicalName, cls.getCanonicalName());
+        assertEquals(expectedDeclaringClass, cls.getDeclaringClass());
+        assertEquals(expectedEnclosingClass, cls.getEnclosingClass());
     }
 
     @Test
@@ -141,8 +172,8 @@ public class ClassTest {
     public void annotationFieldTypesSupported() {
         AnnotWithVariousFields annot = D.class.getAnnotation(AnnotWithVariousFields.class);
         assertEquals(true, annot.a());
-        assertEquals((byte)2, annot.b());
-        assertEquals((short)3, annot.c());
+        assertEquals((byte) 2, annot.b());
+        assertEquals((short) 3, annot.c());
         assertEquals(4, annot.d());
         assertEquals(5L, annot.e());
         assertEquals(6.5, annot.f(), 0.01);

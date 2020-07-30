@@ -15,10 +15,6 @@
  */
 package org.teavm.platform.plugin;
 
-/**
- *
- * @author Alexey Andreev
- */
 class BuildTimeResourceGetter implements BuildTimeResourceMethod {
     private int index;
 
@@ -27,7 +23,7 @@ class BuildTimeResourceGetter implements BuildTimeResourceMethod {
     }
 
     @Override
-    public Object invoke(BuildTimeResourceProxy proxy, Object[] args) throws Throwable {
+    public Object invoke(BuildTimeResourceProxy proxy, Object[] args) {
         return proxy.data[index];
     }
 }

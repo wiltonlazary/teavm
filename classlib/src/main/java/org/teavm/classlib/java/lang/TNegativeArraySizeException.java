@@ -15,10 +15,6 @@
  */
 package org.teavm.classlib.java.lang;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class TNegativeArraySizeException extends TRuntimeException {
     private static final long serialVersionUID = 4838944281468611671L;
 
@@ -26,7 +22,7 @@ public class TNegativeArraySizeException extends TRuntimeException {
         super();
     }
 
-    public TNegativeArraySizeException(TString message) {
+    public TNegativeArraySizeException(String message) {
         super(message);
     }
 }

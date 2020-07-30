@@ -18,10 +18,6 @@ package org.teavm.jso.typedarrays;
 import org.teavm.jso.JSBody;
 import org.teavm.jso.JSIndexer;
 
-/**
- *
- * @author Alexey Andreev
- */
 public abstract class Float32Array extends ArrayBufferView {
     @JSIndexer
     public abstract float get(int index);
@@ -35,6 +31,12 @@ public abstract class Float32Array extends ArrayBufferView {
     @JSBody(params = "buffer", script = "return new Float32Array(buffer);")
     public static native Float32Array create(ArrayBuffer buffer);
 
+    @JSBody(params = "buffer", script = "return new Float32Array(buffer);")
+    public static native Float32Array create(ArrayBufferView buffer);
+
     @JSBody(params = { "buffer", "offset", "length" }, script = "return new Float32Array(buffer, offset, length);")
     public static native Float32Array create(ArrayBuffer buffer, int offset, int length);
+
+    @JSBody(params = { "buffer", "offset" }, script = "return new Float32Array(buffer, offset);")
+    public static native Float32Array create(ArrayBuffer buffer, int offset);
 }

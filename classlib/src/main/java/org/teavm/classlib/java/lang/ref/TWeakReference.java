@@ -15,11 +15,6 @@
  */
 package org.teavm.classlib.java.lang.ref;
 
-/**
- *
- * @author Alexey Andreev
- * @param <T>
- */
 public class TWeakReference<T> extends TReference<T> {
     private T value;
 
@@ -39,5 +34,15 @@ public class TWeakReference<T> extends TReference<T> {
     @Override
     public void clear() {
         value = null;
+    }
+
+    @Override
+    public boolean isEnqueued() {
+        return false;
+    }
+
+    @Override
+    public boolean enqueue() {
+        return true;
     }
 }

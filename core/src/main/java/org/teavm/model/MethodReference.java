@@ -17,7 +17,10 @@ package org.teavm.model;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
+import java.io.Serializable;
+import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.stream.Stream;
 
 /**
  * <p>Specifies a fully qualified name of a method, including its name, class name, parameter types
@@ -30,18 +33,14 @@ import java.util.Arrays;
  *
  * @author Alexey Andreev
  */
-public class MethodReference {
+public class MethodReference implements Serializable {
     private String className;
-    private String name;
-    private ValueType[] signature;
-    private transient MethodDescriptor descriptor;
-    private transient String reprCache;
+    private MethodDescriptor descriptor;
+    private transient int hash;
 
     public MethodReference(String className, MethodDescriptor descriptor) {
         this.className = className;
         this.descriptor = descriptor;
-        this.name = descriptor.getName();
-        this.signature = descriptor.getSignature();
     }
 
     /**
@@ -61,9 +60,7 @@ public class MethodReference {
      * a type of a returning value, and all the remaining elements are types of arguments.
      */
     public MethodReference(String className, String name, ValueType... signature) {
-        this.className = className;
-        this.name = name;
-        this.signature = Arrays.copyOf(signature, signature.length);
+        this(className, new MethodDescriptor(name, signature));
     }
 
     public MethodReference(Class<?> cls, String name, Class<?>... signature) {
@@ -83,42 +80,42 @@ public class MethodReference {
     }
 
     public MethodDescriptor getDescriptor() {
-        if (descriptor == null) {
-            descriptor = new MethodDescriptor(name, signature);
-        }
         return descriptor;
     }
 
     public int parameterCount() {
-        return signature.length - 1;
+        return descriptor.parameterCount();
     }
 
     public ValueType parameterType(int index) {
-        if (index >= signature.length + 1) {
-            throw new IndexOutOfBoundsException("Index " + index + " is greater than size " + (signature.length - 1));
-        }
-        return signature[index];
+        return descriptor.parameterType(index);
     }
 
     public ValueType[] getParameterTypes() {
-        return Arrays.copyOf(signature, signature.length - 1);
+        return descriptor.getParameterTypes();
     }
 
     public ValueType[] getSignature() {
-        return Arrays.copyOf(signature, signature.length);
+        return descriptor.getSignature();
     }
 
     public ValueType getReturnType() {
-        return signature[signature.length - 1];
+        return descriptor.getResultType();
     }
 
     public String getName() {
-        return name;
+        return descriptor.getName();
     }
 
     @Override
     public int hashCode() {
-        return toString().hashCode();
+        if (hash == 0) {
+            hash = (className.hashCode() * 31 + descriptor.hashCode()) * 17;
+            if (hash == 0) {
+                hash++;
+            }
+        }
+        return hash;
     }
 
     @Override
@@ -129,17 +126,15 @@ public class MethodReference {
         if (!(obj instanceof MethodReference)) {
             return false;
         }
+
         MethodReference other = (MethodReference) obj;
-        return toString().equals(other.toString());
+        return className.equals(other.className) && descriptor.equals(other.descriptor);
     }
 
     @Override
     @JsonValue
     public String toString() {
-        if (reprCache == null) {
-            reprCache = className + "." + name + signatureToString();
-        }
-        return reprCache;
+        return className + "." + getDescriptor().toString();
     }
 
     @JsonCreator
@@ -161,14 +156,13 @@ public class MethodReference {
         return desc != null ? new MethodReference(className, desc) : null;
     }
 
+    public static MethodReference parse(Method method) {
+        ValueType[] signature = Stream.concat(Arrays.stream(method.getParameterTypes()).map(ValueType::parse),
+                Stream.of(ValueType.parse(method.getReturnType()))).toArray(ValueType[]::new);
+        return new MethodReference(method.getDeclaringClass().getName(), method.getName(), signature);
+    }
+
     public String signatureToString() {
-        StringBuilder sb = new StringBuilder();
-        sb.append('(');
-        for (int i = 0; i < signature.length - 1; ++i) {
-            sb.append(signature[i].toString());
-        }
-        sb.append(')');
-        sb.append(signature[signature.length - 1]);
-        return sb.toString();
+        return getDescriptor().signatureToString();
     }
 }

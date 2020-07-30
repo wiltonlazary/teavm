@@ -15,10 +15,6 @@
  */
 package org.teavm.classlib.java.lang;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class TLinkageError extends TError {
     private static final long serialVersionUID = 9176544705010852435L;
 
@@ -26,11 +22,11 @@ public class TLinkageError extends TError {
         super();
     }
 
-    public TLinkageError(TString message, TThrowable cause) {
+    public TLinkageError(String message, TThrowable cause) {
         super(message, cause);
     }
 
-    public TLinkageError(TString message) {
+    public TLinkageError(String message) {
         super(message);
     }
 }

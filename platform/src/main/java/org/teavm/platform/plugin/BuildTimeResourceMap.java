@@ -19,13 +19,10 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import org.teavm.backend.javascript.codegen.SourceWriter;
+import org.teavm.backend.javascript.rendering.RenderingUtil;
 import org.teavm.platform.metadata.Resource;
 import org.teavm.platform.metadata.ResourceMap;
 
-/**
- *
- * @author Alexey Andreev
- */
 class BuildTimeResourceMap<T extends Resource> implements ResourceMap<T>, ResourceWriter {
     private Map<String, T> data = new HashMap<>();
 
@@ -53,8 +50,8 @@ class BuildTimeResourceMap<T extends Resource> implements ResourceMap<T>, Resour
                 writer.append(",").ws();
             }
             first = false;
-            ResourceWriterHelper.writeString(writer, entry.getKey());
-            writer.ws().append(':').ws();
+            RenderingUtil.writeString(writer, entry.getKey());
+            writer.append(':').ws();
             ResourceWriterHelper.write(writer, entry.getValue());
         }
         writer.append('}').tokenBoundary();
@@ -62,6 +59,6 @@ class BuildTimeResourceMap<T extends Resource> implements ResourceMap<T>, Resour
 
     @Override
     public String[] keys() {
-        return data.keySet().toArray(new String[data.size()]);
+        return data.keySet().toArray(new String[0]);
     }
 }

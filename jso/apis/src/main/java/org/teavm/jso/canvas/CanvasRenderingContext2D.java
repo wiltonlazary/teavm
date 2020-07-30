@@ -22,10 +22,6 @@ import org.teavm.jso.core.JSArrayReader;
 import org.teavm.jso.dom.html.HTMLCanvasElement;
 import org.teavm.jso.dom.xml.Element;
 
-/**
- *
- * @author Alexey Andreev
- */
 public interface CanvasRenderingContext2D extends JSObject {
     // Path
 
@@ -121,9 +117,9 @@ public interface CanvasRenderingContext2D extends JSObject {
 
     void strokeRect(double x, double y, double w, double h);
 
-    void strokeText(String text, float x, float y, float maxWidth);
+    void strokeText(String text, double x, double y, double maxWidth);
 
-    void strokeText(String text, float x, float y);
+    void strokeText(String text, double x, double y);
 
     // Transformation
 
@@ -166,10 +162,10 @@ public interface CanvasRenderingContext2D extends JSObject {
     void setLineCap(String lineCap);
 
     @JSProperty
-    float getLineDashOffset();
+    double getLineDashOffset();
 
     @JSProperty
-    void setLineDashOffset(float lineDashOffset);
+    void setLineDashOffset(double lineDashOffset);
 
     @JSProperty
     String getLineJoin();

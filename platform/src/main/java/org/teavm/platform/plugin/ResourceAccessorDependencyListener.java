@@ -18,15 +18,10 @@ package org.teavm.platform.plugin;
 import org.teavm.dependency.AbstractDependencyListener;
 import org.teavm.dependency.DependencyAgent;
 import org.teavm.dependency.MethodDependency;
-import org.teavm.model.CallLocation;
 
-/**
- *
- * @author Alexey Andreev
- */
 class ResourceAccessorDependencyListener extends AbstractDependencyListener {
     @Override
-    public void methodReached(DependencyAgent agent, MethodDependency method, CallLocation location) {
+    public void methodReached(DependencyAgent agent, MethodDependency method) {
         if (!method.getReference().getClassName().equals(ResourceAccessor.class.getName())) {
             return;
         }

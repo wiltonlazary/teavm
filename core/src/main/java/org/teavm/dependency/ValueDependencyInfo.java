@@ -15,14 +15,12 @@
  */
 package org.teavm.dependency;
 
-/**
- *
- * @author Alexey Andreev
- */
 public interface ValueDependencyInfo {
     String[] getTypes();
 
     boolean hasType(String type);
+
+    boolean hasMoreTypesThan(int limit);
 
     boolean hasArrayType();
 

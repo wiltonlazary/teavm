@@ -21,10 +21,6 @@ import java.util.Map;
 import java.util.Set;
 import org.teavm.model.MethodReference;
 
-/**
- *
- * @author Alexey Andreev
- */
 class JSBodyRepository {
     public final Map<MethodReference, JSBodyEmitter> emitters = new HashMap<>();
     public final Map<MethodReference, MethodReference> methodMap = new HashMap<>();
@@ -32,5 +28,4 @@ class JSBodyRepository {
     public final Set<MethodReference> inlineMethods = new HashSet<>();
     public final Map<MethodReference, MethodReference> callbackCallees = new HashMap<>();
     public final Map<MethodReference, Set<MethodReference>> callbackMethods = new HashMap<>();
-    public final Map<MethodReference, Set<MethodReference>> callbackMethodsDeps = new HashMap<>();
 }

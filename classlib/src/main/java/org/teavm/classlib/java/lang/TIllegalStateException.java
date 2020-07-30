@@ -15,10 +15,6 @@
  */
 package org.teavm.classlib.java.lang;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class TIllegalStateException extends TException {
     private static final long serialVersionUID = 218741044430713159L;
 
@@ -26,11 +22,11 @@ public class TIllegalStateException extends TException {
         super();
     }
 
-    public TIllegalStateException(TString message, TThrowable cause) {
+    public TIllegalStateException(String message, TThrowable cause) {
         super(message, cause);
     }
 
-    public TIllegalStateException(TString message) {
+    public TIllegalStateException(String message) {
         super(message);
     }
 

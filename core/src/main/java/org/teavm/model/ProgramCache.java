@@ -15,13 +15,11 @@
  */
 package org.teavm.model;
 
+import java.util.function.Supplier;
+import org.teavm.cache.CacheStatus;
 
-/**
- *
- * @author Alexey Andreev
- */
 public interface ProgramCache {
-    Program get(MethodReference method);
+    Program get(MethodReference method, CacheStatus status);
 
-    void store(MethodReference method, Program program);
+    void store(MethodReference method, Program program, Supplier<String[]> dependencies);
 }

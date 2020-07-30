@@ -18,12 +18,8 @@ package org.teavm.model;
 import java.util.Collections;
 import org.teavm.model.instructions.*;
 
-/**
- *
- * @author Alexey Andreev
- */
-class InstructionReadVisitor implements InstructionVisitor {
-    private InstructionReader reader;
+public class InstructionReadVisitor implements InstructionVisitor {
+    InstructionReader reader;
 
     public InstructionReadVisitor(InstructionReader reader) {
         this.reader = reader;
@@ -183,8 +179,7 @@ class InstructionReadVisitor implements InstructionVisitor {
 
     @Override
     public void visit(InvokeInstruction insn) {
-        reader.invoke(insn.getReceiver(), insn.getInstance(), insn.getMethod(),
-                Collections.unmodifiableList(insn.getArguments()), insn.getType());
+        reader.invoke(insn.getReceiver(), insn.getInstance(), insn.getMethod(), insn.getArguments(), insn.getType());
     }
 
     @Override
@@ -217,5 +212,10 @@ class InstructionReadVisitor implements InstructionVisitor {
     @Override
     public void visit(MonitorExitInstruction insn) {
         reader.monitorExit(insn.getObjectRef());
+    }
+
+    @Override
+    public void visit(BoundCheckInstruction insn) {
+        reader.boundCheck(insn.getReceiver(), insn.getIndex(), insn.getArray(), insn.isLower());
     }
 }

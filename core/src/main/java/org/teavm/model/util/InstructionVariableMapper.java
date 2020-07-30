@@ -21,12 +21,44 @@ import org.teavm.model.Incoming;
 import org.teavm.model.Instruction;
 import org.teavm.model.InvokeDynamicInstruction;
 import org.teavm.model.Phi;
-import org.teavm.model.TryCatchBlock;
-import org.teavm.model.TryCatchJoint;
 import org.teavm.model.Variable;
-import org.teavm.model.instructions.*;
+import org.teavm.model.instructions.AbstractInstructionVisitor;
+import org.teavm.model.instructions.ArrayLengthInstruction;
+import org.teavm.model.instructions.AssignInstruction;
+import org.teavm.model.instructions.BinaryBranchingInstruction;
+import org.teavm.model.instructions.BinaryInstruction;
+import org.teavm.model.instructions.BoundCheckInstruction;
+import org.teavm.model.instructions.BranchingInstruction;
+import org.teavm.model.instructions.CastInstruction;
+import org.teavm.model.instructions.CastIntegerInstruction;
+import org.teavm.model.instructions.CastNumberInstruction;
+import org.teavm.model.instructions.ClassConstantInstruction;
+import org.teavm.model.instructions.CloneArrayInstruction;
+import org.teavm.model.instructions.ConstructArrayInstruction;
+import org.teavm.model.instructions.ConstructInstruction;
+import org.teavm.model.instructions.ConstructMultiArrayInstruction;
+import org.teavm.model.instructions.DoubleConstantInstruction;
+import org.teavm.model.instructions.ExitInstruction;
+import org.teavm.model.instructions.FloatConstantInstruction;
+import org.teavm.model.instructions.GetElementInstruction;
+import org.teavm.model.instructions.GetFieldInstruction;
+import org.teavm.model.instructions.IntegerConstantInstruction;
+import org.teavm.model.instructions.InvokeInstruction;
+import org.teavm.model.instructions.IsInstanceInstruction;
+import org.teavm.model.instructions.LongConstantInstruction;
+import org.teavm.model.instructions.MonitorEnterInstruction;
+import org.teavm.model.instructions.MonitorExitInstruction;
+import org.teavm.model.instructions.NegateInstruction;
+import org.teavm.model.instructions.NullCheckInstruction;
+import org.teavm.model.instructions.NullConstantInstruction;
+import org.teavm.model.instructions.PutElementInstruction;
+import org.teavm.model.instructions.PutFieldInstruction;
+import org.teavm.model.instructions.RaiseInstruction;
+import org.teavm.model.instructions.StringConstantInstruction;
+import org.teavm.model.instructions.SwitchInstruction;
+import org.teavm.model.instructions.UnwrapArrayInstruction;
 
-public class InstructionVariableMapper implements InstructionVisitor {
+public class InstructionVariableMapper extends AbstractInstructionVisitor {
     private final Function<Variable, Variable> f;
 
     public InstructionVariableMapper(Function<Variable, Variable> f) {
@@ -40,11 +72,10 @@ public class InstructionVariableMapper implements InstructionVisitor {
 
         applyToInstructions(block);
         applyToPhis(block);
-        applyToTryCatchBlocks(block);
     }
 
     public void applyToInstructions(BasicBlock block) {
-        for (Instruction insn : block.getInstructions()) {
+        for (Instruction insn : block) {
             insn.acceptVisitor(this);
         }
     }
@@ -58,24 +89,8 @@ public class InstructionVariableMapper implements InstructionVisitor {
         }
     }
 
-    public void applyToTryCatchBlocks(BasicBlock block) {
-        for (TryCatchBlock tryCatch : block.getTryCatchBlocks()) {
-            for (TryCatchJoint joint : tryCatch.getJoints()) {
-                joint.setReceiver(map(joint.getReceiver()));
-                for (int i = 0; i < joint.getSourceVariables().size(); ++i) {
-                    Variable var = joint.getSourceVariables().get(i);
-                    joint.getSourceVariables().set(i, map(var));
-                }
-            }
-        }
-    }
-
-    private Variable map(Variable var) {
+    public Variable map(Variable var) {
         return f.apply(var);
-    }
-
-    @Override
-    public void visit(EmptyInstruction insn) {
     }
 
     @Override
@@ -159,10 +174,6 @@ public class InstructionVariableMapper implements InstructionVisitor {
     public void visit(BinaryBranchingInstruction insn) {
         insn.setFirstOperand(map(insn.getFirstOperand()));
         insn.setSecondOperand(map(insn.getSecondOperand()));
-    }
-
-    @Override
-    public void visit(JumpInstruction insn) {
     }
 
     @Override
@@ -257,9 +268,7 @@ public class InstructionVariableMapper implements InstructionVisitor {
         if (insn.getInstance() != null) {
             insn.setInstance(map(insn.getInstance()));
         }
-        for (int i = 0; i < insn.getArguments().size(); ++i) {
-            insn.getArguments().set(i, map(insn.getArguments().get(i)));
-        }
+        insn.replaceArguments(this::map);
     }
 
     @Override
@@ -282,10 +291,6 @@ public class InstructionVariableMapper implements InstructionVisitor {
     }
 
     @Override
-    public void visit(InitClassInstruction insn) {
-    }
-
-    @Override
     public void visit(NullCheckInstruction insn) {
         insn.setReceiver(map(insn.getReceiver()));
         insn.setValue(map(insn.getValue()));
@@ -299,5 +304,14 @@ public class InstructionVariableMapper implements InstructionVisitor {
     @Override
     public void visit(MonitorExitInstruction insn) {
         insn.setObjectRef(map(insn.getObjectRef()));
+    }
+
+    @Override
+    public void visit(BoundCheckInstruction insn) {
+        insn.setReceiver(map(insn.getReceiver()));
+        insn.setIndex(map(insn.getIndex()));
+        if (insn.getArray() != null) {
+            insn.setArray(map(insn.getArray()));
+        }
     }
 }

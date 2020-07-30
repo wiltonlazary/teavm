@@ -22,11 +22,8 @@ import org.teavm.common.RecordArray;
 import org.teavm.common.RecordArrayBuilder;
 import org.teavm.model.MethodDescriptor;
 import org.teavm.model.MethodReference;
+import org.teavm.model.ReferenceCache;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class DebugInformation {
     String[] fileNames;
     Map<String, Integer> fileNameMap;
@@ -41,18 +38,25 @@ public class DebugInformation {
     long[] exactMethods;
     Map<Long, Integer> exactMethodMap;
     RecordArray[] fileDescriptions;
-    RecordArray fileMapping;
-    RecordArray classMapping;
-    RecordArray methodMapping;
-    RecordArray lineMapping;
+    Layer[] layers;
     RecordArray callSiteMapping;
     RecordArray statementStartMapping;
     RecordArray[] variableMappings;
     RecordArray[] lineCallSites;
     RecordArray[] controlFlowGraphs;
     List<ClassMetadata> classesMetadata;
+    Map<String, ClassMetadata> classMetadataByJsName;
     RecordArray methodEntrances;
     MethodTree methodTree;
+    ReferenceCache referenceCache;
+
+    public DebugInformation() {
+        this(new ReferenceCache());
+    }
+
+    public DebugInformation(ReferenceCache referenceCache) {
+        this.referenceCache = referenceCache;
+    }
 
     public String[] getFilesNames() {
         return fileNames.clone();
@@ -60,14 +64,6 @@ public class DebugInformation {
 
     public String[] getVariableNames() {
         return variableNames.clone();
-    }
-
-    public LineNumberIterator iterateOverLineNumbers() {
-        return new LineNumberIterator(this);
-    }
-
-    public FileNameIterator iterateOverFileNames() {
-        return new FileNameIterator(this);
     }
 
     public String getFileName(int fileNameId) {
@@ -85,13 +81,13 @@ public class DebugInformation {
     public MethodDescriptor[] getMethods() {
         MethodDescriptor[] descriptors = new MethodDescriptor[methods.length];
         for (int i = 0; i < descriptors.length; ++i) {
-            descriptors[i] = MethodDescriptor.parse(methods[i]);
+            descriptors[i] = referenceCache.parseDescriptorCached(methods[i]);
         }
         return descriptors;
     }
 
     public MethodDescriptor getMethod(int methodId) {
-        return MethodDescriptor.parse(methods[methodId]);
+        return referenceCache.parseDescriptorCached(methods[methodId]);
     }
 
     public MethodReference[] getExactMethods() {
@@ -118,7 +114,8 @@ public class DebugInformation {
         long item = exactMethods[index];
         int classIndex = (int) (item >>> 32);
         int methodIndex = (int) item;
-        return new MethodReference(classNames[classIndex], MethodDescriptor.parse(methods[methodIndex]));
+        return referenceCache.getCached(classNames[classIndex], referenceCache.parseDescriptorCached(
+                methods[methodIndex]));
     }
 
     public int getExactMethodId(int classNameId, int methodId) {
@@ -127,16 +124,12 @@ public class DebugInformation {
         return id != null ? id : -1;
     }
 
-    public ClassNameIterator iterateOverClassNames() {
-        return new ClassNameIterator(this);
+    public int layerCount() {
+        return layers.length;
     }
 
-    public MethodIterator iterateOverMethods() {
-        return new MethodIterator(this);
-    }
-
-    public ExactMethodIterator iterateOverExactMethods() {
-        return new ExactMethodIterator(this);
+    public ExactMethodIterator iterateOverExactMethods(int layerIndex) {
+        return new ExactMethodIterator(this, layers[layerIndex]);
     }
 
     public Collection<GeneratedLocation> getGeneratedLocations(String fileName, int line) {
@@ -169,27 +162,65 @@ public class DebugInformation {
         return new SourceLocationIterator(this);
     }
 
+    private LayerSourceLocationIterator iterateOverSourceLocations(int layer) {
+        return new LayerSourceLocationIterator(this, layers[layer]);
+    }
+
     public SourceLocation getSourceLocation(int line, int column) {
         return getSourceLocation(new GeneratedLocation(line, column));
     }
 
+    public SourceLocation getSourceLocation(int line, int column, int layerIndex) {
+        return getSourceLocation(new GeneratedLocation(line, column), layerIndex);
+    }
+
     public SourceLocation getSourceLocation(GeneratedLocation generatedLocation) {
-        String fileName = componentByKey(fileMapping, fileNames, generatedLocation);
-        int lineNumberIndex = indexByKey(lineMapping, generatedLocation);
-        int lineNumber = lineNumberIndex >= 0 ? lineMapping.get(lineNumberIndex).get(2) : -1;
+        return getSourceLocation(generatedLocation, autodetectLayer(generatedLocation));
+    }
+
+    public SourceLocation getSourceLocation(GeneratedLocation generatedLocation, int layerIndex) {
+        if (layerIndex < 0 || layerIndex >= layers.length) {
+            return null;
+        }
+
+        Layer layer = layers[layerIndex];
+        String fileName = componentByKey(layer.fileMapping, fileNames, generatedLocation);
+        int lineNumberIndex = indexByKey(layer.lineMapping, generatedLocation);
+        int lineNumber = lineNumberIndex >= 0 ? layer.lineMapping.get(lineNumberIndex).get(2) : -1;
         return new SourceLocation(fileName, lineNumber);
     }
 
     public MethodReference getMethodAt(GeneratedLocation generatedLocation) {
-        String className = componentByKey(classMapping, classNames, generatedLocation);
+        return getMethodAt(generatedLocation, autodetectLayer(generatedLocation));
+    }
+
+    public MethodReference getMethodAt(GeneratedLocation generatedLocation, int layerIndex) {
+        if (layerIndex < 0 || layerIndex >= layers.length) {
+            return null;
+        }
+
+        Layer layer = layers[layerIndex];
+
+        String className = componentByKey(layer.classMapping, classNames, generatedLocation);
         if (className == null) {
             return null;
         }
-        String method = componentByKey(methodMapping, methods, generatedLocation);
+        String method = componentByKey(layer.methodMapping, methods, generatedLocation);
         if (method == null) {
             return null;
         }
-        return new MethodReference(className, MethodDescriptor.parse(method));
+        return referenceCache.getCached(className, referenceCache.parseDescriptorCached(method));
+    }
+
+    private int autodetectLayer(GeneratedLocation generatedLocation) {
+        int layerIndex = 0;
+        for (int i = 1; i < layers.length; ++i) {
+            if (componentByKey(layers[i].classMapping, classNames, generatedLocation) == null) {
+                break;
+            }
+            layerIndex = i;
+        }
+        return layerIndex;
     }
 
     public MethodReference getMethodAt(int line, int column) {
@@ -220,7 +251,7 @@ public class DebugInformation {
         int[] valueIndexes = mapping.get(keyIndex).getArray(0);
         String[] result = new String[valueIndexes.length];
         for (int i = 0; i < result.length; ++i) {
-            result[i] = variableNames[valueIndexes[i]];
+            result[i] = valueIndexes[i] >= 0 ? variableNames[valueIndexes[i]] : null;
         }
         return result;
     }
@@ -272,6 +303,11 @@ public class DebugInformation {
             classIndex = cls.parentId;
         }
         return null;
+    }
+
+    public String getClassNameByJsName(String className) {
+        ClassMetadata cls = classMetadataByJsName.get(className);
+        return cls != null ? classNames[cls.id] : null;
     }
 
     public DebuggerCallSite getCallSite(GeneratedLocation location) {
@@ -405,7 +441,11 @@ public class DebugInformation {
     }
 
     public static DebugInformation read(InputStream input) throws IOException {
-        DebugInformationReader reader = new DebugInformationReader(input);
+        return read(input, new ReferenceCache());
+    }
+
+    public static DebugInformation read(InputStream input, ReferenceCache referenceCache) throws IOException {
+        DebugInformationReader reader = new DebugInformationReader(input, referenceCache);
         return reader.read();
     }
 
@@ -415,6 +455,7 @@ public class DebugInformation {
         rebuildEntrances();
         rebuildMethodTree();
         rebuildLineCallSites();
+        rebuildClassMap();
     }
 
     void rebuildMaps() {
@@ -442,16 +483,19 @@ public class DebugInformation {
         for (int i = 0; i < builders.length; ++i) {
             builders[i] = new RecordArrayBuilder(0, 1);
         }
-        for (SourceLocationIterator iter = iterateOverSourceLocations(); !iter.isEndReached(); iter.next()) {
-            if (iter.getFileNameId() >= 0 && iter.getLine() >= 0) {
-                RecordArrayBuilder builder = builders[iter.getFileNameId()];
-                while (builder.size() <= iter.getLine()) {
-                    builder.add();
+        for (int layer = 0; layer < layers.length; ++layer) {
+            for (LayerSourceLocationIterator iter = iterateOverSourceLocations(layer);
+                    !iter.isEndReached(); iter.next()) {
+                if (iter.getFileNameId() >= 0 && iter.getLine() >= 0) {
+                    RecordArrayBuilder builder = builders[iter.getFileNameId()];
+                    while (builder.size() <= iter.getLine()) {
+                        builder.add();
+                    }
+                    GeneratedLocation loc = iter.getLocation();
+                    RecordArrayBuilder.SubArray array = builder.get(iter.getLine()).getArray(0);
+                    array.add(loc.getLine());
+                    array.add(loc.getColumn());
                 }
-                GeneratedLocation loc = iter.getLocation();
-                RecordArrayBuilder.SubArray array = builder.get(iter.getLine()).getArray(0);
-                array.add(loc.getLine());
-                array.add(loc.getColumn());
             }
         }
         fileDescriptions = new RecordArray[builders.length];
@@ -468,7 +512,8 @@ public class DebugInformation {
         GeneratedLocation prevLocation = new GeneratedLocation(0, 0);
         MethodReference prevMethod = null;
         int prevMethodId = -1;
-        for (ExactMethodIterator iter = iterateOverExactMethods(); !iter.isEndReached(); iter.next()) {
+        RecordArray lineMapping = layers[0].lineMapping;
+        for (ExactMethodIterator iter = iterateOverExactMethods(0); !iter.isEndReached(); iter.next()) {
             int id = iter.getExactMethodId();
             if (prevMethod != null) {
                 int lineIndex = Math.max(0, indexByKey(lineMapping, prevLocation));
@@ -578,8 +623,9 @@ public class DebugInformation {
             GeneratedLocation loc = key(callSiteRec);
             int callSiteType = callSiteRec.get(2);
             if (callSiteType != DebuggerCallSite.NONE) {
-                int line = valueByKey(lineMapping, loc);
-                int fileId = valueByKey(fileMapping, loc);
+                int layerIndex = autodetectLayer(loc);
+                int line = valueByKey(layers[layerIndex].lineMapping, loc);
+                int fileId = valueByKey(layers[layerIndex].fileMapping, loc);
                 if (fileId >= 0 && line >= 0) {
                     RecordArrayBuilder builder = builders[fileId];
                     while (builder.size() <= line) {
@@ -596,6 +642,15 @@ public class DebugInformation {
 
     static GeneratedLocation key(RecordArray.Record record) {
         return new GeneratedLocation(record.get(0), record.get(1));
+    }
+
+    private void rebuildClassMap() {
+        classMetadataByJsName = new HashMap<>();
+        for (DebugInformation.ClassMetadata cls : classesMetadata) {
+            if (cls.jsName != null) {
+                classMetadataByJsName.put(cls.jsName, cls);
+            }
+        }
     }
 
     private int binarySearchLocation(RecordArray array, int row, int column) {
@@ -644,11 +699,12 @@ public class DebugInformation {
     }
 
     static class ClassMetadata {
+        int id;
         Integer parentId;
         Map<Integer, Integer> fieldMap = new HashMap<>();
         int[] methods;
+        String jsName;
     }
-
 
     class MethodTree {
         int[] data;
@@ -665,10 +721,17 @@ public class DebugInformation {
                 long item = exactMethods[data[start + i]];
                 int classIndex = (int) (item >>> 32);
                 int methodIndex = (int) item;
-                references[i] = new MethodReference(classNames[classIndex],
-                        MethodDescriptor.parse(methods[methodIndex]));
+                references[i] = referenceCache.getCached(classNames[classIndex],
+                        referenceCache.parseDescriptorCached(methods[methodIndex]));
             }
             return references;
         }
+    }
+
+    static class Layer {
+        RecordArray fileMapping;
+        RecordArray classMapping;
+        RecordArray methodMapping;
+        RecordArray lineMapping;
     }
 }

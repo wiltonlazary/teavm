@@ -15,14 +15,11 @@
  */
 package org.teavm.diagnostics;
 
+import java.io.Serializable;
 import java.util.Arrays;
 import org.teavm.model.*;
 
-/**
- *
- * @author Alexey Andreev
- */
-public class Problem {
+public class Problem implements Serializable {
     private ProblemSeverity severity;
     private CallLocation location;
     private String text;
@@ -93,7 +90,7 @@ public class Problem {
             default:
                 return index;
         }
-        int digitsEnd = passDigits(next);
+        int digitsEnd = skipDigits(next);
         if (digitsEnd == next) {
             return index;
         }
@@ -142,7 +139,7 @@ public class Problem {
         return next;
     }
 
-    private int passDigits(int index) {
+    private int skipDigits(int index) {
         while (index < text.length() && Character.isDigit(text.charAt(index))) {
             ++index;
         }

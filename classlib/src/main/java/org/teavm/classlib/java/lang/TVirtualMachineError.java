@@ -15,10 +15,6 @@
  */
 package org.teavm.classlib.java.lang;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class TVirtualMachineError extends TError {
     private static final long serialVersionUID = -4246822614122675559L;
 
@@ -26,7 +22,15 @@ public class TVirtualMachineError extends TError {
         super();
     }
 
-    public TVirtualMachineError(TString message) {
+    public TVirtualMachineError(String message) {
         super(message);
+    }
+
+    public TVirtualMachineError(TThrowable cause) {
+        super(cause);
+    }
+
+    public TVirtualMachineError(String message, TThrowable cause) {
+        super(message, cause);
     }
 }

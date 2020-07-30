@@ -15,30 +15,36 @@
  */
 package org.teavm.dependency;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import org.teavm.model.CallLocation;
 import org.teavm.model.MethodHolder;
 import org.teavm.model.MethodReader;
 import org.teavm.model.MethodReference;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class MethodDependency implements MethodDependencyInfo {
-    private DependencyChecker dependencyChecker;
+    private DependencyAnalyzer dependencyAnalyzer;
     DependencyNode[] variableNodes;
     private int parameterCount;
     DependencyNode resultNode;
     DependencyNode thrown;
     MethodHolder method;
+    boolean present;
     private MethodReference reference;
     boolean used;
+    boolean external;
     DependencyPlugin dependencyPlugin;
     boolean dependencyPluginAttached;
+    List<LocationListener> locationListeners;
+    Set<CallLocation> locations;
+    boolean activated;
 
-    MethodDependency(DependencyChecker dependencyChecker, DependencyNode[] variableNodes, int parameterCount,
+    MethodDependency(DependencyAnalyzer dependencyAnalyzer, DependencyNode[] variableNodes, int parameterCount,
             DependencyNode resultNode, DependencyNode thrown, MethodHolder method, MethodReference reference) {
-        this.dependencyChecker = dependencyChecker;
+        this.dependencyAnalyzer = dependencyAnalyzer;
         this.variableNodes = Arrays.copyOf(variableNodes, variableNodes.length);
         this.parameterCount = parameterCount;
         this.thrown = thrown;
@@ -48,7 +54,7 @@ public class MethodDependency implements MethodDependencyInfo {
     }
 
     public DependencyAgent getDependencyAgent() {
-        return dependencyChecker.getAgent();
+        return dependencyAnalyzer.getAgent();
     }
 
     @Override
@@ -96,7 +102,7 @@ public class MethodDependency implements MethodDependencyInfo {
 
     @Override
     public boolean isMissing() {
-        return method == null;
+        return method == null && !present;
     }
 
     @Override
@@ -104,12 +110,49 @@ public class MethodDependency implements MethodDependencyInfo {
         return used;
     }
 
+    public MethodDependency addLocation(CallLocation location) {
+        return addLocation(location, true);
+    }
+
+    MethodDependency addLocation(CallLocation location, boolean addCallSite) {
+        DefaultCallGraphNode node = dependencyAnalyzer.callGraph.getNode(location.getMethod());
+        if (locations == null) {
+            locations = new LinkedHashSet<>();
+        }
+        if (locations.add(location)) {
+            if (addCallSite) {
+                DefaultCallSite callSite = node.addCallSite(reference);
+                if (location.getSourceLocation() != null) {
+                    callSite.addLocation(node, location.getSourceLocation());
+                }
+            }
+            if (locationListeners != null) {
+                for (LocationListener listener : locationListeners.toArray(new LocationListener[0])) {
+                    listener.locationAdded(location);
+                }
+            }
+        }
+        return this;
+    }
+
+    public void addLocationListener(LocationListener listener) {
+        if (locationListeners == null) {
+            locationListeners = new ArrayList<>();
+            locationListeners.add(listener);
+            if (locations != null) {
+                for (CallLocation location : locations.toArray(new CallLocation[0])) {
+                    listener.locationAdded(location);
+                }
+            }
+        }
+    }
+
     public MethodDependency propagate(int parameterIndex, Class<?> type) {
-        return propagate(parameterIndex, dependencyChecker.getType(type.getName()));
+        return propagate(parameterIndex, dependencyAnalyzer.getType(type.getName()));
     }
 
     public MethodDependency propagate(int parameterIndex, String type) {
-        return propagate(parameterIndex, dependencyChecker.getType(type));
+        return propagate(parameterIndex, dependencyAnalyzer.getType(type));
     }
 
     public MethodDependency propagate(int parameterIndex, DependencyType type) {
@@ -118,11 +161,31 @@ public class MethodDependency implements MethodDependencyInfo {
     }
 
     public void use() {
+        use(true);
+    }
+
+    void use(boolean external) {
         if (!used) {
             used = true;
             if (!isMissing()) {
-                dependencyChecker.scheduleMethodAnalysis(this);
+                dependencyAnalyzer.scheduleMethodAnalysis(this);
             }
+        }
+        if (external) {
+            this.external = true;
+        }
+    }
+
+    @Override
+    public boolean isCalled() {
+        return external;
+    }
+
+
+    void cleanup() {
+        if (method != null) {
+            present = true;
+            method = null;
         }
     }
 }

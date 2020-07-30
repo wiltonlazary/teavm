@@ -16,8 +16,10 @@
 package org.teavm.vm.spi;
 
 import java.util.Properties;
+import org.teavm.common.ServiceRepository;
 import org.teavm.dependency.BootstrapMethodSubstitutor;
 import org.teavm.dependency.DependencyListener;
+import org.teavm.dependency.DependencyPlugin;
 import org.teavm.model.ClassHolderTransformer;
 import org.teavm.model.MethodReference;
 import org.teavm.vm.TeaVM;
@@ -29,12 +31,14 @@ import org.teavm.vm.TeaVMBuilder;
  *
  * @author Alexey Andreev
  */
-public interface TeaVMHost {
+public interface TeaVMHost extends ServiceRepository {
     void add(DependencyListener dependencyListener);
 
     void add(ClassHolderTransformer classTransformer);
 
     void add(MethodReference methodRef, BootstrapMethodSubstitutor substitutor);
+
+    void add(MethodReference methodRef, DependencyPlugin dependencyPlugin);
 
     <T extends TeaVMHostExtension> T getExtension(Class<T> extensionType);
 
@@ -55,4 +59,6 @@ public interface TeaVMHost {
      * visible to VM.
      */
     Properties getProperties();
+
+    String[] getPlatformTags();
 }

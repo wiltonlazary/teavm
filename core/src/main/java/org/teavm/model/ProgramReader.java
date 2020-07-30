@@ -15,18 +15,16 @@
  */
 package org.teavm.model;
 
-/**
- *
- * @author Alexey Andreev
- */
 public interface ProgramReader {
     int basicBlockCount();
 
     BasicBlockReader basicBlockAt(int index);
 
+    Iterable<? extends BasicBlockReader> getBasicBlocks();
+
     int variableCount();
 
     VariableReader variableAt(int index);
 
-    MethodReference getMethodReference();
+    AnnotationContainerReader getAnnotations();
 }

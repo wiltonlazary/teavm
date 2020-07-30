@@ -19,7 +19,6 @@ import java.util.stream.Collectors;
 import org.teavm.ast.InvocationExpr;
 import org.teavm.backend.wasm.WasmRuntime;
 import org.teavm.backend.wasm.generate.WasmClassGenerator;
-import org.teavm.backend.wasm.generate.WasmMangling;
 import org.teavm.backend.wasm.model.expression.WasmCall;
 import org.teavm.backend.wasm.model.expression.WasmExpression;
 import org.teavm.backend.wasm.model.expression.WasmInt32Constant;
@@ -47,6 +46,7 @@ public class AllocatorIntrinsic implements WasmIntrinsic {
             return false;
         }
         switch (methodReference.getName()) {
+            case "fill":
             case "fillZero":
             case "moveMemoryBlock":
             case "isInitialized":
@@ -59,11 +59,12 @@ public class AllocatorIntrinsic implements WasmIntrinsic {
     @Override
     public WasmExpression apply(InvocationExpr invocation, WasmIntrinsicManager manager) {
         switch (invocation.getMethod().getName()) {
+            case "fill":
             case "fillZero":
             case "moveMemoryBlock": {
                 MethodReference delegateMethod = new MethodReference(WasmRuntime.class.getName(),
                         invocation.getMethod().getDescriptor());
-                WasmCall call = new WasmCall(WasmMangling.mangleMethod(delegateMethod));
+                WasmCall call = new WasmCall(manager.getNames().forMethod(delegateMethod));
                 call.getArguments().addAll(invocation.getArguments().stream()
                         .map(manager::generate)
                         .collect(Collectors.toList()));
@@ -80,7 +81,7 @@ public class AllocatorIntrinsic implements WasmIntrinsic {
                 WasmExpression flags = new WasmLoadInt32(4, pointer, WasmInt32Subtype.INT32);
                 WasmExpression flag = new WasmIntBinary(WasmIntType.INT32, WasmIntBinaryOperation.AND, flags,
                         new WasmInt32Constant(RuntimeClass.INITIALIZED));
-                return new WasmIntBinary(WasmIntType.INT32, WasmIntBinaryOperation.EQ, flag, new WasmInt32Constant(0));
+                return new WasmIntBinary(WasmIntType.INT32, WasmIntBinaryOperation.NE, flag, new WasmInt32Constant(0));
             }
             default:
                 throw new IllegalArgumentException(invocation.getMethod().toString());

@@ -16,6 +16,8 @@
 package org.teavm.ast.optimization;
 
 import java.util.List;
+import org.teavm.ast.BinaryExpr;
+import org.teavm.ast.BinaryOperation;
 import org.teavm.ast.ConditionalExpr;
 import org.teavm.ast.ConditionalStatement;
 import org.teavm.ast.InvocationExpr;
@@ -34,7 +36,7 @@ public class ExpressionSideEffectDecomposer extends RecursiveVisitor {
     public void visit(ConditionalExpr expr) {
         ConditionalStatement statement = new ConditionalStatement();
         statement.setCondition(expr.getCondition());
-        expr.getCondition().acceptVisitor(new ExpressionSideEffectDecomposer(statement.getConsequent()));
+        expr.getConsequent().acceptVisitor(new ExpressionSideEffectDecomposer(statement.getConsequent()));
         expr.getAlternative().acceptVisitor(new ExpressionSideEffectDecomposer(statement.getAlternative()));
         target.add(statement);
     }
@@ -46,5 +48,14 @@ public class ExpressionSideEffectDecomposer extends RecursiveVisitor {
     @Override
     public void visit(NewExpr expr) {
         target.add(Statement.assign(null, expr));
+    }
+
+    @Override
+    public void visit(BinaryExpr expr) {
+        if (expr.getOperation() == BinaryOperation.AND || expr.getOperation() == BinaryOperation.OR) {
+            target.add(Statement.assign(null, expr));
+        } else {
+            super.visit(expr);
+        }
     }
 }

@@ -16,8 +16,11 @@
 package org.teavm.model.util;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
+import org.teavm.ast.ControlFlowEntry;
 import org.teavm.common.Graph;
 import org.teavm.common.GraphBuilder;
 import org.teavm.model.BasicBlock;
@@ -25,6 +28,9 @@ import org.teavm.model.BasicBlockReader;
 import org.teavm.model.Incoming;
 import org.teavm.model.IncomingReader;
 import org.teavm.model.Instruction;
+import org.teavm.model.InstructionIterator;
+import org.teavm.model.InstructionReadVisitor;
+import org.teavm.model.MethodReference;
 import org.teavm.model.Phi;
 import org.teavm.model.PhiReader;
 import org.teavm.model.Program;
@@ -32,18 +38,22 @@ import org.teavm.model.ProgramReader;
 import org.teavm.model.TextLocation;
 import org.teavm.model.TryCatchBlock;
 import org.teavm.model.TryCatchBlockReader;
-import org.teavm.model.TryCatchJoint;
-import org.teavm.model.TryCatchJointReader;
 import org.teavm.model.Variable;
-import org.teavm.model.VariableReader;
+import org.teavm.model.instructions.ConstructInstruction;
+import org.teavm.model.instructions.InvocationType;
+import org.teavm.model.instructions.InvokeInstruction;
+import org.teavm.model.instructions.RaiseInstruction;
 
 public final class ProgramUtils {
+    private static final MethodReference NPE_INIT_METHOD = new MethodReference(
+            NullPointerException.class, "<init>", void.class);
+
     private ProgramUtils() {
     }
 
     public static Graph buildControlFlowGraph(Program program) {
         GraphBuilder graphBuilder = new GraphBuilder(program.basicBlockCount());
-        InstructionTransitionExtractor transitionExtractor = new InstructionTransitionExtractor();
+        TransitionExtractor transitionExtractor = new TransitionExtractor();
         for (int i = 0; i < program.basicBlockCount(); ++i) {
             BasicBlock block = program.basicBlockAt(i);
             Instruction insn = block.getLastInstruction();
@@ -62,7 +72,7 @@ public final class ProgramUtils {
         return graphBuilder.build();
     }
 
-    public static Map<TextLocation, TextLocation[]> getLocationCFG(Program program) {
+    public static ControlFlowEntry[] getLocationCFG(Program program) {
         return new LocationGraphBuilder().build(program);
     }
 
@@ -71,6 +81,7 @@ public final class ProgramUtils {
         for (int i = 0; i < program.variableCount(); ++i) {
             Variable var = copy.createVariable();
             var.setDebugName(program.variableAt(i).getDebugName());
+            var.setLabel(program.variableAt(i).getLabel());
         }
         for (int i = 0; i < program.basicBlockCount(); ++i) {
             copy.createBasicBlock();
@@ -80,6 +91,7 @@ public final class ProgramUtils {
             BasicBlock blockCopy = copy.basicBlockAt(i);
             copyBasicBlock(block, blockCopy);
         }
+        ModelUtils.copyAnnotations(program.getAnnotations(), copy.getAnnotations());
         return copy;
     }
 
@@ -89,17 +101,25 @@ public final class ProgramUtils {
         if (block.getExceptionVariable() != null) {
             target.setExceptionVariable(targetProgram.variableAt(block.getExceptionVariable().getIndex()));
         }
-        target.getInstructions().addAll(copyInstructions(block, 0, block.instructionCount(), targetProgram));
+        InstructionCopyReader copyReader = new InstructionCopyReader(targetProgram);
+        for (InstructionIterator iterator = block.iterateInstructions(); iterator.hasNext();) {
+            iterator.next();
+            iterator.read(copyReader);
+            target.add(copyReader.getCopy());
+        }
         target.getPhis().addAll(copyPhis(block, targetProgram));
         target.getTryCatchBlocks().addAll(copyTryCatches(block, targetProgram));
     }
 
-    public static List<Instruction> copyInstructions(BasicBlockReader block, int from, int to, Program target) {
+    public static List<Instruction> copyInstructions(Instruction from, Instruction to, Program target) {
         List<Instruction> result = new ArrayList<>();
         InstructionCopyReader copyReader = new InstructionCopyReader(target);
-        for (int i = from; i < to; ++i) {
-            block.readInstruction(i, copyReader);
+        InstructionReadVisitor visitor = new InstructionReadVisitor(copyReader);
+        while (from != to) {
+            from.acceptVisitor(visitor);
+            copyReader.getCopy().setLocation(from.getLocation());
             result.add(copyReader.getCopy());
+            from = from.getNext();
         }
         return result;
     }
@@ -126,21 +146,7 @@ public final class ProgramUtils {
             TryCatchBlock tryCatchCopy = new TryCatchBlock();
             tryCatchCopy.setExceptionType(tryCatch.getExceptionType());
             tryCatchCopy.setHandler(target.basicBlockAt(tryCatch.getHandler().getIndex()));
-            tryCatchCopy.getJoints().addAll(copyTryCatchJoints(tryCatch, target));
             result.add(tryCatchCopy);
-        }
-        return result;
-    }
-
-    public static List<TryCatchJoint> copyTryCatchJoints(TryCatchBlockReader block, Program target) {
-        List<TryCatchJoint> result = new ArrayList<>();
-        for (TryCatchJointReader joint : block.readJoints()) {
-            TryCatchJoint jointCopy = new TryCatchJoint();
-            jointCopy.setReceiver(target.variableAt(joint.getReceiver().getIndex()));
-            for (VariableReader sourceVar : joint.readSourceVariables()) {
-                jointCopy.getSourceVariables().add(target.variableAt(sourceVar.getIndex()));
-            }
-            result.add(jointCopy);
         }
         return result;
     }
@@ -178,19 +184,70 @@ public final class ProgramUtils {
                 places[phi.getReceiver().getIndex()] = block;
             }
 
-            for (Instruction insn : block.getInstructions()) {
+            for (Instruction insn : block) {
                 insn.acceptVisitor(defExtractor);
                 for (Variable var : defExtractor.getDefinedVariables()) {
                     places[var.getIndex()] = block;
                 }
             }
-
-            for (TryCatchBlock tryCatch : block.getTryCatchBlocks()) {
-                for (TryCatchJoint joint : tryCatch.getJoints()) {
-                    places[joint.getReceiver().getIndex()] = block;
-                }
-            }
         }
         return places;
+    }
+
+    public static void makeUniqueLabels(Program program) {
+        Set<String> occupiedLabels = new HashSet<>();
+
+        for (int i = 0; i < program.variableCount(); ++i) {
+            Variable var = program.variableAt(i);
+            if (var.getLabel() == null) {
+                continue;
+            }
+            String suggestedName = var.getLabel();
+            if (!occupiedLabels.add(suggestedName)) {
+                int suffix = 1;
+                String base = suggestedName + "_";
+                do {
+                    suggestedName = base + suffix++;
+                } while (!occupiedLabels.add(suggestedName));
+            }
+            var.setLabel(suggestedName);
+        }
+    }
+
+    public static List<Instruction> createThrowNPEInstructions(Program program, TextLocation location) {
+        ConstructInstruction newNPE = new ConstructInstruction();
+        newNPE.setType(NullPointerException.class.getName());
+        newNPE.setReceiver(program.createVariable());
+        newNPE.setLocation(location);
+
+        InvokeInstruction initNPE = new InvokeInstruction();
+        initNPE.setType(InvocationType.SPECIAL);
+        initNPE.setInstance(newNPE.getReceiver());
+        initNPE.setMethod(NPE_INIT_METHOD);
+        initNPE.setLocation(location);
+
+        RaiseInstruction raise = new RaiseInstruction();
+        raise.setException(newNPE.getReceiver());
+        raise.setLocation(location);
+
+        return Arrays.asList(newNPE, initNPE, raise);
+    }
+
+    public static List<Variable> getVariablesDefinedInBlock(BasicBlock block, DefinitionExtractor defExtractor) {
+        List<Variable> varsDefinedInBlock = new ArrayList<>();
+        for (Phi phi : block.getPhis()) {
+            varsDefinedInBlock.add(phi.getReceiver());
+        }
+        if (block.getExceptionVariable() != null) {
+            varsDefinedInBlock.add(block.getExceptionVariable());
+        }
+        for (Instruction instruction : block) {
+            instruction.acceptVisitor(defExtractor);
+            Variable[] varsDefinedByInstruction = defExtractor.getDefinedVariables();
+            if (varsDefinedByInstruction != null) {
+                varsDefinedInBlock.addAll(Arrays.asList(varsDefinedByInstruction));
+            }
+        }
+        return varsDefinedInBlock;
     }
 }

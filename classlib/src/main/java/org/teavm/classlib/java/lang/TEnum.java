@@ -18,11 +18,6 @@ package org.teavm.classlib.java.lang;
 import org.teavm.classlib.java.io.TSerializable;
 import org.teavm.interop.Rename;
 
-/**
- *
- * @author Alexey Andreev
- * @param <E> type of enum.
- */
 public abstract class TEnum<E extends TEnum<E>> extends TObject implements TComparable<E>, TSerializable {
     private TString name;
     private int ordinal;
@@ -62,14 +57,15 @@ public abstract class TEnum<E extends TEnum<E>> extends TObject implements TComp
 
     @SuppressWarnings("unchecked")
     public final TClass<E> getDeclaringClass() {
-        return (TClass<E>) (Object) getClass();
+        Class<E> result = (Class<E>) getClass();
+        return (TClass<E>) (Object) (result.getSuperclass().equals(Enum.class) ? result : result.getSuperclass());
     }
 
     @Override
     public final int compareTo(E o) {
         if (o.getDeclaringClass() != getDeclaringClass()) {
-            throw new TIllegalArgumentException(TString.wrap("Can't compare "
-                    + getDeclaringClass().getName().toString() + " to " + o.getDeclaringClass().getName().toString()));
+            throw new TIllegalArgumentException("Can't compare "
+                    + getDeclaringClass() + " to " + o.getDeclaringClass());
         }
         return TInteger.compare(ordinal, o.ordinal());
     }
@@ -78,14 +74,13 @@ public abstract class TEnum<E extends TEnum<E>> extends TObject implements TComp
         // TODO: speed-up this method, use caching
         T[] constants = enumType.getEnumConstants();
         if (constants == null) {
-            throw new TIllegalArgumentException(TString.wrap("Class does not represent enum: " + enumType.getName()));
+            throw new TIllegalArgumentException("Class does not represent enum");
         }
         for (T constant : constants) {
             if (constant.name().equals(name)) {
                 return constant;
             }
         }
-        throw new TIllegalArgumentException(TString.wrap("Enum " + enumType.getName() + " does not have the " + name
-                + "constant"));
+        throw new TIllegalArgumentException("Enum " + enumType + " does not have the " + name + "constant");
     }
 }

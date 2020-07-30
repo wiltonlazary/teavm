@@ -17,8 +17,10 @@ package org.teavm.model;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.Function;
 import org.teavm.model.optimization.GlobalValueNumbering;
 import org.teavm.model.optimization.UnusedVariableElimination;
+import org.teavm.model.transformation.NoSuchFieldCatchElimination;
 
 public class PreOptimizingClassHolderSource implements ClassHolderSource {
     private ClassHolderSource innerClassSource;
@@ -32,15 +34,28 @@ public class PreOptimizingClassHolderSource implements ClassHolderSource {
     public ClassHolder get(String name) {
         ClassHolder cls = cache.get(name);
         if (cls == null) {
-            cls = innerClassSource.get(name);
+            cls = optimize(innerClassSource::get, name);
             if (cls == null) {
                 return null;
             }
-            for (MethodHolder method : cls.getMethods()) {
-                new GlobalValueNumbering(true).optimize(method, method.getProgram());
+
+            cache.put(name, cls);
+        }
+        return cls;
+    }
+
+    public static ClassHolder optimize(Function<String, ClassHolder> innerSource, String name) {
+        ClassHolder cls = innerSource.apply(name);
+        if (cls == null) {
+            return cls;
+        }
+        NoSuchFieldCatchElimination noSuchFieldCatchElimination = new NoSuchFieldCatchElimination();
+        for (MethodHolder method : cls.getMethods()) {
+            if (method.getProgram() != null) {
+                noSuchFieldCatchElimination.apply(method.getProgram());
+                new GlobalValueNumbering(true).optimize(method.getProgram());
                 new UnusedVariableElimination().optimize(method, method.getProgram());
             }
-            cache.put(name, cls);
         }
         return cls;
     }

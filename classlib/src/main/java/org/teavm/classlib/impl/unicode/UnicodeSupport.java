@@ -26,15 +26,12 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.teavm.common.IntegerArray;
 
-/**
- *
- * @author Alexey Andreev
- */
 public final class UnicodeSupport {
     private static AtomicBoolean filled = new AtomicBoolean();
     private static volatile CountDownLatch latch = new CountDownLatch(1);
     private static int[] digitValues;
     private static byte[] classes;
+    private static int[] titleCaseMapping;
     private static Map<String, Byte> classMap = new HashMap<>();
 
     static {
@@ -76,6 +73,7 @@ public final class UnicodeSupport {
     private static void parseUnicodeData() {
         IntegerArray digitValues = new IntegerArray(4096);
         IntegerArray classes = new IntegerArray(65536);
+        IntegerArray titleCaseMapping = new IntegerArray(256);
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(UnicodeHelper.class
                 .getResourceAsStream("UnicodeData.txt")))) {
             while (true) {
@@ -98,6 +96,14 @@ public final class UnicodeSupport {
                 }
                 Byte charClass = classMap.get(fields[2]);
                 classes.add(charClass != null ? charClass.intValue() : 0);
+
+                if (!fields[14].isEmpty()) {
+                    int titleCaseCode = parseHex(fields[14]);
+                    if (fields[12].isEmpty() || parseHex(fields[12]) != titleCaseCode) {
+                        titleCaseMapping.add(charCode);
+                        titleCaseMapping.add(titleCaseCode);
+                    }
+                }
             }
         } catch (IOException e) {
             throw new RuntimeException("Error reading unicode data", e);
@@ -124,6 +130,7 @@ public final class UnicodeSupport {
         for (int i = 0; i < classes.size(); ++i) {
             UnicodeSupport.classes[i] = (byte) classes.get(i);
         }
+        UnicodeSupport.titleCaseMapping = titleCaseMapping.getAll();
     }
 
     private static String[] splitLine(String line) {
@@ -203,5 +210,10 @@ public final class UnicodeSupport {
     public static byte[] getClasses() {
         ensureUnicodeData();
         return classes;
+    }
+
+    public static int[] getTitleCaseMapping() {
+        ensureUnicodeData();
+        return titleCaseMapping;
     }
 }

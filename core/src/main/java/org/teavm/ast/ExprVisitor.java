@@ -40,9 +40,13 @@ public interface ExprVisitor {
 
     void visit(NewMultiArrayExpr expr);
 
+    void visit(ArrayFromDataExpr expr);
+
     void visit(InstanceOfExpr expr);
 
     void visit(CastExpr expr);
 
     void visit(PrimitiveCastExpr expr);
+
+    void visit(BoundCheckExpr expr);
 }

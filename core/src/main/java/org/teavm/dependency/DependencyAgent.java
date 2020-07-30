@@ -16,114 +16,127 @@
 package org.teavm.dependency;
 
 import java.util.Collection;
+import org.teavm.cache.IncrementalDependencyRegistration;
 import org.teavm.callgraph.CallGraph;
 import org.teavm.common.ServiceRepository;
 import org.teavm.diagnostics.Diagnostics;
 import org.teavm.model.*;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class DependencyAgent implements DependencyInfo, ServiceRepository {
-    private DependencyChecker checker;
+    private DependencyAnalyzer analyzer;
 
-    DependencyAgent(DependencyChecker checker) {
-        this.checker = checker;
+    DependencyAgent(DependencyAnalyzer analyzer) {
+        this.analyzer = analyzer;
     }
 
     public DependencyNode createNode() {
-        return checker.createNode();
+        return analyzer.createNode();
     }
 
     public DependencyType getType(String name) {
-        return checker.getType(name);
+        return analyzer.getType(name);
     }
 
     public String generateClassName() {
-        return checker.generateClassName();
+        return analyzer.generateClassName();
     }
 
     public String submitClassFile(byte[] data) {
-        return checker.submitClassFile(data);
+        return analyzer.submitClassFile(data);
     }
 
     public void submitClass(ClassHolder cls) {
-        checker.submitClass(cls);
+        analyzer.submitClass(cls);
     }
 
     public void submitMethod(MethodReference method, Program program) {
-        checker.submitMethod(method, program);
+        analyzer.submitMethod(method, program);
     }
 
-    public MethodDependency linkMethod(MethodReference methodRef, CallLocation callLocation) {
-        return checker.linkMethod(methodRef, callLocation);
+    public MethodDependency linkMethod(MethodReference methodRef) {
+        return analyzer.linkMethod(methodRef);
     }
 
-    public ClassDependency linkClass(String className, CallLocation callLocation) {
-        return checker.linkClass(className, callLocation);
+    public MethodDependency linkMethod(String className, MethodDescriptor descriptor) {
+        return analyzer.linkMethod(className, descriptor);
     }
 
-    public FieldDependency linkField(FieldReference fieldRef, CallLocation callLocation) {
-        return checker.linkField(fieldRef, callLocation);
+    public ClassDependency linkClass(String className) {
+        return analyzer.linkClass(className);
+    }
+
+    public FieldDependency linkField(FieldReference fieldRef) {
+        return analyzer.linkField(fieldRef);
     }
 
     public Diagnostics getDiagnostics() {
-        return checker.getDiagnostics();
+        return analyzer.getDiagnostics();
     }
 
     @Override
     public <T> T getService(Class<T> type) {
-        return checker.getService(type);
+        return analyzer.getService(type);
     }
 
     @Override
     public ClassReaderSource getClassSource() {
-        return checker.getClassSource();
+        return analyzer.agentClassSource;
     }
 
     @Override
     public ClassLoader getClassLoader() {
-        return checker.getClassLoader();
+        return analyzer.getClassLoader();
+    }
+
+    public ClassHierarchy getClassHierarchy() {
+        return analyzer.getClassHierarchy();
     }
 
     @Override
     public Collection<MethodReference> getReachableMethods() {
-        return checker.getReachableMethods();
+        return analyzer.getReachableMethods();
     }
 
     @Override
     public Collection<FieldReference> getReachableFields() {
-        return checker.getReachableFields();
+        return analyzer.getReachableFields();
     }
 
     @Override
     public Collection<String> getReachableClasses() {
-        return checker.getReachableClasses();
+        return analyzer.getReachableClasses();
     }
 
     @Override
     public FieldDependencyInfo getField(FieldReference fieldRef) {
-        return checker.getField(fieldRef);
+        return analyzer.getField(fieldRef);
     }
 
     @Override
     public MethodDependencyInfo getMethod(MethodReference methodRef) {
-        return checker.getMethod(methodRef);
+        return analyzer.getMethod(methodRef);
     }
 
     @Override
     public MethodDependencyInfo getMethodImplementation(MethodReference methodRef) {
-        return checker.getMethodImplementation(methodRef);
+        return analyzer.getMethodImplementation(methodRef);
     }
 
     @Override
     public ClassDependencyInfo getClass(String className) {
-        return checker.getClass(className);
+        return analyzer.getClass(className);
     }
 
     @Override
     public CallGraph getCallGraph() {
-        return checker.getCallGraph();
+        return analyzer.getCallGraph();
+    }
+
+    public IncrementalDependencyRegistration getIncrementalCache() {
+        return analyzer.incrementalCache;
+    }
+
+    void cleanup() {
+        analyzer = null;
     }
 }

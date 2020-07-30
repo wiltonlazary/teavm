@@ -18,13 +18,16 @@
   <head>
     <meta http-equiv="Content-Type" content="text/html;charset=utf-8">
     <title>TeaVM jbox2d benchmark</title>
-    <script type="text/javascript" charset="utf-8" src="teavm/runtime.js"></script>
     <script type="text/javascript" charset="utf-8" src="teavm/classes.js"></script>
   </head>
   <body onload="main()">
     <h1>TeaVM performance</h1>
     <div>
       <canvas id="benchmark-canvas" width="600" height="600"></canvas>
+    </div>
+    <div>
+      <input type="checkbox" id="display-animation-checkbox" checked>
+      <label for="display-animation-checkbox">display animation</label>
     </div>
     <table>
       <thead>
@@ -35,6 +38,12 @@
       </thead>
       <tbody id="result-table-body">
       </tbody>
+      <tfoot>
+        <tr>
+          <th>Average</th>
+          <td id="average-time"></td>
+        <tr>
+      </tfoot>
     </table>
   </body>
 </html>

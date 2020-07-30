@@ -19,10 +19,6 @@ import org.teavm.model.InvokeDynamicInstruction;
 import org.teavm.model.Variable;
 import org.teavm.model.instructions.*;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class UsageExtractor implements InstructionVisitor {
     private Variable[] usedVariables;
 
@@ -228,5 +224,14 @@ public class UsageExtractor implements InstructionVisitor {
     @Override
     public void visit(MonitorExitInstruction insn) {
         usedVariables = new Variable[] {insn.getObjectRef() };
+    }
+
+    @Override
+    public void visit(BoundCheckInstruction insn) {
+        if (insn.getArray() != null) {
+            usedVariables = new Variable[] { insn.getArray(), insn.getIndex() };
+        } else {
+            usedVariables = new Variable[] { insn.getIndex() };
+        }
     }
 }

@@ -15,32 +15,45 @@
  */
 package org.teavm.debugging;
 
-import java.util.*;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.LinkedBlockingQueue;
-import org.teavm.debugging.information.*;
-import org.teavm.debugging.javascript.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import org.teavm.common.Promise;
+import org.teavm.debugging.information.DebugInformation;
+import org.teavm.debugging.information.DebugInformationProvider;
+import org.teavm.debugging.information.DebuggerCallSite;
+import org.teavm.debugging.information.DebuggerCallSiteVisitor;
+import org.teavm.debugging.information.DebuggerStaticCallSite;
+import org.teavm.debugging.information.DebuggerVirtualCallSite;
+import org.teavm.debugging.information.GeneratedLocation;
+import org.teavm.debugging.information.SourceLocation;
+import org.teavm.debugging.javascript.JavaScriptBreakpoint;
+import org.teavm.debugging.javascript.JavaScriptCallFrame;
+import org.teavm.debugging.javascript.JavaScriptDebugger;
+import org.teavm.debugging.javascript.JavaScriptDebuggerListener;
+import org.teavm.debugging.javascript.JavaScriptLocation;
+import org.teavm.debugging.javascript.JavaScriptVariable;
 import org.teavm.model.MethodReference;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class Debugger {
-    private static final Object dummyObject = new Object();
-    private ConcurrentMap<DebuggerListener, Object> listeners = new ConcurrentHashMap<>();
+    private Set<DebuggerListener> listeners = new LinkedHashSet<>();
     private JavaScriptDebugger javaScriptDebugger;
     private DebugInformationProvider debugInformationProvider;
-    private BlockingQueue<JavaScriptBreakpoint> temporaryBreakpoints = new LinkedBlockingQueue<>();
-    private ConcurrentMap<String, DebugInformation> debugInformationMap = new ConcurrentHashMap<>();
-    private ConcurrentMap<String, ConcurrentMap<DebugInformation, Object>> debugInformationFileMap =
-            new ConcurrentHashMap<>();
-    private ConcurrentMap<DebugInformation, String> scriptMap = new ConcurrentHashMap<>();
-    final ConcurrentMap<JavaScriptBreakpoint, Breakpoint> breakpointMap = new ConcurrentHashMap<>();
-    ConcurrentMap<Breakpoint, Object> breakpoints = new ConcurrentHashMap<>();
-    private volatile CallFrame[] callStack;
+    private List<JavaScriptBreakpoint> temporaryBreakpoints = new ArrayList<>();
+    private Map<String, DebugInformation> debugInformationMap = new HashMap<>();
+    private Map<String, Set<DebugInformation>> debugInformationFileMap = new HashMap<>();
+    private Map<DebugInformation, String> scriptMap = new HashMap<>();
+    private Map<JavaScriptBreakpoint, Breakpoint> breakpointMap = new HashMap<>();
+    private Set<Breakpoint> breakpoints = new LinkedHashSet<>();
+    private Set<? extends Breakpoint> readonlyBreakpoints = Collections.unmodifiableSet(breakpoints);
+    private CallFrame[] callStack;
+    private Set<String> scriptNames = new LinkedHashSet<>();
 
     public Debugger(JavaScriptDebugger javaScriptDebugger, DebugInformationProvider debugInformationProvider) {
         this.javaScriptDebugger = javaScriptDebugger;
@@ -53,54 +66,49 @@ public class Debugger {
     }
 
     public void addListener(DebuggerListener listener) {
-        listeners.put(listener, dummyObject);
+        listeners.add(listener);
     }
 
     public void removeListener(DebuggerListener listener) {
         listeners.remove(listener);
     }
 
-    public void suspend() {
-        javaScriptDebugger.suspend();
+    public Promise<Void> suspend() {
+        return javaScriptDebugger.suspend();
     }
 
-    public void resume() {
-        javaScriptDebugger.resume();
+    public Promise<Void> resume() {
+        return javaScriptDebugger.resume();
     }
 
-    public void stepInto() {
-        step(true);
+    public Promise<Void> stepInto() {
+        return step(true);
     }
 
-    public void stepOut() {
-        javaScriptDebugger.stepOut();
+    public Promise<Void> stepOut() {
+        return javaScriptDebugger.stepOut();
     }
 
-    public void stepOver() {
-        step(false);
+    public Promise<Void> stepOver() {
+        return step(false);
     }
 
-    private void jsStep(boolean enterMethod) {
-        if (enterMethod) {
-            javaScriptDebugger.stepInto();
-        } else {
-            javaScriptDebugger.stepOver();
-        }
+    private Promise<Void> jsStep(boolean enterMethod) {
+        return enterMethod ? javaScriptDebugger.stepInto() : javaScriptDebugger.stepOver();
     }
 
-    private void step(boolean enterMethod) {
+    private Promise<Void> step(boolean enterMethod) {
         CallFrame[] callStack = getCallStack();
         if (callStack == null || callStack.length == 0) {
-            jsStep(enterMethod);
-            return;
+            return jsStep(enterMethod);
         }
         CallFrame recentFrame = callStack[0];
         if (recentFrame.getLocation() == null || recentFrame.getLocation().getFileName() == null
                 || recentFrame.getLocation().getLine() < 0) {
-            jsStep(enterMethod);
-            return;
+            return jsStep(enterMethod);
         }
         Set<JavaScriptLocation> successors = new HashSet<>();
+        boolean first = true;
         for (CallFrame frame : callStack) {
             boolean exits;
             String script = frame.getOriginalLocation().getScript();
@@ -122,20 +130,29 @@ public class Debugger {
             if (!exits) {
                 break;
             }
-            enterMethod = true;
+            enterMethod = false;
+            if (!first && frame.getLocation() != null) {
+                for (GeneratedLocation location : debugInfo.getGeneratedLocations(frame.getLocation())) {
+                    successors.add(new JavaScriptLocation(script, location.getLine(), location.getColumn()));
+                }
+            }
+            first = false;
         }
+
+        List<Promise<Void>> jsBreakpointPromises = new ArrayList<>();
         for (JavaScriptLocation successor : successors) {
-            temporaryBreakpoints.add(javaScriptDebugger.createBreakpoint(successor));
+            jsBreakpointPromises.add(javaScriptDebugger.createBreakpoint(successor)
+                    .thenVoid(temporaryBreakpoints::add));
         }
-        javaScriptDebugger.resume();
+        return Promise.allVoid(jsBreakpointPromises).thenAsync(v -> javaScriptDebugger.resume());
     }
 
-    private static class CallSiteSuccessorFinder implements DebuggerCallSiteVisitor {
+    static class CallSiteSuccessorFinder implements DebuggerCallSiteVisitor {
         private DebugInformation debugInfo;
         private String script;
         Set<JavaScriptLocation> locations;
 
-        public CallSiteSuccessorFinder(DebugInformation debugInfo, String script, Set<JavaScriptLocation> locations) {
+        CallSiteSuccessorFinder(DebugInformation debugInfo, String script, Set<JavaScriptLocation> locations) {
             this.debugInfo = debugInfo;
             this.script = script;
             this.locations = locations;
@@ -188,62 +205,67 @@ public class Debugger {
     }
 
     private List<DebugInformation> debugInformationBySource(String sourceFile) {
-        Map<DebugInformation, Object> list = debugInformationFileMap.get(sourceFile);
-        return list != null ? new ArrayList<>(list.keySet()) : Collections.<DebugInformation>emptyList();
+        Set<DebugInformation> list = debugInformationFileMap.get(sourceFile);
+        return list != null ? new ArrayList<>(list) : Collections.emptyList();
     }
 
-    public void continueToLocation(SourceLocation location) {
-        continueToLocation(location.getFileName(), location.getLine());
+    public Promise<Void> continueToLocation(SourceLocation location) {
+        return continueToLocation(location.getFileName(), location.getLine());
     }
 
-    public void continueToLocation(String fileName, int line) {
+    public Promise<Void> continueToLocation(String fileName, int line) {
         if (!javaScriptDebugger.isSuspended()) {
-            return;
+            return Promise.VOID;
         }
+
+        List<Promise<Void>> promises = new ArrayList<>();
         for (DebugInformation debugInformation : debugInformationBySource(fileName)) {
             Collection<GeneratedLocation> locations = debugInformation.getGeneratedLocations(fileName, line);
             for (GeneratedLocation location : locations) {
                 JavaScriptLocation jsLocation = new JavaScriptLocation(scriptMap.get(debugInformation),
                         location.getLine(), location.getColumn());
-                JavaScriptBreakpoint jsBreakpoint = javaScriptDebugger.createBreakpoint(jsLocation);
-                if (jsBreakpoint != null) {
-                    temporaryBreakpoints.add(jsBreakpoint);
-                }
+                promises.add(javaScriptDebugger.createBreakpoint(jsLocation).thenVoid(temporaryBreakpoints::add));
             }
         }
-        javaScriptDebugger.resume();
+        return Promise.allVoid(promises).thenAsync(v -> javaScriptDebugger.resume());
     }
 
     public boolean isSuspended() {
         return javaScriptDebugger.isSuspended();
     }
 
-    public Breakpoint createBreakpoint(String file, int line) {
+    public Promise<Breakpoint> createBreakpoint(String file, int line) {
         return createBreakpoint(new SourceLocation(file, line));
     }
 
-    public Breakpoint createBreakpoint(SourceLocation location) {
-        synchronized (breakpointMap) {
-            Breakpoint breakpoint = new Breakpoint(this, location);
-            breakpoints.put(breakpoint, dummyObject);
-            updateInternalBreakpoints(breakpoint);
+    public Collection<? extends String> getSourceFiles() {
+        return debugInformationFileMap.keySet();
+    }
+
+    public Promise<Breakpoint> createBreakpoint(SourceLocation location) {
+        Breakpoint breakpoint = new Breakpoint(this, location);
+        breakpoints.add(breakpoint);
+        return updateInternalBreakpoints(breakpoint).then(v -> {
             updateBreakpointStatus(breakpoint, false);
             return breakpoint;
-        }
+        });
     }
 
-    public Set<Breakpoint> getBreakpoints() {
-        return new HashSet<>(breakpoints.keySet());
+    public Set<? extends Breakpoint> getBreakpoints() {
+        return readonlyBreakpoints;
     }
 
-    void updateInternalBreakpoints(Breakpoint breakpoint) {
+    private Promise<Void> updateInternalBreakpoints(Breakpoint breakpoint) {
         if (breakpoint.isDestroyed()) {
-            return;
+            return Promise.VOID;
         }
+
+        List<Promise<Void>> promises = new ArrayList<>();
         for (JavaScriptBreakpoint jsBreakpoint : breakpoint.jsBreakpoints) {
             breakpointMap.remove(jsBreakpoint);
-            jsBreakpoint.destroy();
+            promises.add(jsBreakpoint.destroy());
         }
+
         List<JavaScriptBreakpoint> jsBreakpoints = new ArrayList<>();
         SourceLocation location = breakpoint.getLocation();
         for (DebugInformation debugInformation : debugInformationBySource(location.getFileName())) {
@@ -251,19 +273,22 @@ public class Debugger {
             for (GeneratedLocation genLocation : locations) {
                 JavaScriptLocation jsLocation = new JavaScriptLocation(scriptMap.get(debugInformation),
                         genLocation.getLine(), genLocation.getColumn());
-                JavaScriptBreakpoint jsBreakpoint = javaScriptDebugger.createBreakpoint(jsLocation);
-                jsBreakpoints.add(jsBreakpoint);
-                breakpointMap.put(jsBreakpoint, breakpoint);
+                promises.add(javaScriptDebugger.createBreakpoint(jsLocation).thenVoid(jsBreakpoint -> {
+                    jsBreakpoints.add(jsBreakpoint);
+                    breakpointMap.put(jsBreakpoint, breakpoint);
+                }));
             }
         }
         breakpoint.jsBreakpoints = jsBreakpoints;
+
+        return Promise.allVoid(promises);
     }
 
     private DebuggerListener[] getListeners() {
-        return listeners.keySet().toArray(new DebuggerListener[0]);
+        return listeners.toArray(new DebuggerListener[0]);
     }
 
-    void updateBreakpointStatus(Breakpoint breakpoint, boolean fireEvent) {
+    private void updateBreakpointStatus(Breakpoint breakpoint, boolean fireEvent) {
         boolean valid = false;
         for (JavaScriptBreakpoint jsBreakpoint : breakpoint.jsBreakpoints) {
             if (jsBreakpoint.isValid()) {
@@ -299,11 +324,12 @@ public class Debugger {
                     loc = null;
                 }
                 boolean empty = loc == null || (loc.getFileName() == null && loc.getLine() < 0);
-                MethodReference method = !empty ? debugInformation.getMethodAt(jsFrame.getLocation().getLine(),
-                        jsFrame.getLocation().getColumn()) : null;
+                MethodReference method = !empty && debugInformation != null
+                        ? debugInformation.getMethodAt(jsFrame.getLocation().getLine(),
+                                jsFrame.getLocation().getColumn())
+                        : null;
                 if (!empty || !wasEmpty) {
-                    VariableMap vars = new VariableMap(jsFrame.getVariables(), this, jsFrame.getLocation());
-                    frames.add(new CallFrame(this, jsFrame, loc, method, vars));
+                    frames.add(new CallFrame(this, jsFrame, loc, method, debugInformation));
                 }
                 wasEmpty = empty;
             }
@@ -312,42 +338,56 @@ public class Debugger {
         return callStack.clone();
     }
 
+    Promise<Map<String, Variable>> createVariables(JavaScriptCallFrame jsFrame, DebugInformation debugInformation) {
+        return jsFrame.getVariables().then(jsVariables -> {
+            Map<String, Variable> vars = new HashMap<>();
+            for (Map.Entry<String, ? extends JavaScriptVariable> entry : jsVariables.entrySet()) {
+                JavaScriptVariable jsVar = entry.getValue();
+                String[] names = mapVariable(entry.getKey(), jsFrame.getLocation());
+                Value value = new Value(this, debugInformation, jsVar.getValue());
+                for (String name : names) {
+                    if (name == null) {
+                        name = "js:" + jsVar.getName();
+                    }
+                    vars.put(name, new Variable(name, value));
+                }
+            }
+            return Collections.unmodifiableMap(vars);
+        });
+    }
+
     private void addScript(String name) {
+        if (!name.isEmpty()) {
+            scriptNames.add(name);
+        }
         if (debugInformationMap.containsKey(name)) {
             updateBreakpoints();
             return;
         }
         DebugInformation debugInfo = debugInformationProvider.getDebugInformation(name);
         if (debugInfo == null) {
-            updateBreakpoints();
             return;
         }
-        if (debugInformationMap.putIfAbsent(name, debugInfo) != null) {
-            updateBreakpoints();
-            return;
-        }
+        debugInformationMap.put(name, debugInfo);
         for (String sourceFile : debugInfo.getFilesNames()) {
-            ConcurrentMap<DebugInformation, Object> list = debugInformationFileMap.get(sourceFile);
+            Set<DebugInformation> list = debugInformationFileMap.get(sourceFile);
             if (list == null) {
-                list = new ConcurrentHashMap<>();
-                ConcurrentMap<DebugInformation, Object> existing = debugInformationFileMap.putIfAbsent(
-                        sourceFile, list);
-                if (existing != null) {
-                    list = existing;
-                }
+                list = new HashSet<>();
+                debugInformationFileMap.put(sourceFile, list);
             }
-            list.put(debugInfo, dummyObject);
+            list.add(debugInfo);
         }
         scriptMap.put(debugInfo, name);
         updateBreakpoints();
     }
 
+    public Set<? extends String> getScriptNames() {
+        return scriptNames;
+    }
+
     private void updateBreakpoints() {
-        synchronized (breakpointMap) {
-            for (Breakpoint breakpoint : breakpoints.keySet()) {
-                updateInternalBreakpoints(breakpoint);
-                updateBreakpointStatus(breakpoint, true);
-            }
+        for (Breakpoint breakpoint : breakpoints) {
+            updateInternalBreakpoints(breakpoint).thenVoid(v -> updateBreakpointStatus(breakpoint, true));
         }
     }
 
@@ -369,22 +409,33 @@ public class Debugger {
     }
 
     private void fireResumed() {
-        List<JavaScriptBreakpoint> temporaryBreakpoints = new ArrayList<>();
-        this.temporaryBreakpoints.drainTo(temporaryBreakpoints);
-        for (JavaScriptBreakpoint jsBreakpoint : temporaryBreakpoints) {
-            jsBreakpoint.destroy();
-        }
         for (DebuggerListener listener : getListeners()) {
             listener.resumed();
         }
     }
 
-    private void fireAttached() {
-        synchronized (breakpointMap) {
-            for (Breakpoint breakpoint : breakpoints.keySet()) {
-                updateInternalBreakpoints(breakpoint);
-                updateBreakpointStatus(breakpoint, false);
+    private void firePaused(JavaScriptBreakpoint breakpoint) {
+        List<JavaScriptBreakpoint> temporaryBreakpoints = new ArrayList<>(this.temporaryBreakpoints);
+        this.temporaryBreakpoints.clear();
+        List<Promise<Void>> promises = new ArrayList<>();
+        for (JavaScriptBreakpoint jsBreakpoint : temporaryBreakpoints) {
+            promises.add(jsBreakpoint.destroy());
+        }
+        callStack = null;
+        Promise.allVoid(promises).thenVoid(v -> {
+            Breakpoint javaBreakpoint = null;
+            if (breakpoint != null && !temporaryBreakpoints.contains(breakpoint)) {
+                javaBreakpoint = breakpointMap.get(breakpoint);
             }
+            for (DebuggerListener listener : getListeners()) {
+                listener.paused(javaBreakpoint);
+            }
+        });
+    }
+
+    private void fireAttached() {
+        for (Breakpoint breakpoint : breakpoints) {
+            updateInternalBreakpoints(breakpoint).thenVoid(v -> updateBreakpointStatus(breakpoint, false));
         }
         for (DebuggerListener listener : getListeners()) {
             listener.attached();
@@ -392,7 +443,7 @@ public class Debugger {
     }
 
     private void fireDetached() {
-        for (Breakpoint breakpoint : breakpoints.keySet()) {
+        for (Breakpoint breakpoint : breakpoints) {
             updateBreakpointStatus(breakpoint, false);
         }
         for (DebuggerListener listener : getListeners()) {
@@ -432,11 +483,8 @@ public class Debugger {
         }
 
         @Override
-        public void paused() {
-            callStack = null;
-            for (DebuggerListener listener : getListeners()) {
-                listener.paused();
-            }
+        public void paused(JavaScriptBreakpoint breakpoint) {
+            firePaused(breakpoint);
         }
 
         @Override

@@ -19,17 +19,13 @@ import java.util.Objects;
 import org.teavm.classlib.java.io.TSerializable;
 import org.teavm.classlib.java.util.TObjects;
 
-/**
- *
- * @author Alexey Andreev
- */
 public final class TStackTraceElement extends TObject implements TSerializable {
-    private TString declaringClass;
-    private TString methodName;
-    private TString fileName;
+    private String declaringClass;
+    private String methodName;
+    private String fileName;
     private int lineNumber;
 
-    public TStackTraceElement(TString declaringClass, TString methodName, TString fileName, int lineNumber) {
+    public TStackTraceElement(String declaringClass, String methodName, String fileName, int lineNumber) {
         if (declaringClass == null || methodName == null) {
             throw new TNullPointerException();
         }
@@ -39,15 +35,15 @@ public final class TStackTraceElement extends TObject implements TSerializable {
         this.lineNumber = lineNumber;
     }
 
-    public TString getClassName() {
+    public String getClassName() {
         return declaringClass;
     }
 
-    public TString getMethodName() {
+    public String getMethodName() {
         return methodName;
     }
 
-    public TString getFileName() {
+    public String getFileName() {
         return fileName;
     }
 
@@ -81,14 +77,15 @@ public final class TStackTraceElement extends TObject implements TSerializable {
 
     @Override
     public String toString() {
-        TStringBuilder sb = new TStringBuilder();
+        StringBuilder sb = new StringBuilder();
         int index = declaringClass.lastIndexOf('.');
         sb.append(declaringClass.substring(index + 1)).append('.').append(methodName).append('(');
         if (fileName != null) {
             sb.append(fileName).append(':').append(lineNumber);
         } else {
-            sb.append(TString.wrap("Unknown Source"));
+            sb.append("Unknown Source");
         }
+        sb.append(")");
         return sb.toString();
     }
 }

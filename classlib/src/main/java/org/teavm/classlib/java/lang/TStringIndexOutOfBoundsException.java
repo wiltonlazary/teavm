@@ -15,10 +15,6 @@
  */
 package org.teavm.classlib.java.lang;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class TStringIndexOutOfBoundsException extends TIndexOutOfBoundsException {
     private static final long serialVersionUID = 6706349858694463085L;
 
@@ -26,12 +22,11 @@ public class TStringIndexOutOfBoundsException extends TIndexOutOfBoundsException
         super();
     }
 
-    public TStringIndexOutOfBoundsException(TString message) {
+    public TStringIndexOutOfBoundsException(String message) {
         super(message);
     }
 
     public TStringIndexOutOfBoundsException(int index) {
-        super(TString.wrap(new TStringBuilder().append(TString.wrap("String index out of bounds: "))
-                .append(index).toString()));
+        super(new TStringBuilder().append("String index out of bounds: ").append(index).toString());
     }
 }

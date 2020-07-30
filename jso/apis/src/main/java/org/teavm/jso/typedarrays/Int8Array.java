@@ -18,10 +18,6 @@ package org.teavm.jso.typedarrays;
 import org.teavm.jso.JSBody;
 import org.teavm.jso.JSIndexer;
 
-/**
- *
- * @author Alexey Andreev
- */
 public abstract class Int8Array extends ArrayBufferView {
     @JSIndexer
     public abstract byte get(int index);
@@ -35,6 +31,12 @@ public abstract class Int8Array extends ArrayBufferView {
     @JSBody(params = "buffer", script = "return new Int8Array(buffer);")
     public static native Int8Array create(ArrayBuffer buffer);
 
+    @JSBody(params = "buffer", script = "return new Int8Array(buffer);")
+    public static native Int8Array create(ArrayBufferView buffer);
+
     @JSBody(params = { "buffer", "offset", "length" }, script = "return new Int8Array(buffer, offset, length);")
     public static native Int8Array create(ArrayBuffer buffer, int offset, int length);
+
+    @JSBody(params = { "buffer", "offset" }, script = "return new Int8Array(buffer, offset);")
+    public static native Int8Array create(ArrayBuffer buffer, int offset);
 }

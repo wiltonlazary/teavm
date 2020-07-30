@@ -15,10 +15,6 @@
  */
 package org.teavm.classlib.java.lang;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class TUnsupportedOperationException extends TRuntimeException {
     private static final long serialVersionUID = 3820374864664609707L;
 
@@ -26,11 +22,11 @@ public class TUnsupportedOperationException extends TRuntimeException {
         super();
     }
 
-    public TUnsupportedOperationException(TString message, TThrowable cause) {
+    public TUnsupportedOperationException(String message, TThrowable cause) {
         super(message, cause);
     }
 
-    public TUnsupportedOperationException(TString message) {
+    public TUnsupportedOperationException(String message) {
         super(message);
     }
 

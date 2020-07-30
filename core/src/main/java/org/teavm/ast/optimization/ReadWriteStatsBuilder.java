@@ -20,6 +20,13 @@ import org.teavm.common.Graph;
 import org.teavm.common.GraphUtils;
 import org.teavm.common.IntegerStack;
 import org.teavm.model.*;
+import org.teavm.model.instructions.AbstractInstructionVisitor;
+import org.teavm.model.instructions.ClassConstantInstruction;
+import org.teavm.model.instructions.DoubleConstantInstruction;
+import org.teavm.model.instructions.FloatConstantInstruction;
+import org.teavm.model.instructions.IntegerConstantInstruction;
+import org.teavm.model.instructions.LongConstantInstruction;
+import org.teavm.model.instructions.StringConstantInstruction;
 import org.teavm.model.util.DefinitionExtractor;
 import org.teavm.model.util.ProgramUtils;
 import org.teavm.model.util.UsageExtractor;
@@ -27,6 +34,7 @@ import org.teavm.model.util.UsageExtractor;
 class ReadWriteStatsBuilder {
     public int[] reads;
     public int[] writes;
+    public Object[] constants;
 
     private ReadWriteStatsBuilder() {
     }
@@ -34,6 +42,7 @@ class ReadWriteStatsBuilder {
     public ReadWriteStatsBuilder(int variableCount) {
         reads = new int[variableCount];
         writes = new int[variableCount];
+        constants = new Object[variableCount];
     }
 
     public ReadWriteStatsBuilder copy() {
@@ -50,6 +59,7 @@ class ReadWriteStatsBuilder {
         UsageExtractor useExtractor = new UsageExtractor();
         IntegerStack stack = new IntegerStack(program.basicBlockCount());
         stack.push(0);
+        ConstantExtractor constantExtractor = new ConstantExtractor(constants);
         while (!stack.isEmpty()) {
             int node = stack.pop();
             BasicBlock block = program.basicBlockAt(node);
@@ -59,7 +69,7 @@ class ReadWriteStatsBuilder {
                 reads[block.getExceptionVariable().getIndex()]++;
             }
 
-            for (Instruction insn : block.getInstructions()) {
+            for (Instruction insn : block) {
                 insn.acceptVisitor(defExtractor);
                 insn.acceptVisitor(useExtractor);
                 for (Variable var : defExtractor.getDefinedVariables()) {
@@ -68,6 +78,8 @@ class ReadWriteStatsBuilder {
                 for (Variable var : useExtractor.getUsedVariables()) {
                     reads[var.getIndex()]++;
                 }
+
+                insn.acceptVisitor(constantExtractor);
             }
 
             for (Phi phi : block.getPhis()) {
@@ -78,18 +90,48 @@ class ReadWriteStatsBuilder {
                     }
                 }
             }
-            for (TryCatchBlock tryCatch : block.getTryCatchBlocks()) {
-                for (TryCatchJoint joint : tryCatch.getJoints()) {
-                    writes[joint.getReceiver().getIndex()] += joint.getSourceVariables().size();
-                    for (Variable var : joint.getSourceVariables()) {
-                        reads[var.getIndex()]++;
-                    }
-                }
-            }
 
             for (int succ : dom.outgoingEdges(node)) {
                 stack.push(succ);
             }
+        }
+    }
+
+    static class ConstantExtractor extends AbstractInstructionVisitor {
+        private Object[] constants;
+
+        ConstantExtractor(Object[] constants) {
+            this.constants = constants;
+        }
+
+        @Override
+        public void visit(ClassConstantInstruction insn) {
+            constants[insn.getReceiver().getIndex()] = insn.getConstant();
+        }
+
+        @Override
+        public void visit(StringConstantInstruction insn) {
+            constants[insn.getReceiver().getIndex()] = insn.getConstant();
+        }
+
+        @Override
+        public void visit(IntegerConstantInstruction insn) {
+            constants[insn.getReceiver().getIndex()] = insn.getConstant();
+        }
+
+        @Override
+        public void visit(LongConstantInstruction insn) {
+            constants[insn.getReceiver().getIndex()] = insn.getConstant();
+        }
+
+        @Override
+        public void visit(FloatConstantInstruction insn) {
+            constants[insn.getReceiver().getIndex()] = insn.getConstant();
+        }
+
+        @Override
+        public void visit(DoubleConstantInstruction insn) {
+            constants[insn.getReceiver().getIndex()] = insn.getConstant();
         }
     }
 }

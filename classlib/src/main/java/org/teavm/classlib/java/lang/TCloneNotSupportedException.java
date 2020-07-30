@@ -15,10 +15,6 @@
  */
 package org.teavm.classlib.java.lang;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class TCloneNotSupportedException extends TException {
     private static final long serialVersionUID = 4908200987785128012L;
 
@@ -26,7 +22,7 @@ public class TCloneNotSupportedException extends TException {
         super();
     }
 
-    public TCloneNotSupportedException(TString message) {
+    public TCloneNotSupportedException(String message) {
         super(message);
     }
 }

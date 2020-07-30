@@ -23,12 +23,7 @@ import org.eclipse.m2e.core.project.configurator.ProjectConfigurationRequest;
 import org.teavm.eclipse.TeaVMEclipsePlugin;
 import org.teavm.eclipse.TeaVMProfile;
 import org.teavm.eclipse.TeaVMProjectSettings;
-import org.teavm.eclipse.TeaVMRuntimeMode;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class TeaVMProjectConfigurator extends AbstractProjectConfigurator {
     private static final String TOOL_ID = "teavm-eclipse-m2e-plugin.tool";
     private static final String TEAVM_ARTIFACT_ID = "teavm-maven-plugin";
@@ -92,7 +87,7 @@ public class TeaVMProjectConfigurator extends AbstractProjectConfigurator {
 
     private void configureProfile(MojoExecution execution, TeaVMProfile profile, IProgressMonitor monitor)
             throws CoreException {
-        monitor.beginTask("Configuring profile " + profile.getName(), 120);
+        monitor.beginTask("Configuring profile " + profile.getName(), 100);
         String buildDir = getProjectBuildDirectory();
 
         String mainClass = maven.getMojoParameterValue(mavenSession, execution, "mainClass", String.class);
@@ -106,14 +101,6 @@ public class TeaVMProjectConfigurator extends AbstractProjectConfigurator {
 
         String targetFileName = maven.getMojoParameterValue(mavenSession, execution, "targetFileName", String.class);
         profile.setTargetFileName(targetFileName != null ? targetFileName : "classes.js");
-        monitor.worked(10);
-
-        Boolean minifying = maven.getMojoParameterValue(mavenSession, execution, "minifying", Boolean.class);
-        profile.setMinifying(minifying != null ? minifying : true);
-        monitor.worked(10);
-
-        String runtime = maven.getMojoParameterValue(mavenSession, execution, "runtime", String.class);
-        profile.setRuntimeMode(runtime != null ? getRuntimeMode(runtime) : TeaVMRuntimeMode.SEPARATE);
         monitor.worked(10);
 
         Properties properties = maven.getMojoParameterValue(mavenSession, execution, "properties", Properties.class);
@@ -148,23 +135,21 @@ public class TeaVMProjectConfigurator extends AbstractProjectConfigurator {
         profile.setTransformers(transformers != null ? transformers : new String[0]);
         monitor.worked(10);
 
-        profile.setClassAliases(readClassAliases(execution));
+        profile.setClassesToPreserve(readClassesToPreserve(execution));
         monitor.worked(10);
 
         monitor.done();
     }
 
-    private Map<String, String> readClassAliases(MojoExecution execution) {
-        Map<String, String> aliases = new HashMap<>();
-        Xpp3Dom aliasesElem = execution.getConfiguration().getChild("classAliases");
-        if (aliasesElem != null) {
-            for (Xpp3Dom item : aliasesElem.getChildren()) {
-                String className = item.getChild("className").getValue();
-                String alias = item.getChild("alias").getValue();
-                aliases.put(className, alias);
+    private Set<? extends String> readClassesToPreserve(MojoExecution execution) {
+        Set<String> classes = new HashSet<>();
+        Xpp3Dom classesElem = execution.getConfiguration().getChild("classesToPreserve");
+        if (classesElem != null) {
+            for (Xpp3Dom item : classesElem.getChildren()) {
+                classes.add(item.getValue());
             }
         }
-        return aliases;
+        return classes;
     }
 
     private String getProjectBuildDirectory() throws CoreException {
@@ -192,19 +177,6 @@ public class TeaVMProjectConfigurator extends AbstractProjectConfigurator {
         }
         path = container.getFullPath().toString();
         return varManager.generateVariableExpression("workspace_loc", path) + suffix;
-    }
-
-    private TeaVMRuntimeMode getRuntimeMode(String name) {
-        switch (name) {
-            case "SEPARATE":
-                return TeaVMRuntimeMode.SEPARATE;
-            case "MERGED":
-                return TeaVMRuntimeMode.MERGE;
-            case "NONE":
-                return TeaVMRuntimeMode.NONE;
-            default:
-                return TeaVMRuntimeMode.NONE;
-        }
     }
 
     private String getIdForProfile(MojoExecution pluginExecution) {

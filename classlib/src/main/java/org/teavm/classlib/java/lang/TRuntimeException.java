@@ -17,10 +17,6 @@ package org.teavm.classlib.java.lang;
 
 import org.teavm.interop.Superclass;
 
-/**
- *
- * @author Alexey Andreev
- */
 @Superclass("java.lang.Exception")
 public class TRuntimeException extends TException {
     private static final long serialVersionUID = 3506083061304642891L;
@@ -29,11 +25,11 @@ public class TRuntimeException extends TException {
         super();
     }
 
-    public TRuntimeException(TString message, TThrowable cause) {
+    public TRuntimeException(String message, TThrowable cause) {
         super(message, cause);
     }
 
-    public TRuntimeException(TString message) {
+    public TRuntimeException(String message) {
         super(message);
     }
 

@@ -19,75 +19,128 @@ import java.util.RandomAccess;
 import org.teavm.classlib.java.lang.*;
 import org.teavm.classlib.java.util.TMap.Entry;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class TCollections extends TObject {
     @SuppressWarnings("rawtypes")
-    public static final TSet EMPTY_SET = emptySet();
+    public static final TSet EMPTY_SET = new TAbstractSet<Object>() {
+        @Override public int size() {
+            return 0;
+        }
+        @Override public TIterator<Object> iterator() {
+            return emptyIterator();
+        }
+        @Override public boolean isEmpty() {
+            return true;
+        }
+        @Override public boolean contains(Object o) {
+            return false;
+        }
+        @Override public boolean containsAll(TCollection<?> c) {
+            return false;
+        }
+    };
 
     @SuppressWarnings("rawtypes")
-    public static final TMap EMPTY_MAP = emptyMap();
+    public static final TMap EMPTY_MAP = new TAbstractMap<Object, Object>() {
+        @Override public TSet<Entry<Object, Object>> entrySet() {
+            return emptySet();
+        }
+        @Override
+        public int size() {
+            return 0;
+        }
+        @Override public Object get(Object key) {
+            return null;
+        }
+        @Override public boolean isEmpty() {
+            return true;
+        }
+        @Override public boolean containsKey(Object key) {
+            return false;
+        }
+        @Override public boolean containsValue(Object value) {
+            return false;
+        }
+    };
 
     @SuppressWarnings("rawtypes")
-    public static final TList EMPTY_LIST = emptyList();
+    public static final TList EMPTY_LIST = new TAbstractList<Object>() {
+        @Override public Object get(int index) {
+            throw new TIndexOutOfBoundsException();
+        }
+        @Override public int size() {
+            return 0;
+        }
+        @Override
+        public TIterator<Object> iterator() {
+            return emptyIterator();
+        }
+        @Override
+        public TListIterator<Object> listIterator(int index) {
+            if (index != 0) {
+                throw new IndexOutOfBoundsException();
+            }
+            return emptyListIterator();
+        }
+        @Override public boolean isEmpty() {
+            return true;
+        }
+    };
 
+    private static final TIterator<?> EMPTY_ITERATOR = new TIterator<Object>() {
+        @Override public boolean hasNext() {
+            return false;
+        }
+        @Override public Object next() {
+            throw new TNoSuchElementException();
+        }
+        @Override public void remove() {
+            throw new TIllegalStateException();
+        }
+    };
+
+    private static final TListIterator<?> EMPTY_LIST_ITERATOR = new TListIterator<Object>() {
+        @Override public boolean hasNext() {
+            return false;
+        }
+        @Override public Object next() {
+            throw new TNoSuchElementException();
+        }
+        @Override public void remove() {
+            throw new TIllegalStateException();
+        }
+        @Override public boolean hasPrevious() {
+            return false;
+        }
+        @Override public Object previous() {
+            throw new TNoSuchElementException();
+        }
+        @Override public int nextIndex() {
+            return 0;
+        }
+        @Override public int previousIndex() {
+            return -1;
+        }
+        @Override public void set(Object e) {
+            throw new TUnsupportedOperationException();
+        }
+        @Override public void add(Object e) {
+            throw new TUnsupportedOperationException();
+        }
+    };
+
+    @SuppressWarnings("unchecked")
     public static <T> TIterator<T> emptyIterator() {
-        return new TIterator<T>() {
-            @Override public boolean hasNext() {
-                return false;
-            }
-            @Override public T next() {
-                throw new TNoSuchElementException();
-            }
-            @Override public void remove() {
-                throw new TIllegalStateException();
-            }
-        };
+        return (TIterator<T>) EMPTY_ITERATOR;
     }
 
+    @SuppressWarnings("unchecked")
     public static <T> TListIterator<T> emptyListIterator() {
-        return new TListIterator<T>() {
-            @Override public boolean hasNext() {
-                return false;
-            }
-            @Override public T next() {
-                throw new TNoSuchElementException();
-            }
-            @Override public void remove() {
-                throw new TIllegalStateException();
-            }
-            @Override public boolean hasPrevious() {
-                return false;
-            }
-            @Override public T previous() {
-                throw new TNoSuchElementException();
-            }
-            @Override public int nextIndex() {
-                return 0;
-            }
-            @Override public int previousIndex() {
-                return -1;
-            }
-            @Override public void set(T e) {
-                throw new TUnsupportedOperationException();
-            }
-            @Override public void add(T e) {
-                throw new TUnsupportedOperationException();
-            }
-        };
+        return (TListIterator<T>) EMPTY_LIST_ITERATOR;
     }
 
-    public static final <T> TList<T> emptyList() {
-        return new TAbstractList<T>() {
-            @Override public T get(int index) {
-                throw new TIndexOutOfBoundsException();
-            }
-            @Override public int size() {
-                return 0;
-            }
-        };
+    @SuppressWarnings("unchecked")
+    public static <T> TList<T> emptyList() {
+        return (TList<T>) EMPTY_LIST;
     }
 
     public static <T> TEnumeration<T> emptyEnumeration() {
@@ -101,23 +154,14 @@ public class TCollections extends TObject {
         };
     }
 
-    public static final <T> TSet<T> emptySet() {
-        return new TAbstractSet<T>() {
-            @Override public int size() {
-                return 0;
-            }
-            @Override public TIterator<T> iterator() {
-                return emptyIterator();
-            }
-        };
+    @SuppressWarnings("unchecked")
+    public static <T> TSet<T> emptySet() {
+        return (TSet<T>) EMPTY_SET;
     }
 
-    public static final <K, V> TMap<K, V> emptyMap() {
-        return new TAbstractMap<K, V>() {
-            @Override public TSet<Entry<K, V>> entrySet() {
-                return emptySet();
-            }
-        };
+    @SuppressWarnings("unchecked")
+    public static <K, V> TMap<K, V> emptyMap() {
+        return (TMap<K, V>) EMPTY_MAP;
     }
 
     public static <T> TList<T> singletonList(final T o) {
@@ -228,7 +272,7 @@ public class TCollections extends TObject {
             reverse(list, 0, list.size());
         } else {
             TList<Object> randomAccess = new TArrayList<>(list);
-            reverse(list, 0, list.size());
+            reverse(randomAccess, 0, randomAccess.size());
             list.clear();
             ((TList<Object>) list).addAll(randomAccess);
         }
@@ -576,19 +620,19 @@ public class TCollections extends TObject {
         return list;
     }
 
-    public static <E> TCollection<E> checkedCollection(TCollection<E> c, TClass<E> type) {
+    public static <E> TCollection<E> checkedCollection(TCollection<E> c, Class<E> type) {
         return new TCheckedCollection<>(c, type);
     }
 
-    public static <E> TSet<E> checkedSet(TSet<E> s, TClass<E> type) {
+    public static <E> TSet<E> checkedSet(TSet<E> s, Class<E> type) {
         return new TCheckedSet<>(s, type);
     }
 
-    public static <E> TList<E> checkedList(TList<E> list, TClass<E> type) {
+    public static <E> TList<E> checkedList(TList<E> list, Class<E> type) {
         return new TCheckedList<>(list, type);
     }
 
-    public static <K, V> TMap<K, V> checkedMap(TMap<K, V> m, TClass<K> keyType, TClass<V> valueType) {
+    public static <K, V> TMap<K, V> checkedMap(TMap<K, V> m, Class<K> keyType, Class<V> valueType) {
         return new TCheckedMap<>(m, keyType, valueType);
     }
 

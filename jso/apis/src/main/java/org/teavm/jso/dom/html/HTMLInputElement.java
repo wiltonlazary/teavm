@@ -17,10 +17,6 @@ package org.teavm.jso.dom.html;
 
 import org.teavm.jso.JSProperty;
 
-/**
- *
- * @author Alexey Andreev
- */
 public interface HTMLInputElement extends HTMLElement {
     @JSProperty
     boolean isChecked();
@@ -69,4 +65,18 @@ public interface HTMLInputElement extends HTMLElement {
 
     @JSProperty
     void setValue(String value);
+    
+    void setCustomValidity(String validationFailure);
+    
+    boolean checkValidity();
+    
+    boolean reportValidity();
+
+    void select();
+
+    @JSProperty
+    String getPlaceholder();
+
+    @JSProperty
+    void setPlaceholder(String value);
 }

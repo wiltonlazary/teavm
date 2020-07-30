@@ -20,14 +20,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class Phi implements PhiReader {
     private BasicBlock basicBlock;
     private Variable receiver;
-    private List<Incoming> incomings = new ArrayList<>();
+    private List<Incoming> incomings = new ArrayList<>(2);
 
     @Override
     public BasicBlock getBasicBlock() {

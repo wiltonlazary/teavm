@@ -15,7 +15,10 @@
  */
 package org.teavm.classlib.java.lang;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.Test;
@@ -29,29 +32,28 @@ public class ThreadTest {
         long start = System.currentTimeMillis();
         Thread.sleep(100);
         long duration = System.currentTimeMillis() - start;
-        assertTrue("Thread.sleed did not wait enogh", duration >= 100);
+        assertTrue("Thread.sleep did not wait enough", duration >= 100);
     }
 
     @Test
     public void sleepInterrupted() {
         long start = System.currentTimeMillis();
         final Thread mainThread = Thread.currentThread();
-        new Thread() {
-            @Override public void run() {
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
-                }
-                mainThread.interrupt();
+        new Thread(() -> {
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                // ok
             }
-        }.start();
+            mainThread.interrupt();
+        }).start();
         try {
-            Thread.sleep(300);
+            Thread.sleep(5000);
             fail("Exception expected");
         } catch (InterruptedException e) {
             assertEquals(Thread.currentThread(), mainThread);
             assertFalse(mainThread.isInterrupted());
-            assertTrue(System.currentTimeMillis() - start < 150);
+            assertTrue(System.currentTimeMillis() - start < 500);
         }
     }
 

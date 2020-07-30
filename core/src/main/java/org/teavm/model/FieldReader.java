@@ -15,12 +15,10 @@
  */
 package org.teavm.model;
 
-/**
- *
- * @author Alexey Andreev
- */
 public interface FieldReader extends MemberReader {
     ValueType getType();
+
+    GenericValueType getGenericType();
 
     Object getInitialValue();
 

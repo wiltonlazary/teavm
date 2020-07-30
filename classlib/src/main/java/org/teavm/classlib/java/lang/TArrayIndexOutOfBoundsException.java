@@ -15,10 +15,6 @@
  */
 package org.teavm.classlib.java.lang;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class TArrayIndexOutOfBoundsException extends TIndexOutOfBoundsException {
     private static final long serialVersionUID = 5221353436321708950L;
 
@@ -26,11 +22,11 @@ public class TArrayIndexOutOfBoundsException extends TIndexOutOfBoundsException 
         super();
     }
 
-    public TArrayIndexOutOfBoundsException(TString message) {
+    public TArrayIndexOutOfBoundsException(String message) {
         super(message);
     }
 
     public TArrayIndexOutOfBoundsException(int index) {
-        super(TString.wrap(Integer.toString(index)));
+        super(Integer.toString(index));
     }
 }

@@ -23,10 +23,6 @@ import org.teavm.model.ClassReaderSource;
 import org.teavm.model.ElementModifier;
 import org.teavm.model.ValueType;
 
-/**
- *
- * @author Alexey Andreev
- */
 class JSTypeHelper {
     private ClassReaderSource classSource;
     private Map<String, Boolean> knownJavaScriptClasses = new HashMap<>();
@@ -38,21 +34,17 @@ class JSTypeHelper {
     }
 
     public boolean isJavaScriptClass(String className) {
-        Boolean known = knownJavaScriptClasses.get(className);
-        if (known == null) {
-            known = examineIfJavaScriptClass(className);
-            knownJavaScriptClasses.put(className, known);
+        Boolean isJsClass = knownJavaScriptClasses.get(className);
+        if (isJsClass == null) {
+            isJsClass = examineIfJavaScriptClass(className);
+            knownJavaScriptClasses.put(className, isJsClass);
         }
-        return known;
+        return isJsClass;
     }
 
     public boolean isJavaScriptImplementation(String className) {
-        Boolean known = knownJavaScriptImplementations.get(className);
-        if (known == null) {
-            known = examineIfJavaScriptImplementation(className);
-            knownJavaScriptImplementations.put(className, known);
-        }
-        return known;
+        return knownJavaScriptImplementations
+                .computeIfAbsent(className, k -> examineIfJavaScriptImplementation(className));
     }
 
     private boolean examineIfJavaScriptClass(String className) {
@@ -60,7 +52,7 @@ class JSTypeHelper {
         if (cls == null || !(cls.hasModifier(ElementModifier.INTERFACE) || cls.hasModifier(ElementModifier.ABSTRACT))) {
             return false;
         }
-        if (cls.getParent() != null && !cls.getParent().equals(cls.getName())) {
+        if (cls.getParent() != null) {
             if (isJavaScriptClass(cls.getParent())) {
                 return true;
             }
@@ -76,7 +68,7 @@ class JSTypeHelper {
         if (cls == null) {
             return false;
         }
-        if (cls.getParent() != null && !cls.getParent().equals(cls.getName())) {
+        if (cls.getParent() != null) {
             if (isJavaScriptClass(cls.getParent())) {
                 return true;
             }
@@ -100,6 +92,30 @@ class JSTypeHelper {
         } else if (type instanceof ValueType.Object) {
             String typeName = ((ValueType.Object) type).getClassName();
             return typeName.equals("java.lang.String") || isJavaScriptClass(typeName);
+        } else {
+            return false;
+        }
+    }
+
+    public boolean isSupportedByRefType(ValueType type) {
+        if (!(type instanceof ValueType.Array)) {
+            return false;
+        }
+        ValueType itemType = ((ValueType.Array) type).getItemType();
+        if (itemType instanceof ValueType.Primitive) {
+            switch (((ValueType.Primitive) itemType).getKind()) {
+                case BYTE:
+                case SHORT:
+                case CHARACTER:
+                case INTEGER:
+                case FLOAT:
+                case DOUBLE:
+                    return true;
+                default:
+                    return false;
+            }
+        } else if (itemType instanceof ValueType.Object) {
+            return isJavaScriptClass(((ValueType.Object) itemType).getClassName());
         } else {
             return false;
         }

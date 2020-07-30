@@ -19,34 +19,34 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.ServiceLoader;
 import java.util.Set;
 import org.teavm.backend.javascript.codegen.SourceWriter;
+import org.teavm.backend.javascript.spi.Generator;
+import org.teavm.backend.javascript.spi.GeneratorContext;
+import org.teavm.classlib.ServiceLoaderFilter;
 import org.teavm.dependency.AbstractDependencyListener;
 import org.teavm.dependency.DependencyAgent;
 import org.teavm.dependency.DependencyNode;
 import org.teavm.dependency.MethodDependency;
-import org.teavm.backend.javascript.spi.Generator;
-import org.teavm.backend.javascript.spi.GeneratorContext;
 import org.teavm.model.CallLocation;
 import org.teavm.model.MethodDescriptor;
 import org.teavm.model.MethodReference;
-import org.teavm.model.ValueType;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class ServiceLoaderSupport extends AbstractDependencyListener implements Generator {
-    private Set<String> achievedClasses = new HashSet<>();
+    private static final MethodReference LOAD_METHOD = new MethodReference(ServiceLoader.class, "load", Class.class,
+            ServiceLoader.class);
+    private static final MethodDescriptor INIT_METHOD = new MethodDescriptor("<init>", void.class);
     private Map<String, List<String>> serviceMap = new HashMap<>();
-    private DependencyNode allClassesNode;
     private ClassLoader classLoader;
 
     public ServiceLoaderSupport(ClassLoader classLoader) {
@@ -61,14 +61,17 @@ public class ServiceLoaderSupport extends AbstractDependencyListener implements 
         for (Map.Entry<String, List<String>> entry : serviceMap.entrySet()) {
             writer.appendClass(entry.getKey()).append(".$$serviceList$$ = [");
             List<String> implementations = entry.getValue();
-            for (int i = 0; i < implementations.size(); ++i) {
-                if (i > 0) {
-                    writer.append(", ");
+            boolean first = true;
+            for (String implName : implementations) {
+                if (context.getClassSource().getClassNames().contains(implName)) {
+                    if (!first) {
+                        writer.append(", ");
+                    }
+                    first = false;
+                    writer.append("[").appendClass(implName).append(", ").appendMethodBody(
+                            new MethodReference(implName, INIT_METHOD))
+                            .append("]");
                 }
-                String implName = implementations.get(i);
-                writer.append("[").appendClass(implName).append(", ").appendMethodBody(
-                        new MethodReference(implName, new MethodDescriptor("<init>", ValueType.VOID)))
-                        .append("]");
             }
             writer.append("];").softNewLine();
         }
@@ -88,30 +91,47 @@ public class ServiceLoaderSupport extends AbstractDependencyListener implements 
     }
 
     @Override
-    public void started(DependencyAgent agent) {
-        allClassesNode = agent.createNode();
+    public void methodReached(DependencyAgent agent, MethodDependency method) {
+        MethodReference ref = method.getReference();
+        if (ref.getClassName().equals("java.util.ServiceLoader") && ref.getName().equals("loadServices")) {
+            List<ServiceLoaderFilter> filters = getFilters(agent);
+            method.getResult().propagate(agent.getType("[Ljava/lang/Object;"));
+            DependencyNode sourceNode = agent.linkMethod(LOAD_METHOD).getVariable(1).getClassValueNode();
+            sourceNode.connect(method.getResult().getArrayItem());
+            sourceNode.addConsumer(type -> {
+                CallLocation location = new CallLocation(LOAD_METHOD);
+                for (String implementationType : getImplementations(type.getName())) {
+                    if (filters.stream().anyMatch(filter -> !filter.apply(type.getName(), implementationType))) {
+                        continue;
+                    }
+                    serviceMap.computeIfAbsent(type.getName(), k -> new ArrayList<>()).add(implementationType);
+
+                    MethodReference ctor = new MethodReference(implementationType, INIT_METHOD);
+                    agent.linkMethod(ctor).addLocation(location).use();
+                    method.getResult().getArrayItem().propagate(agent.getType(implementationType));
+                }
+            });
+        }
     }
 
-    @Override
-    public void classReached(DependencyAgent agent, String className, CallLocation location) {
-        if (!achievedClasses.add(className)) {
-            return;
-        }
+    private Set<String> getImplementations(String type) {
+        Set<String> result = new LinkedHashSet<>();
         try {
-            Enumeration<URL> resources = classLoader.getResources("META-INF/services/" + className);
+            Enumeration<URL> resources = classLoader.getResources("META-INF/services/" + type);
             while (resources.hasMoreElements()) {
                 URL resource = resources.nextElement();
                 try (InputStream stream = resource.openStream()) {
-                    parseServiceFile(agent, className, stream);
+                    parseServiceFile(stream, result);
                 }
             }
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+        return result;
     }
 
-    private void parseServiceFile(DependencyAgent agent, String service, InputStream input) throws IOException {
-        BufferedReader reader = new BufferedReader(new InputStreamReader(input, "UTF-8"));
+    private void parseServiceFile(InputStream input, Set<String> consumer) throws IOException {
+        BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8));
         while (true) {
             String line = reader.readLine();
             if (line == null) {
@@ -121,28 +141,37 @@ public class ServiceLoaderSupport extends AbstractDependencyListener implements 
             if (line.startsWith("#") || line.isEmpty()) {
                 continue;
             }
-            List<String> implementors = serviceMap.get(service);
-            if (implementors == null) {
-                implementors = new ArrayList<>();
-                serviceMap.put(service, implementors);
+
+            consumer.add(line);
+        }
+    }
+
+    private List<ServiceLoaderFilter> getFilters(DependencyAgent agent) {
+        List<ServiceLoaderFilter> filters = new ArrayList<>();
+        for (String filterTypeName : getImplementations(ServiceLoaderFilter.class.getName())) {
+            Class<?> filterType;
+            try {
+                filterType = Class.forName(filterTypeName, true, classLoader);
+            } catch (ClassNotFoundException e) {
+                agent.getDiagnostics().error(null, "Could not load ServiceLoader filter class '{{c0}}'",
+                        filterTypeName);
+                continue;
             }
-            implementors.add(line);
-            allClassesNode.propagate(agent.getType(line));
-        }
-    }
 
-    @Override
-    public void methodReached(final DependencyAgent agent, MethodDependency method, final CallLocation location) {
-        MethodReference ref = method.getReference();
-        if (ref.getClassName().equals("java.util.ServiceLoader") && ref.getName().equals("loadServices")) {
-            method.getResult().propagate(agent.getType("[java.lang.Object"));
-            allClassesNode.connect(method.getResult().getArrayItem());
-            method.getResult().getArrayItem().addConsumer(type -> initConstructor(agent, type.getName(), location));
-        }
-    }
+            if (!ServiceLoaderFilter.class.isAssignableFrom(filterType)) {
+                agent.getDiagnostics().error(null, "Class '{{c0}}' does not implement ServiceLoaderFilter interface",
+                        filterTypeName);
+                continue;
+            }
 
-    private void initConstructor(DependencyAgent agent, String type, CallLocation location) {
-        MethodReference ctor = new MethodReference(type, new MethodDescriptor("<init>", ValueType.VOID));
-        agent.linkMethod(ctor, location).use();
+            try {
+                filters.add((ServiceLoaderFilter) filterType.getConstructor().newInstance());
+            } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException
+                    | InstantiationException e) {
+                agent.getDiagnostics().error(null, "Could not instantiate ServiceLoader filter '{{c0}}'",
+                        filterTypeName);
+            }
+        }
+        return filters;
     }
 }

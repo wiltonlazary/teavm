@@ -25,7 +25,7 @@ import org.teavm.backend.javascript.spi.InjectorContext;
 import org.teavm.dependency.DependencyAgent;
 import org.teavm.dependency.DependencyPlugin;
 import org.teavm.dependency.MethodDependency;
-import org.teavm.model.CallLocation;
+import org.teavm.dependency.MethodDependencyInfo;
 import org.teavm.model.ClassReader;
 import org.teavm.model.MethodDescriptor;
 import org.teavm.model.MethodReader;
@@ -35,13 +35,9 @@ import org.teavm.platform.Platform;
 import org.teavm.platform.PlatformClass;
 import org.teavm.platform.PlatformRunnable;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class PlatformGenerator implements Generator, Injector, DependencyPlugin {
     @Override
-    public void methodReached(DependencyAgent agent, MethodDependency method, CallLocation location) {
+    public void methodReached(DependencyAgent agent, MethodDependency method) {
         switch (method.getReference().getName()) {
             case "asJavaClass":
                 method.getResult().propagate(agent.getType("java.lang.Class"));
@@ -52,13 +48,24 @@ public class PlatformGenerator implements Generator, Injector, DependencyPlugin 
             case "startThread":
             case "schedule": {
                 MethodDependency launchMethod = agent.linkMethod(new MethodReference(Platform.class,
-                        "launchThread", PlatformRunnable.class, void.class), null);
+                        "launchThread", PlatformRunnable.class, void.class));
                 method.getVariable(1).connect(launchMethod.getVariable(1));
                 launchMethod.use();
                 break;
             }
             case "getCurrentThread":
                 method.getResult().propagate(agent.getType("java.lang.Thread"));
+                break;
+            case "getEnumConstants":
+                method.getResult().propagate(agent.getType("[Ljava/lang/Enum;"));
+                break;
+            case "getName":
+            case "getSimpleName":
+                method.getResult().propagate(agent.getType("java.lang.String"));
+                break;
+            case "getEnclosingClass":
+            case "getDeclaringClass":
+                method.getResult().propagate(agent.getType("java.lang.Class"));
                 break;
         }
     }
@@ -72,6 +79,10 @@ public class PlatformGenerator implements Generator, Injector, DependencyPlugin 
             case "marshall":
             case "getPlatformObject":
                 context.writeExpr(context.getArgument(0));
+                break;
+            case "initClass":
+                context.writeExpr(context.getArgument(0));
+                context.getWriter().append(".$clinit()");
                 break;
         }
     }
@@ -106,20 +117,23 @@ public class PlatformGenerator implements Generator, Injector, DependencyPlugin 
         }
     }
 
-    private void generatePrepareNewInstance(GeneratorContext context, SourceWriter writer)
-            throws IOException {
+    private void generatePrepareNewInstance(GeneratorContext context, SourceWriter writer) throws IOException {
+        MethodDependencyInfo newInstanceMethod = context.getDependency().getMethod(
+                new MethodReference(Platform.class, "newInstanceImpl", PlatformClass.class, Object.class));
         writer.append("var c").ws().append("=").ws().append("'$$constructor$$';").softNewLine();
-        for (String clsName : context.getClassSource().getClassNames()) {
-            ClassReader cls = context.getClassSource().get(clsName);
-            MethodReader method = cls.getMethod(new MethodDescriptor("<init>", void.class));
-            if (method != null) {
-                writer.appendClass(clsName).append("[c]").ws().append("=").ws()
-                        .appendMethodBody(method.getReference()).append(";").softNewLine();
+        if (newInstanceMethod != null) {
+            for (String clsName : newInstanceMethod.getResult().getTypes()) {
+                ClassReader cls = context.getClassSource().get(clsName);
+                if (cls == null) {
+                    continue;
+                }
+                MethodReader method = cls.getMethod(new MethodDescriptor("<init>", void.class));
+                if (method != null) {
+                    writer.appendClass(clsName).append("[c]").ws().append("=").ws()
+                            .appendMethodBody(method.getReference()).append(";").softNewLine();
+                }
             }
         }
-        writer.appendMethodBody(Platform.class, "newInstance", PlatformClass.class, Object.class).ws().append('=').ws()
-                .appendMethodBody(Platform.class, "newInstanceImpl", PlatformClass.class, Object.class)
-                .append(";").softNewLine();
     }
 
     private void generateNewInstance(GeneratorContext context, SourceWriter writer) throws IOException {
@@ -128,6 +142,9 @@ public class PlatformGenerator implements Generator, Injector, DependencyPlugin 
         writer.append("if").ws().append("($rt_resuming())").ws().append("{").indent().softNewLine();
         writer.append("var $r = $rt_nativeThread().pop();").softNewLine();
         writer.append(cls + ".$$constructor$$($r);").softNewLine();
+        writer.append("if").ws().append("($rt_suspending())").ws().append("{").indent().softNewLine();
+        writer.append("return $rt_nativeThread().push($r);").softNewLine();
+        writer.outdent().append("}").softNewLine();
         writer.append("return $r;").softNewLine();
         writer.outdent().append("}").softNewLine();
 
@@ -171,7 +188,7 @@ public class PlatformGenerator implements Generator, Injector, DependencyPlugin 
         MethodReference launchRef = new MethodReference(Platform.class, "launchThread",
                 PlatformRunnable.class, void.class);
         String runnable = context.getParameterName(1);
-        writer.append("return window.setTimeout(function()").ws().append("{").indent().softNewLine();
+        writer.append("return setTimeout(function()").ws().append("{").indent().softNewLine();
         if (timeout) {
             writer.appendMethodBody(launchRef);
         } else {
@@ -195,16 +212,21 @@ public class PlatformGenerator implements Generator, Injector, DependencyPlugin 
             }
         }
 
-        String selfName = writer.getNaming().getFullNameFor(new MethodReference(Platform.class, "getEnumConstants",
-                PlatformClass.class, Enum[].class));
-        writer.append(selfName).ws().append("=").ws().append("function(cls)").ws().append("{").softNewLine().indent();
+        MethodReference selfRef = new MethodReference(Platform.class, "getEnumConstants",
+                PlatformClass.class, Enum[].class);
+        writer.appendMethodBody(selfRef).ws().append("=").ws().append("function(cls)").ws().append("{").softNewLine()
+                .indent();
         writer.append("if").ws().append("(!cls.hasOwnProperty(c))").ws().append("{").indent().softNewLine();
         writer.append("return null;").softNewLine();
         writer.outdent().append("}").softNewLine();
-        writer.append("return cls[c]();").softNewLine();
+        writer.append("if").ws().append("(typeof cls[c]").ws().append("===").ws().append("\"function\")").ws()
+                .append("{").indent().softNewLine();
+        writer.append("cls[c]").ws().append("=").ws().append("cls[c]();").softNewLine();
+        writer.outdent().append("}").softNewLine();
+        writer.append("return cls[c];").softNewLine();
         writer.outdent().append("};").softNewLine();
 
-        writer.append("return ").append(selfName).append("(").append(context.getParameterName(1))
+        writer.append("return ").appendMethodBody(selfRef).append("(").append(context.getParameterName(1))
                 .append(");").softNewLine();
     }
 
@@ -215,21 +237,22 @@ public class PlatformGenerator implements Generator, Injector, DependencyPlugin 
             if (annotCls != null) {
                 writer.appendClass(clsName).append("[c]").ws().append("=").ws();
                 MethodReference ctor = new MethodReference(annotCls.getName(), "<init>", ValueType.VOID);
-                writer.append(writer.getNaming().getNameForInit(ctor));
+                writer.appendInit(ctor);
                 writer.append("();").softNewLine();
             }
         }
 
-        String selfName = writer.getNaming().getFullNameFor(new MethodReference(Platform.class, "getAnnotations",
-                PlatformClass.class, Annotation[].class));
-        writer.append(selfName).ws().append("=").ws().append("function(cls)").ws().append("{").softNewLine().indent();
+        MethodReference selfRef = new MethodReference(Platform.class, "getAnnotations", PlatformClass.class,
+                Annotation[].class);
+        writer.appendMethodBody(selfRef).ws().append("=").ws().append("function(cls)").ws().append("{").softNewLine()
+                .indent();
         writer.append("if").ws().append("(!cls.hasOwnProperty(c))").ws().append("{").indent().softNewLine();
         writer.append("return null;").softNewLine();
         writer.outdent().append("}").softNewLine();
         writer.append("return cls[c].").appendMethod("getAnnotations", Annotation[].class).append("();").softNewLine();
         writer.outdent().append("};").softNewLine();
 
-        writer.append("return ").append(selfName).append("(").append(context.getParameterName(1))
+        writer.append("return ").appendMethodBody(selfRef).append("(").append(context.getParameterName(1))
                 .append(");").softNewLine();
     }
 }

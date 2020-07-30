@@ -15,10 +15,13 @@
  */
 package org.teavm.idea.jps.model;
 
+import com.intellij.util.xmlb.annotations.AbstractCollection;
+import com.intellij.util.xmlb.annotations.Tag;
 import com.intellij.util.xmlb.annotations.Transient;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.jps.model.JpsElementChildRole;
 import org.jetbrains.jps.model.ex.JpsElementBase;
@@ -36,11 +39,20 @@ public class TeaVMJpsConfiguration extends JpsElementBase<TeaVMJpsConfiguration>
     @Transient
     private TeaVMTargetType targetType;
 
+    private boolean skipped;
     private String mainClass;
     private String targetDirectory;
-    private boolean minifying;
     private boolean sourceMapsFileGenerated = true;
     private boolean sourceFilesCopied = true;
+    private List<TeaVMProperty> properties = new ArrayList<>();
+
+    public boolean isSkipped() {
+        return skipped;
+    }
+
+    public void setSkipped(boolean skipped) {
+        this.skipped = skipped;
+    }
 
     public TeaVMTargetType getTargetType() {
         return targetType;
@@ -66,14 +78,6 @@ public class TeaVMJpsConfiguration extends JpsElementBase<TeaVMJpsConfiguration>
         this.targetDirectory = targetDirectory;
     }
 
-    public boolean isMinifying() {
-        return minifying;
-    }
-
-    public void setMinifying(boolean minifying) {
-        this.minifying = minifying;
-    }
-
     public boolean isSourceMapsFileGenerated() {
         return sourceMapsFileGenerated;
     }
@@ -88,6 +92,16 @@ public class TeaVMJpsConfiguration extends JpsElementBase<TeaVMJpsConfiguration>
 
     public void setSourceFilesCopied(boolean sourceFilesCopied) {
         this.sourceFilesCopied = sourceFilesCopied;
+    }
+
+    @Tag("properties")
+    @AbstractCollection(surroundWithTag = false)
+    public List<TeaVMProperty> getProperties() {
+        return properties;
+    }
+
+    public void setProperties(List<TeaVMProperty> properties) {
+        this.properties = properties;
     }
 
     public static List<TeaVMJpsConfiguration> getAll(JpsModule module) {
@@ -113,8 +127,12 @@ public class TeaVMJpsConfiguration extends JpsElementBase<TeaVMJpsConfiguration>
     public void applyChanges(@NotNull TeaVMJpsConfiguration modified) {
         mainClass = modified.mainClass;
         targetDirectory = modified.targetDirectory;
-        minifying = modified.minifying;
         sourceMapsFileGenerated = modified.sourceMapsFileGenerated;
         sourceFilesCopied = modified.sourceFilesCopied;
+
+        properties.clear();
+        properties.addAll(modified.properties.stream()
+                .map(property -> property.createCopy())
+                .collect(Collectors.toList()));
     }
 }

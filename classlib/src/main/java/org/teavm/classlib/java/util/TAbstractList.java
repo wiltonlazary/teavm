@@ -18,11 +18,6 @@ package org.teavm.classlib.java.util;
 import org.teavm.classlib.java.lang.*;
 import org.teavm.interop.Rename;
 
-/**
- *
- * @author Alexey Andreev
- * @param <E>
- */
 public abstract class TAbstractList<E> extends TAbstractCollection<E> implements TList<E> {
     protected transient int modCount;
 
@@ -155,11 +150,13 @@ public abstract class TAbstractList<E> extends TAbstractCollection<E> implements
     }
 
     protected void removeRange(int start, int end) {
-        for (int i = start; i < end; i++) {
-            remove(i);
+        TListIterator<E> iterator = listIterator(start);
+        int sz = end - start;
+        for (int i = 0; i < sz; i++) {
+            iterator.next();
+            iterator.remove();
         }
     }
-
 
     @Override
     public int hashCode() {
@@ -169,6 +166,11 @@ public abstract class TAbstractList<E> extends TAbstractCollection<E> implements
             hashCode = 31 * hashCode + (elem != null ? elem.hashCode() : 0);
         }
         return hashCode;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        return equals0((TObject) obj);
     }
 
     @Override

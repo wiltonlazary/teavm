@@ -20,10 +20,6 @@ import java.util.List;
 import org.teavm.classlib.java.util.TCalendar;
 import org.teavm.classlib.java.util.TLocale;
 
-/**
- *
- * @author Alexey Andreev
- */
 class TSimpleDatePatternParser {
     private TDateFormatSymbols symbols;
     private TLocale locale;
@@ -61,7 +57,7 @@ class TSimpleDatePatternParser {
                     if (rep == 2) {
                         elements.add(new TDateFormatElement.Year(TCalendar.YEAR));
                     } else {
-                        elements.add(new TDateFormatElement.Numeric(TCalendar.YEAR, rep));
+                        elements.add(new TDateFormatElement.Numeric(TCalendar.YEAR, rep, 8));
                     }
                     break;
                 }
@@ -77,27 +73,27 @@ class TSimpleDatePatternParser {
                 }
                 case 'w': {
                     int rep = parseRepetitions();
-                    elements.add(new TDateFormatElement.Numeric(TCalendar.WEEK_OF_YEAR, rep));
+                    elements.add(new TDateFormatElement.Numeric(TCalendar.WEEK_OF_YEAR, rep, 2));
                     break;
                 }
                 case 'W': {
                     int rep = parseRepetitions();
-                    elements.add(new TDateFormatElement.Numeric(TCalendar.WEEK_OF_MONTH, rep));
+                    elements.add(new TDateFormatElement.Numeric(TCalendar.WEEK_OF_MONTH, rep, 1));
                     break;
                 }
                 case 'D': {
                     int rep = parseRepetitions();
-                    elements.add(new TDateFormatElement.Numeric(TCalendar.DAY_OF_YEAR, rep));
+                    elements.add(new TDateFormatElement.Numeric(TCalendar.DAY_OF_YEAR, rep, 3));
                     break;
                 }
                 case 'd': {
                     int rep = parseRepetitions();
-                    elements.add(new TDateFormatElement.Numeric(TCalendar.DAY_OF_MONTH, rep));
+                    elements.add(new TDateFormatElement.Numeric(TCalendar.DAY_OF_MONTH, rep, 2));
                     break;
                 }
                 case 'F': {
                     int rep = parseRepetitions();
-                    elements.add(new TDateFormatElement.Numeric(TCalendar.DAY_OF_WEEK_IN_MONTH, rep));
+                    elements.add(new TDateFormatElement.Numeric(TCalendar.DAY_OF_WEEK_IN_MONTH, rep, 2));
                     break;
                 }
                 case 'E':
@@ -118,7 +114,7 @@ class TSimpleDatePatternParser {
                 }
                 case 'H': {
                     int rep = parseRepetitions();
-                    elements.add(new TDateFormatElement.Numeric(TCalendar.HOUR_OF_DAY, rep));
+                    elements.add(new TDateFormatElement.Numeric(TCalendar.HOUR_OF_DAY, rep, 2));
                     break;
                 }
                 case 'k': {
@@ -128,7 +124,7 @@ class TSimpleDatePatternParser {
                 }
                 case 'K': {
                     int rep = parseRepetitions();
-                    elements.add(new TDateFormatElement.Numeric(TCalendar.HOUR, rep));
+                    elements.add(new TDateFormatElement.Numeric(TCalendar.HOUR, rep, 2));
                     break;
                 }
                 case 'h': {
@@ -138,17 +134,17 @@ class TSimpleDatePatternParser {
                 }
                 case 'm': {
                     int rep = parseRepetitions();
-                    elements.add(new TDateFormatElement.Numeric(TCalendar.MINUTE, rep));
+                    elements.add(new TDateFormatElement.Numeric(TCalendar.MINUTE, rep, 2));
                     break;
                 }
                 case 's': {
                     int rep = parseRepetitions();
-                    elements.add(new TDateFormatElement.Numeric(TCalendar.SECOND, rep));
+                    elements.add(new TDateFormatElement.Numeric(TCalendar.SECOND, rep, 2));
                     break;
                 }
                 case 'S': {
                     int rep = parseRepetitions();
-                    elements.add(new TDateFormatElement.Numeric(TCalendar.MILLISECOND, rep));
+                    elements.add(new TDateFormatElement.Numeric(TCalendar.MILLISECOND, rep, 3));
                     break;
                 }
                 case 'z': {

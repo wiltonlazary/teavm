@@ -15,10 +15,12 @@
  */
 package org.teavm.classlib.impl.tz;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -27,17 +29,13 @@ import org.teavm.platform.metadata.MetadataGenerator;
 import org.teavm.platform.metadata.MetadataGeneratorContext;
 import org.teavm.platform.metadata.ResourceMap;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class TimeZoneGenerator implements MetadataGenerator {
-    public static final String TIMEZONE_DB_VERSION = "2015d";
+    public static final String TIMEZONE_DB_VERSION = "2019b";
     public static final String TIMEZONE_DB_PATH = "org/teavm/classlib/impl/tz/tzdata" + TIMEZONE_DB_VERSION + ".zip";
 
     public static void compile(ZoneInfoCompiler compiler, ClassLoader classLoader) {
         try (InputStream input = classLoader.getResourceAsStream(TIMEZONE_DB_PATH)) {
-            try (ZipInputStream zip = new ZipInputStream(input)) {
+            try (ZipInputStream zip = new ZipInputStream(new BufferedInputStream(input))) {
                 while (true) {
                     ZipEntry entry = zip.getNextEntry();
                     if (entry == null) {
@@ -53,11 +51,13 @@ public class TimeZoneGenerator implements MetadataGenerator {
                         case "northamerica":
                         case "pacificnew":
                         case "southamerica":
-                            compiler.parseDataFile(new BufferedReader(new InputStreamReader(zip, "UTF-8")), false);
+                            compiler.parseDataFile(new BufferedReader(
+                                    new InputStreamReader(zip, StandardCharsets.UTF_8)), false);
                             break;
                         case "backward":
                         case "backzone":
-                            compiler.parseDataFile(new BufferedReader(new InputStreamReader(zip, "UTF-8")), true);
+                            compiler.parseDataFile(new BufferedReader(
+                                    new InputStreamReader(zip, StandardCharsets.UTF_8)), true);
                             break;
                     }
                 }
@@ -71,13 +71,13 @@ public class TimeZoneGenerator implements MetadataGenerator {
     public ResourceMap<ResourceMap<TimeZoneResource>> generateMetadata(
             MetadataGeneratorContext context, MethodReference method) {
         ResourceMap<ResourceMap<TimeZoneResource>> result = context.createResourceMap();
-        ZoneInfoCompiler compiler = new ZoneInfoCompiler();
         Collection<StorableDateTimeZone> zones;
         try (InputStream input = context.getClassLoader().getResourceAsStream("org/teavm/classlib/impl/tz/cache")) {
             if (input != null) {
                 TimeZoneCache cache = new TimeZoneCache();
-                zones = cache.read(input).values();
+                zones = cache.read(new BufferedInputStream(input)).values();
             } else {
+                ZoneInfoCompiler compiler = new ZoneInfoCompiler();
                 compile(compiler, context.getClassLoader());
                 zones = compiler.compile().values();
             }

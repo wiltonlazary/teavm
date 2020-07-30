@@ -61,6 +61,7 @@ import org.teavm.model.instructions.BinaryBranchingCondition;
 import org.teavm.model.instructions.BinaryBranchingInstruction;
 import org.teavm.model.instructions.BinaryInstruction;
 import org.teavm.model.instructions.BinaryOperation;
+import org.teavm.model.instructions.BoundCheckInstruction;
 import org.teavm.model.instructions.BranchingCondition;
 import org.teavm.model.instructions.BranchingInstruction;
 import org.teavm.model.instructions.CastInstruction;
@@ -147,7 +148,10 @@ public class CompositeMethodGenerator {
         returnBlockIndex = program.basicBlockCount() - 1;
 
         for (int i = capturedValues.size(); i < template.variableCount(); ++i) {
-            program.createVariable();
+            VariableReader variable = template.variableAt(i);
+            Variable variableCopy = program.createVariable();
+            variableCopy.setDebugName(variable.getDebugName());
+            variableCopy.setLabel(variable.getLabel());
         }
 
         // Pre-create phis
@@ -197,13 +201,14 @@ public class CompositeMethodGenerator {
             templateBlock.readAllInstructions(substitutor);
 
             // Capture phi inputs of successor blocks
-            Instruction lastInsn = targetBlock.getInstructions().remove(targetBlock.getInstructions().size() - 1);
+            Instruction lastInsn = targetBlock.getLastInstruction();
+            lastInsn.delete();
             List<Incoming> blockOutgoings = outgoings.get(i);
             for (int j = 0; j < blockOutgoings.size(); ++j) {
                 VariableReader outgoingVar = outgoingVars.get(i).get(j);
                 blockOutgoings.get(j).setValue(substitutor.var(outgoingVar));
             }
-            targetBlock.getInstructions().add(lastInsn);
+            targetBlock.add(lastInsn);
 
             phiBlockMap.put(targetBlock, currentBlock());
         }
@@ -235,7 +240,7 @@ public class CompositeMethodGenerator {
 
     void add(Instruction insn) {
         insn.setLocation(forcedLocation != null ? forcedLocation : location);
-        program.basicBlockAt(blockIndex).getInstructions().add(insn);
+        program.basicBlockAt(blockIndex).add(insn);
     }
 
     Variable captureValue(CapturedValue captured) {
@@ -304,10 +309,11 @@ public class CompositeMethodGenerator {
             add(insn);
             return insn.getReceiver();
         } else if (value instanceof ValueImpl) {
-            return varContext.emitVariable((ValueImpl<?>) value, new CallLocation(MetaprogrammingImpl.templateMethod,
-                    location));
+            Variable result = varContext.emitVariable((ValueImpl<?>) value,
+                    new CallLocation(MetaprogrammingImpl.templateMethod, location));
+            return coalesce(result);
         } else if (value instanceof LazyValueImpl) {
-            return lazy((LazyValueImpl<?>) value);
+            return coalesce(lazy((LazyValueImpl<?>) value));
         } else if (value instanceof ReflectFieldImpl) {
             ReflectFieldImpl reflectField = (ReflectFieldImpl) value;
             diagnostics.error(new CallLocation(MetaprogrammingImpl.templateMethod, location),
@@ -355,12 +361,22 @@ public class CompositeMethodGenerator {
         if (result instanceof ValueImpl) {
             return ((ValueImpl<?>) result).innerValue;
         } else if (result instanceof LazyValueImpl) {
-            return lazy((LazyValueImpl) result);
+            return lazy((LazyValueImpl<?>) result);
         } else if (result != null) {
             throw new IllegalStateException("Unknown value type: " + result.getClass().getName());
         } else {
             return null;
         }
+    }
+
+    private Variable coalesce(Variable var) {
+        if (var == null) {
+            NullConstantInstruction nullInsn = new NullConstantInstruction();
+            nullInsn.setReceiver(program.createVariable());
+            var = nullInsn.getReceiver();
+            add(nullInsn);
+        }
+        return var;
     }
 
     Variable box(Variable var, ValueType type) {
@@ -391,7 +407,7 @@ public class CompositeMethodGenerator {
         InvokeInstruction insn = new InvokeInstruction();
         insn.setMethod(new MethodReference(wrapper, "valueOf", primitive, wrapper));
         insn.setType(InvocationType.SPECIAL);
-        insn.getArguments().add(var);
+        insn.setArguments(var);
         var = program.createVariable();
         insn.setReceiver(var);
         add(insn);
@@ -665,6 +681,7 @@ public class CompositeMethodGenerator {
             BasicBlock target = program.basicBlockAt(returnBlockIndex);
 
             if (valueToReturn != null) {
+                Variable valueToReturnResolved = var(valueToReturn);
                 if (resultVar == null) {
                     resultVar = program.createVariable();
                     resultPhi = new Phi();
@@ -673,7 +690,7 @@ public class CompositeMethodGenerator {
                 }
                 Incoming incoming = new Incoming();
                 incoming.setSource(program.basicBlockAt(blockIndex));
-                incoming.setValue(var(valueToReturn));
+                incoming.setValue(valueToReturnResolved);
                 resultPhi.getIncomings().add(incoming);
             }
 
@@ -804,10 +821,14 @@ public class CompositeMethodGenerator {
             if (type == InvocationType.VIRTUAL && instance != null) {
                 if (method.getClassName().equals(Value.class.getName())) {
                     if (method.getName().equals("get")) {
-                        AssignInstruction insn = new AssignInstruction();
-                        insn.setReceiver(var(receiver));
-                        insn.setAssignee(var(instance));
-                        add(insn);
+                        if (receiver != null) {
+                            AssignInstruction insn = new AssignInstruction();
+                            insn.setReceiver(var(receiver));
+                            insn.setAssignee(var(instance));
+                            add(insn);
+                        } else {
+                            var(instance);
+                        }
                         return;
                     } else {
                         diagnostics.error(new CallLocation(MetaprogrammingImpl.templateMethod, location),
@@ -832,7 +853,7 @@ public class CompositeMethodGenerator {
             insn.setReceiver(var(receiver));
             insn.setMethod(method);
             insn.setType(type);
-            insn.getArguments().addAll(arguments.stream().map(this::var).collect(Collectors.toList()));
+            insn.setArguments(arguments.stream().map(this::var).toArray(Variable[]::new));
             add(insn);
         }
 
@@ -913,7 +934,7 @@ public class CompositeMethodGenerator {
                     insn.setType(Modifier.isStatic(reflectMethod.getModifiers()) ? InvocationType.SPECIAL
                             : InvocationType.VIRTUAL);
                     insn.setMethod(reflectMethod.method.getReference());
-                    emitArguments(var(arguments.get(1)), reflectMethod, insn.getArguments());
+                    insn.setArguments(emitArguments(var(arguments.get(1)), reflectMethod));
                     add(insn);
 
                     if (receiver != null) {
@@ -945,7 +966,7 @@ public class CompositeMethodGenerator {
                     insn.setInstance(constructInsn.getReceiver());
                     insn.setType(InvocationType.SPECIAL);
                     insn.setMethod(reflectMethod.method.getReference());
-                    emitArguments(var(arguments.get(0)), reflectMethod, insn.getArguments());
+                    insn.setArguments(emitArguments(var(arguments.get(0)), reflectMethod));
                     add(insn);
 
                     return true;
@@ -1035,14 +1056,14 @@ public class CompositeMethodGenerator {
             }
         }
 
-        private void emitArguments(Variable argumentsVar, ReflectMethodImpl reflectMethod,
-                List<Variable> arguments) {
+        private Variable[] emitArguments(Variable argumentsVar, ReflectMethodImpl reflectMethod) {
             UnwrapArrayInstruction unwrapInsn = new UnwrapArrayInstruction(ArrayElementType.OBJECT);
             unwrapInsn.setArray(argumentsVar);
             unwrapInsn.setReceiver(program.createVariable());
             add(unwrapInsn);
             argumentsVar = unwrapInsn.getReceiver();
 
+            Variable[] arguments = new Variable[reflectMethod.getParameterCount()];
             for (int i = 0; i < reflectMethod.getParameterCount(); ++i) {
                 IntegerConstantInstruction indexInsn = new IntegerConstantInstruction();
                 indexInsn.setConstant(i);
@@ -1055,9 +1076,10 @@ public class CompositeMethodGenerator {
                 extractArgInsn.setReceiver(program.createVariable());
                 add(extractArgInsn);
 
-                arguments.add(unbox(extractArgInsn.getReceiver(),
-                        reflectMethod.method.parameterType(i)));
+                arguments[i] = unbox(extractArgInsn.getReceiver(), reflectMethod.method.parameterType(i));
             }
+
+            return arguments;
         }
 
         private Variable unwrapArray(ValueType type, Variable array) {
@@ -1148,6 +1170,18 @@ public class CompositeMethodGenerator {
             MonitorExitInstruction insn = new MonitorExitInstruction();
             insn.setObjectRef(var(objectRef));
             add(insn);
+        }
+
+        @Override
+        public void boundCheck(VariableReader receiver, VariableReader index, VariableReader array, boolean lower) {
+            BoundCheckInstruction instruction = new BoundCheckInstruction();
+            instruction.setReceiver(var(receiver));
+            instruction.setIndex(var(index));
+            if (array != null) {
+                instruction.setArray(var(array));
+            }
+            instruction.setLower(lower);
+            add(instruction);
         }
     }
 }

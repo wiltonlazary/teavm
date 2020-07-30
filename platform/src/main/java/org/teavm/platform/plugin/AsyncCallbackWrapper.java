@@ -15,12 +15,8 @@
  */
 package org.teavm.platform.plugin;
 
-import org.teavm.platform.async.AsyncCallback;
+import org.teavm.interop.AsyncCallback;
 
-/**
- *
- * @author Alexey Andreev
- */
 class AsyncCallbackWrapper<T> implements AsyncCallback<T> {
     private AsyncCallback<T> realAsyncCallback;
 

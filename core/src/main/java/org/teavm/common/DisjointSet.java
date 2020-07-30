@@ -17,10 +17,6 @@ package org.teavm.common;
 
 import java.util.Arrays;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class DisjointSet {
     private int[] parent = new int[16];
     private int[] rank = new int[16];
@@ -88,7 +84,7 @@ public class DisjointSet {
             parent[b] = a;
             setSize[a] += setSize[b];
             return a;
-        } else if (rank[b] < rank[a]) {
+        } else if (rank[b] > rank[a]) {
             parent[a] = b;
             setSize[b] += setSize[a];
             return b;

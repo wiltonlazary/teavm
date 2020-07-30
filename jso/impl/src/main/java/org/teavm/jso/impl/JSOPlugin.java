@@ -16,13 +16,18 @@
 package org.teavm.jso.impl;
 
 import org.teavm.backend.javascript.TeaVMJavaScriptHost;
+import org.teavm.jso.JSExceptions;
+import org.teavm.jso.JSObject;
+import org.teavm.model.MethodReference;
+import org.teavm.vm.TeaVMPluginUtil;
 import org.teavm.vm.spi.TeaVMHost;
 import org.teavm.vm.spi.TeaVMPlugin;
 
 public class JSOPlugin implements TeaVMPlugin {
     @Override
     public void install(TeaVMHost host) {
-        if (host.getExtension(TeaVMJavaScriptHost.class) == null) {
+        TeaVMJavaScriptHost jsHost = host.getExtension(TeaVMJavaScriptHost.class);
+        if (jsHost == null) {
             return;
         }
 
@@ -30,8 +35,23 @@ public class JSOPlugin implements TeaVMPlugin {
         host.registerService(JSBodyRepository.class, repository);
         host.add(new JSObjectClassTransformer(repository));
         JSDependencyListener dependencyListener = new JSDependencyListener(repository);
-        JSAliasRenderer aliasRenderer = new JSAliasRenderer(dependencyListener);
+        JSAliasRenderer aliasRenderer = new JSAliasRenderer();
         host.add(dependencyListener);
-        host.getExtension(TeaVMJavaScriptHost.class).add(aliasRenderer);
+        host.add(new JSExceptionsDependencyListener());
+
+        jsHost.add(aliasRenderer);
+        jsHost.addGeneratorProvider(new GeneratorAnnotationInstaller<>(new JSBodyGenerator(),
+                DynamicGenerator.class.getName()));
+        jsHost.addInjectorProvider(new GeneratorAnnotationInstaller<>(new JSBodyGenerator(),
+                DynamicInjector.class.getName()));
+        jsHost.addVirtualMethods(aliasRenderer);
+
+        JSExceptionsGenerator exceptionsGenerator = new JSExceptionsGenerator();
+        jsHost.add(new MethodReference(JSExceptions.class, "getJavaException", JSObject.class, Throwable.class),
+                exceptionsGenerator);
+        jsHost.add(new MethodReference(JSExceptions.class, "getJSException", Throwable.class, JSObject.class),
+                exceptionsGenerator);
+
+        TeaVMPluginUtil.handleNatives(host, JS.class);
     }
 }

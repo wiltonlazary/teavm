@@ -19,18 +19,15 @@ import org.teavm.jso.dom.events.Event;
 import org.teavm.jso.dom.events.EventListener;
 import org.teavm.jso.dom.events.EventTarget;
 import org.teavm.jso.dom.events.FocusEventTarget;
+import org.teavm.jso.dom.events.GamepadEventTarget;
 import org.teavm.jso.dom.events.HashChangeEvent;
 import org.teavm.jso.dom.events.KeyboardEventTarget;
 import org.teavm.jso.dom.events.LoadEventTarget;
 import org.teavm.jso.dom.events.MessageEvent;
 import org.teavm.jso.dom.events.MouseEventTarget;
 
-/**
- *
- * @author Alexey Andreev
- */
 public interface WindowEventTarget extends EventTarget, FocusEventTarget, MouseEventTarget, KeyboardEventTarget,
-        LoadEventTarget {
+        LoadEventTarget, GamepadEventTarget {
     default void listenBeforeOnload(EventListener<Event> listener) {
         addEventListener("beforeunload", listener);
     }

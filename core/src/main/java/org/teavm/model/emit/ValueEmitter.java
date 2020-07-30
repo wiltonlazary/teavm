@@ -16,9 +16,11 @@
 package org.teavm.model.emit;
 
 import org.teavm.model.BasicBlock;
-import org.teavm.model.ClassReaderSource;
+import org.teavm.model.ClassHierarchy;
+import org.teavm.model.ClassReader;
 import org.teavm.model.FieldReference;
 import org.teavm.model.Incoming;
+import org.teavm.model.MethodDescriptor;
 import org.teavm.model.MethodReader;
 import org.teavm.model.MethodReference;
 import org.teavm.model.Phi;
@@ -52,10 +54,6 @@ import org.teavm.model.instructions.PutFieldInstruction;
 import org.teavm.model.instructions.RaiseInstruction;
 import org.teavm.model.instructions.UnwrapArrayInstruction;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class ValueEmitter {
     ProgramEmitter pe;
     BasicBlock block;
@@ -231,7 +229,7 @@ public class ValueEmitter {
             case SHORT:
                 return IntegerSubtype.SHORT;
             case CHARACTER:
-                return IntegerSubtype.CHARACTER;
+                return IntegerSubtype.CHAR;
             default:
                 break;
         }
@@ -429,21 +427,16 @@ public class ValueEmitter {
             throw new EmitException("Can't invoke method on non-object type: " + type);
         }
 
-        ClassReaderSource classSource = pe.getClassSource();
+        ClassHierarchy hierarchy = pe.hierarchy;
         for (int i = 0; i < method.parameterCount(); ++i) {
-            if (!classSource.isSuperType(method.parameterType(i), arguments[i].getType()).orElse(false)) {
+            if (!hierarchy.isSuperType(method.parameterType(i), arguments[i].getType(), false)) {
                 throw new EmitException("Argument " + i + " of type " + arguments[i].getType() + " is "
                         + "not compatible with method " + method);
             }
         }
 
-        if (!pe.classSource.isSuperType(method.getClassName(), ((ValueType.Object) type).getClassName())
-                .orElse(true)) {
+        if (!hierarchy.isSuperType(method.getClassName(), ((ValueType.Object) type).getClassName(), true)) {
             throw new EmitException("Can't call " + method + " on non-compatible class " + type);
-        }
-        MethodReader resolvedMethod = pe.classSource.resolve(method);
-        if (resolvedMethod != null) {
-            method = resolvedMethod.getReference();
         }
 
         Variable result = null;
@@ -455,9 +448,11 @@ public class ValueEmitter {
         insn.setMethod(method);
         insn.setInstance(variable);
         insn.setReceiver(result);
-        for (ValueEmitter arg : arguments) {
-            insn.getArguments().add(arg.variable);
+        Variable[] insnArguments = new Variable[arguments.length];
+        for (int i = 0; i < insnArguments.length; ++i) {
+            insnArguments[i] = arguments[i].variable;
         }
+        insn.setArguments(insnArguments);
         pe.addInstruction(insn);
         return result != null ? pe.var(result, method.getReturnType()) : null;
     }
@@ -475,7 +470,11 @@ public class ValueEmitter {
         }
         signature[arguments.length] = resultType;
 
-        MethodReference method = new MethodReference(className, name, signature);
+        ClassReader cls = pe.classSource.get(className);
+        MethodReader methodReader = cls != null ? cls.getMethod(new MethodDescriptor(name, signature)) : null;
+        MethodReference method = methodReader != null
+                ? methodReader.getReference()
+                : new MethodReference(className, name, signature);
         if (method.getReturnType() != ValueType.VOID) {
             result = pe.getProgram().createVariable();
         }
@@ -484,9 +483,11 @@ public class ValueEmitter {
         insn.setMethod(method);
         insn.setInstance(variable);
         insn.setReceiver(result);
-        for (ValueEmitter arg : arguments) {
-            insn.getArguments().add(arg.variable);
+        Variable[] insnArguments = new Variable[arguments.length];
+        for (int i = 0; i < insnArguments.length; ++i) {
+            insnArguments[i] = arguments[i].variable;
         }
+        insn.setArguments(insnArguments);
         pe.addInstruction(insn);
         return result != null ? pe.var(result, resultType) : null;
     }
@@ -648,7 +649,7 @@ public class ValueEmitter {
     }
 
     public void raise() {
-        if (!pe.classSource.isSuperType(ValueType.object("java.lang.Throwable"), type).orElse(true)) {
+        if (!pe.hierarchy.isSuperType(ValueType.object("java.lang.Throwable"), type, true)) {
             throw new EmitException("Can't throw non-exception value: " + type);
         }
 
@@ -664,7 +665,7 @@ public class ValueEmitter {
     public ValueEmitter cast(ValueType type) {
         if (type.equals(this.type)) {
             return this;
-        } else if (pe.classSource.isSuperType(type, this.type).orElse(false)) {
+        } else if (pe.hierarchy.isSuperType(type, this.type, false)) {
             return pe.var(variable.getIndex(), type);
         }
 
@@ -723,7 +724,7 @@ public class ValueEmitter {
             return value;
         } else {
             if (this.type instanceof ValueType.Primitive) {
-                throw new EmitException("Can't convert " + this.type + " to " + type);
+                return boxPrimitive(type);
             }
             Variable result = pe.getProgram().createVariable();
             CastInstruction insn = new CastInstruction();
@@ -733,6 +734,28 @@ public class ValueEmitter {
             pe.addInstruction(insn);
             return pe.var(result, type);
         }
+    }
+
+    private ValueEmitter boxPrimitive(ValueType type) {
+        if (!(type instanceof ValueType.Object)) {
+            throw new EmitException("Can't convert " + this.type + " to " + type);
+        }
+        String targetClass = ((ValueType.Object) type).getClassName();
+
+        PrimitiveType primitiveType = ((ValueType.Primitive) this.type).getKind();
+        String boxClassName = getPrimitiveClassName(primitiveType);
+        ValueEmitter result = invokeValueOf(boxClassName);
+        if (!pe.hierarchy.isSuperType(targetClass, boxClassName, false)) {
+            throw new EmitException("Can't convert " + this.type + " to " + targetClass);
+        }
+        if (!result.type.equals(type)) {
+            result.type = type;
+        }
+        return result;
+    }
+
+    private ValueEmitter invokeValueOf(String cls) {
+        return pe.invoke(cls, "valueOf", ValueType.object(cls), this);
     }
 
     public ValueEmitter cast(NumericOperandType to) {
@@ -750,7 +773,7 @@ public class ValueEmitter {
 
         ValueEmitter result = pe.newVar(ValueType.INTEGER);
         CastNumberInstruction insn = new CastNumberInstruction(convertToNumeric(kind), to);
-        insn.setValue(variable);
+        insn.setValue(value.variable);
         insn.setReceiver(result.getVariable());
         pe.addInstruction(insn);
 
@@ -776,7 +799,7 @@ public class ValueEmitter {
                 return ValueType.BYTE;
             case SHORT:
                 return ValueType.SHORT;
-            case CHARACTER:
+            case CHAR:
                 return ValueType.CHARACTER;
         }
         throw new IllegalArgumentException("Unknown subtype: " + subtype);
@@ -794,7 +817,7 @@ public class ValueEmitter {
                     throw new EmitException("Can't cast non-short value: " + type);
                 }
                 break;
-            case CHARACTER:
+            case CHAR:
                 if (type != ValueType.CHARACTER) {
                     throw new EmitException("Can't cast non-char value: " + type);
                 }
@@ -827,7 +850,7 @@ public class ValueEmitter {
     }
 
     public ValueEmitter assertIs(ValueType type) {
-        if (!pe.classSource.isSuperType(type, this.type).orElse(true)) {
+        if (!pe.hierarchy.isSuperType(type, this.type, true)) {
             throw new EmitException("Value type " + this.type + " is not subtype of " + type);
         }
         return this;

@@ -18,14 +18,16 @@ package org.teavm.model;
 import java.util.Collection;
 import java.util.Set;
 
-/**
- *
- * @author Alexey Andreev
- */
 public interface ClassReader extends ElementReader {
+    GenericTypeParameter[] getGenericParameters();
+
     String getParent();
 
     Set<String> getInterfaces();
+
+    GenericValueType.Object getGenericParent();
+
+    Set<GenericValueType.Object> getGenericInterfaces();
 
     MethodReader getMethod(MethodDescriptor method);
 
@@ -36,4 +38,8 @@ public interface ClassReader extends ElementReader {
     Collection<? extends FieldReader> getFields();
 
     String getOwnerName();
+
+    String getSimpleName();
+
+    String getDeclaringClassName();
 }

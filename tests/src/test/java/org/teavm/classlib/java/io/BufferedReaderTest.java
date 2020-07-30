@@ -15,15 +15,18 @@
  */
 package org.teavm.classlib.java.io;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.StringReader;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.teavm.junit.TeaVMTestRunner;
+import org.teavm.junit.WholeClassCompilation;
 
 @RunWith(TeaVMTestRunner.class)
+@WholeClassCompilation
 public class BufferedReaderTest {
     @Test
     public void readsCharacters() throws IOException {
@@ -66,7 +69,7 @@ public class BufferedReaderTest {
     public void fillsBuffer() throws IOException {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < 1000; ++i) {
-            sb.append((char)i);
+            sb.append((char) i);
         }
         BufferedReader reader = new BufferedReader(new StringReader(sb.toString()), 101);
         char[] buffer = new char[500];
@@ -80,7 +83,7 @@ public class BufferedReaderTest {
     public void leavesMark() throws IOException {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < 1000; ++i) {
-            sb.append((char)i);
+            sb.append((char) i);
         }
         BufferedReader reader = new BufferedReader(new StringReader(sb.toString()), 100);
         reader.skip(50);

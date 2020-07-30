@@ -19,10 +19,6 @@ import org.teavm.jso.JSBody;
 import org.teavm.jso.JSObject;
 import org.teavm.jso.JSProperty;
 
-/**
- *
- * @author Alexey Andreev
- */
 public abstract class WebGLContextAttributes implements JSObject {
     @JSProperty
     public abstract boolean isAlpha();
@@ -60,6 +56,6 @@ public abstract class WebGLContextAttributes implements JSObject {
     @JSProperty
     public abstract void setPreserveDrawingBuffer(boolean preserveDrawingBuffer);
 
-    @JSBody(params = {}, script = "return {};")
+    @JSBody(script = "return {};")
     public static native WebGLContextAttributes create();
 }

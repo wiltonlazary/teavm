@@ -16,15 +16,28 @@
 package org.teavm.jso.browser;
 
 import org.teavm.jso.JSBody;
+import org.teavm.jso.gamepad.Gamepad;
+import org.teavm.jso.geolocation.Geolocation;
 
-/**
- *
- * @author Alexey Andreev
- */
 public final class Navigator {
     private Navigator() {
     }
 
-    @JSBody(params = "", script = "return window.navigator.onLine;")
+    @JSBody(script = "return navigator.onLine;")
     public static native boolean isOnline();
+
+    @JSBody(script = "return navigator.geolocation;")
+    public static native Geolocation getGeolocation();
+
+    @JSBody(script = "return (\"geolocation\" in navigator);")
+    public static native boolean isGeolocationAvailable();
+
+    @JSBody(script = "return navigator.language;")
+    public static native String getLanguage();
+
+    @JSBody(script = "return navigator.languages;")
+    public static native String[] getLanguages();
+    
+    @JSBody(script = "return navigator.getGamepads();")
+    public static native Gamepad[] getGamepads();
 }

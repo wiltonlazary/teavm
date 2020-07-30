@@ -15,10 +15,6 @@
  */
 package org.teavm.classlib.java.lang;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class TNumberFormatException extends TIllegalArgumentException {
     private static final long serialVersionUID = 6872736757931546482L;
 
@@ -26,7 +22,7 @@ public class TNumberFormatException extends TIllegalArgumentException {
         super();
     }
 
-    public TNumberFormatException(TString message) {
+    public TNumberFormatException(String message) {
         super(message);
     }
 }

@@ -67,21 +67,15 @@ import org.teavm.diagnostics.ProblemTextConsumer;
 import org.teavm.model.CallLocation;
 import org.teavm.model.ClassHolderTransformer;
 import org.teavm.model.FieldReference;
-import org.teavm.model.InstructionLocation;
 import org.teavm.model.MethodReference;
+import org.teavm.model.TextLocation;
 import org.teavm.model.ValueType;
-import org.teavm.tooling.ClassAlias;
-import org.teavm.tooling.RuntimeCopyOperation;
 import org.teavm.tooling.TeaVMTool;
 import org.teavm.tooling.TeaVMToolException;
 import org.teavm.tooling.sources.DirectorySourceFileProvider;
 import org.teavm.tooling.sources.JarSourceFileProvider;
 import org.teavm.tooling.sources.SourceFileProvider;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class TeaVMProjectBuilder extends IncrementalProjectBuilder {
     private static final int TICKS_PER_PROFILE = 10000;
     private URL[] classPath;
@@ -156,23 +150,15 @@ public class TeaVMProjectBuilder extends IncrementalProjectBuilder {
         String targetDir = profile.getTargetDirectory();
         tool.setTargetDirectory(new File(varManager.performStringSubstitution(targetDir, false)));
         tool.setTargetFileName(profile.getTargetFileName());
-        tool.setMinifying(profile.isMinifying());
-        tool.setRuntime(mapRuntime(profile.getRuntimeMode()));
+        tool.setMinifying(false);
         tool.setMainClass(profile.getMainClass());
         tool.getProperties().putAll(profile.getProperties());
         tool.setIncremental(profile.isIncremental());
         String cacheDir = profile.getCacheDirectory();
         tool.setCacheDirectory(!cacheDir.isEmpty() ?
                 new File(varManager.performStringSubstitution(cacheDir, false)) : null);
-        for (ClassHolderTransformer transformer : instantiateTransformers(profile, classLoader)) {
-            tool.getTransformers().add(transformer);
-        }
-        for (Map.Entry<String, String> entry : profile.getClassAliases().entrySet()) {
-            ClassAlias classAlias = new ClassAlias();
-            classAlias.setClassName(entry.getKey());
-            classAlias.setAlias(entry.getValue());
-            tool.getClassAliases().add(classAlias);
-        }
+        tool.getTransformers().addAll(Arrays.asList(profile.getTransformers()));
+        tool.getClassesToPreserve().addAll(profile.getClassesToPreserve());
         for (SourceFileProvider provider : sourceProviders) {
             tool.addSourceFileProvider(provider);
         }
@@ -217,17 +203,6 @@ public class TeaVMProjectBuilder extends IncrementalProjectBuilder {
                 job.schedule();
              }
          }
-    }
-
-    private RuntimeCopyOperation mapRuntime(TeaVMRuntimeMode runtimeMode) {
-        switch (runtimeMode) {
-            case MERGE:
-                return RuntimeCopyOperation.MERGED;
-            case SEPARATE:
-                return RuntimeCopyOperation.SEPARATE;
-            default:
-                return RuntimeCopyOperation.NONE;
-        }
     }
 
     private void classesToResources(ProfileData profileData, TeaVMTool tool) {
@@ -355,7 +330,7 @@ public class TeaVMProjectBuilder extends IncrementalProjectBuilder {
         return wasPut;
     }
 
-    private boolean putMarker(IResource resource, InstructionLocation location, MethodReference method,
+    private boolean putMarker(IResource resource, TextLocation location, MethodReference method,
             String text, TeaVMProfile profile, boolean force) throws CoreException {
         Integer lineNumber = location != null ? location.getLine() : null;
         if (lineNumber == null) {
@@ -450,7 +425,7 @@ public class TeaVMProjectBuilder extends IncrementalProjectBuilder {
             @Override public void appendMethod(MethodReference method) {
                 sb.append(getFullMethodName(method));
             }
-            @Override public void appendLocation(InstructionLocation location) {
+            @Override public void appendLocation(TextLocation location) {
                 sb.append(location);
             }
             @Override public void appendField(FieldReference field) {
@@ -561,42 +536,6 @@ public class TeaVMProjectBuilder extends IncrementalProjectBuilder {
             }
         }
         return projects;
-    }
-
-    private List<ClassHolderTransformer> instantiateTransformers(TeaVMProfile profile, ClassLoader classLoader)
-            throws CoreException{
-        List<ClassHolderTransformer> transformerInstances = new ArrayList<>();
-        for (String transformerName : profile.getTransformers()) {
-            Class<?> transformerRawType;
-            try {
-                transformerRawType = Class.forName(transformerName, true, classLoader);
-            } catch (ClassNotFoundException e) {
-                putConfigMarker("Transformer not found: " + transformerName);
-                continue;
-            }
-            if (!ClassHolderTransformer.class.isAssignableFrom(transformerRawType)) {
-                putConfigMarker("Transformer " + transformerName + " is not a subtype of " +
-                        ClassHolderTransformer.class.getName());
-                continue;
-            }
-            Class<? extends ClassHolderTransformer> transformerType = transformerRawType.asSubclass(
-                    ClassHolderTransformer.class);
-            Constructor<? extends ClassHolderTransformer> ctor;
-            try {
-                ctor = transformerType.getConstructor();
-            } catch (NoSuchMethodException e) {
-                putConfigMarker("Transformer " + transformerName + " has no default constructor");
-                continue;
-            }
-            try {
-                ClassHolderTransformer transformer = ctor.newInstance();
-                transformerInstances.add(transformer);
-            } catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
-                putConfigMarker("Error instantiating transformer " + transformerName);
-                continue;
-            }
-        }
-        return transformerInstances;
     }
 
     private void putConfigMarker(String message) throws CoreException {

@@ -17,10 +17,6 @@ package org.teavm.model.instructions;
 
 import org.teavm.model.InvokeDynamicInstruction;
 
-/**
- *
- * @author Alexey Andreev
- */
 public interface InstructionVisitor {
     void visit(EmptyInstruction insn);
 
@@ -95,4 +91,6 @@ public interface InstructionVisitor {
     void visit(MonitorEnterInstruction insn);
 
     void visit(MonitorExitInstruction insn);
+
+    void visit(BoundCheckInstruction insn);
 }

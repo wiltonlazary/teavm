@@ -18,11 +18,6 @@ package org.teavm.classlib.java.util;
 import java.util.Arrays;
 import org.teavm.classlib.java.lang.*;
 
-/**
- *
- * @author Alexey Andreev
- * @param <E>
- */
 public class TArrayDeque<E> extends TAbstractCollection<E> implements TDeque<E> {
     private int version;
     private Object[] array;
@@ -254,24 +249,30 @@ public class TArrayDeque<E> extends TAbstractCollection<E> implements TDeque<E> 
                 for (int i = index + 1; i < tail; ++i) {
                     array[i - 1] = array[i];
                 }
-                array[tail - 1] = null;
+                array[--tail] = null;
             } else {
                 for (int i = index - 1; i >= head; --i) {
                     array[i + 1] = array[i];
                 }
-                array[head] = null;
+                array[head++] = null;
             }
         } else {
             if (index >= head) {
                 for (int i = index - 1; i >= head; --i) {
                     array[i + 1] = array[i];
                 }
-                array[head] = null;
+                array[head++] = null;
+                if (head >= array.length) {
+                    head = 0;
+                }
             } else {
                 for (int i = index + 1; i < tail; ++i) {
                     array[i - 1] = array[i];
                 }
-                array[tail - 1] = null;
+                if (--tail < 0) {
+                    tail += array.length;
+                }
+                array[tail] = null;
             }
         }
     }
@@ -300,6 +301,9 @@ public class TArrayDeque<E> extends TAbstractCollection<E> implements TDeque<E> 
                 return result;
             }
             @Override public void remove() {
+                if (lastIndex < 0) {
+                    throw new IllegalStateException();
+                }
                 removeAt(lastIndex);
                 lastIndex = -1;
             }

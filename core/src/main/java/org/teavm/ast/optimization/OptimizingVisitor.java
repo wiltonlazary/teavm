@@ -15,15 +15,21 @@
  */
 package org.teavm.ast.optimization;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Deque;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import org.teavm.ast.ArrayFromDataExpr;
+import org.teavm.ast.ArrayType;
 import org.teavm.ast.AssignmentStatement;
 import org.teavm.ast.BinaryExpr;
 import org.teavm.ast.BinaryOperation;
 import org.teavm.ast.BlockStatement;
+import org.teavm.ast.BoundCheckExpr;
 import org.teavm.ast.BreakStatement;
 import org.teavm.ast.CastExpr;
 import org.teavm.ast.ConditionalExpr;
@@ -58,17 +64,33 @@ import org.teavm.ast.UnaryOperation;
 import org.teavm.ast.UnwrapArrayExpr;
 import org.teavm.ast.VariableExpr;
 import org.teavm.ast.WhileStatement;
+import org.teavm.model.TextLocation;
+import org.teavm.model.ValueType;
 
 class OptimizingVisitor implements StatementVisitor, ExprVisitor {
+    private static final int MAX_DEPTH = 20;
     private Expr resultExpr;
     Statement resultStmt;
     private final boolean[] preservedVars;
+    private final int[] writeFrequencies;
+    private final int[] initialWriteFrequencies;
     private final int[] readFrequencies;
+    private final Object[] constants;
     private List<Statement> resultSequence;
+    private boolean friendlyToDebugger;
+    private TextLocation currentLocation;
+    private Deque<TextLocation> locationStack = new LinkedList<>();
+    private Deque<TextLocation> notNullLocationStack = new ArrayDeque<>();
+    private List<ArrayOptimization> pendingArrayOptimizations;
 
-    OptimizingVisitor(boolean[] preservedVars, int[] readFreqencies) {
+    OptimizingVisitor(boolean[] preservedVars, int[] writeFrequencies, int[] readFrequencies, Object[] constants,
+            boolean friendlyToDebugger) {
         this.preservedVars = preservedVars;
-        this.readFrequencies = readFreqencies;
+        this.writeFrequencies = writeFrequencies;
+        this.initialWriteFrequencies = writeFrequencies.clone();
+        this.readFrequencies = readFrequencies;
+        this.constants = constants;
+        this.friendlyToDebugger = friendlyToDebugger;
     }
 
     private static boolean isZero(Expr expr) {
@@ -79,74 +101,125 @@ class OptimizingVisitor implements StatementVisitor, ExprVisitor {
         return expr instanceof BinaryExpr && ((BinaryExpr) expr).getOperation() == BinaryOperation.COMPARE;
     }
 
+    private void pushLocation(TextLocation location) {
+        locationStack.push(location);
+        if (location != null) {
+            if (currentLocation != null) {
+                notNullLocationStack.push(currentLocation);
+            }
+            currentLocation = location;
+        }
+    }
+
+    private void popLocation() {
+        if (locationStack.pop() != null) {
+            currentLocation = notNullLocationStack.pollFirst();
+        }
+    }
+
     @Override
     public void visit(BinaryExpr expr) {
-        switch (expr.getOperation()) {
-            case AND:
-            case OR:
-                resultExpr = expr;
-                return;
-            default:
-                break;
-        }
-        expr.getSecondOperand().acceptVisitor(this);
-        Expr b = resultExpr;
-        if (b instanceof ConstantExpr && expr.getOperation() == BinaryOperation.SUBTRACT) {
-            if (tryMakePositive((ConstantExpr) b)) {
-                expr.setOperation(BinaryOperation.ADD);
-            }
-        }
-        expr.getFirstOperand().acceptVisitor(this);
-        Expr a = resultExpr;
-        Expr p = a;
-        Expr q = b;
-        boolean invert = false;
-        if (isZero(p)) {
-            Expr tmp = p;
-            p = q;
-            q = tmp;
-            invert = true;
-        }
-        if (isComparison(p) && isZero(q)) {
+        pushLocation(expr.getLocation());
+        try {
             switch (expr.getOperation()) {
-                case EQUALS:
-                case NOT_EQUALS:
-                case LESS:
-                case LESS_OR_EQUALS:
-                case GREATER:
-                case GREATER_OR_EQUALS: {
-                    BinaryExpr comparison = (BinaryExpr) p;
-                    Expr result = BinaryExpr.binary(expr.getOperation(), comparison.getType(),
-                            comparison.getFirstOperand(), comparison.getSecondOperand());
-                    result.setLocation(comparison.getLocation());
-                    if (invert) {
-                        result = ExprOptimizer.invert(result);
-                    }
-                    resultExpr = result;
+                case AND:
+                case OR:
+                    resultExpr = expr;
                     return;
-                }
                 default:
                     break;
             }
+            Expr b = expr.getSecondOperand();
+            Expr a = expr.getFirstOperand();
+
+            int barrierPosition = 0;
+            if (isSideEffectFree(a)) {
+                barrierPosition++;
+                if (isSideEffectFree(b)) {
+                    barrierPosition++;
+                }
+            }
+
+            Statement barrier = addBarrier();
+
+            if (barrierPosition == 2) {
+                removeBarrier(barrier);
+            }
+            b.acceptVisitor(this);
+            b = resultExpr;
+            if (b instanceof ConstantExpr && expr.getOperation() == BinaryOperation.SUBTRACT) {
+                if (tryMakePositive((ConstantExpr) b)) {
+                    expr.setOperation(BinaryOperation.ADD);
+                }
+            }
+
+            if (barrierPosition == 1) {
+                removeBarrier(barrier);
+            }
+            a.acceptVisitor(this);
+            a = resultExpr;
+
+            if (barrierPosition == 0) {
+                removeBarrier(barrier);
+            }
+
+            Expr p = a;
+            Expr q = b;
+            boolean invert = false;
+            if (isZero(p)) {
+                Expr tmp = p;
+                p = q;
+                q = tmp;
+                invert = true;
+            }
+            if (isComparison(p) && isZero(q)) {
+                switch (expr.getOperation()) {
+                    case EQUALS:
+                    case NOT_EQUALS:
+                    case LESS:
+                    case LESS_OR_EQUALS:
+                    case GREATER:
+                    case GREATER_OR_EQUALS: {
+                        BinaryExpr comparison = (BinaryExpr) p;
+                        Expr result = BinaryExpr.binary(expr.getOperation(), comparison.getType(),
+                                comparison.getFirstOperand(), comparison.getSecondOperand());
+                        result.setLocation(comparison.getLocation());
+                        if (invert) {
+                            result = ExprOptimizer.invert(result);
+                        }
+                        resultExpr = result;
+                        return;
+                    }
+                    default:
+                        break;
+                }
+            }
+            expr.setFirstOperand(a);
+            expr.setSecondOperand(b);
+            resultExpr = expr;
+        } finally {
+            popLocation();
         }
-        expr.setFirstOperand(a);
-        expr.setSecondOperand(b);
-        resultExpr = expr;
     }
 
     @Override
     public void visit(UnaryExpr expr) {
-        expr.getOperand().acceptVisitor(this);
-        Expr operand = resultExpr;
-        if (expr.getOperation() == UnaryOperation.NEGATE && operand instanceof ConstantExpr) {
-            ConstantExpr constantExpr = (ConstantExpr) operand;
-            if (tryMakePositive(constantExpr)) {
-                resultExpr = expr;
-                return;
+        pushLocation(expr.getLocation());
+        try {
+            expr.getOperand().acceptVisitor(this);
+            Expr operand = resultExpr;
+            if (expr.getOperation() == UnaryOperation.NEGATE && operand instanceof ConstantExpr) {
+                ConstantExpr constantExpr = (ConstantExpr) operand;
+                if (tryMakePositive(constantExpr)) {
+                    resultExpr = expr;
+                    return;
+                }
             }
+            expr.setOperand(operand);
+            resultExpr = expr;
+        } finally {
+             popLocation();
         }
-        expr.setOperand(operand);
-        resultExpr = expr;
     }
 
     private boolean tryMakePositive(ConstantExpr constantExpr) {
@@ -175,16 +248,25 @@ class OptimizingVisitor implements StatementVisitor, ExprVisitor {
 
     @Override
     public void visit(ConditionalExpr expr) {
-        expr.getCondition().acceptVisitor(this);
-        Expr cond = resultExpr;
-        expr.getConsequent().acceptVisitor(this);
-        Expr consequent = resultExpr;
-        expr.getAlternative().acceptVisitor(this);
-        Expr alternative = resultExpr;
-        expr.setCondition(cond);
-        expr.setConsequent(consequent);
-        expr.setAlternative(alternative);
-        resultExpr = expr;
+        pushLocation(expr.getLocation());
+        try {
+            expr.getCondition().acceptVisitor(this);
+            Expr cond = optimizeCondition(resultExpr);
+
+            Statement barrier = addBarrier();
+            expr.getConsequent().acceptVisitor(this);
+            Expr consequent = resultExpr;
+            expr.getAlternative().acceptVisitor(this);
+            Expr alternative = resultExpr;
+            removeBarrier(barrier);
+
+            expr.setCondition(cond);
+            expr.setConsequent(consequent);
+            expr.setAlternative(alternative);
+            resultExpr = expr;
+        } finally {
+            popLocation();
+        }
     }
 
     @Override
@@ -194,67 +276,150 @@ class OptimizingVisitor implements StatementVisitor, ExprVisitor {
 
     @Override
     public void visit(VariableExpr expr) {
-        int index = expr.getIndex();
-        resultExpr = expr;
-        if (readFrequencies[index] != 1 || preservedVars[index]) {
-            return;
-        }
-        if (resultSequence.isEmpty()) {
-            return;
-        }
-        Statement last = resultSequence.get(resultSequence.size() - 1);
-        if (!(last instanceof AssignmentStatement)) {
-            return;
-        }
-        AssignmentStatement assignment = (AssignmentStatement) last;
-        if (assignment.isAsync()) {
-            return;
-        }
-        if (!(assignment.getLeftValue() instanceof VariableExpr)) {
-            return;
-        }
-        VariableExpr var = (VariableExpr) assignment.getLeftValue();
-        if (var.getLocation() != null && assignment.getLocation() != null
-                && !assignment.getLocation().equals(var.getLocation())) {
-            return;
-        }
-        if (var.getIndex() == index) {
-            resultSequence.remove(resultSequence.size() - 1);
-            assignment.getRightValue().setLocation(assignment.getLocation());
-            assignment.getRightValue().acceptVisitor(this);
+        pushLocation(expr.getLocation());
+        try {
+            int index = expr.getIndex();
+            resultExpr = expr;
+            if (writeFrequencies[index] != 1) {
+                return;
+            }
+
+            if (!preservedVars[index] && initialWriteFrequencies[index] == 1 && constants[index] != null) {
+                ConstantExpr constantExpr = new ConstantExpr();
+                constantExpr.setValue(constants[index]);
+                constantExpr.setLocation(expr.getLocation());
+                resultExpr = constantExpr;
+                return;
+            }
+
+            if (locationStack.size() > MAX_DEPTH) {
+                return;
+            }
+            if (readFrequencies[index] != 1 || preservedVars[index]) {
+                return;
+            }
+            if (resultSequence.isEmpty()) {
+                return;
+            }
+            Statement last = resultSequence.get(resultSequence.size() - 1);
+            if (!(last instanceof AssignmentStatement)) {
+                return;
+            }
+            AssignmentStatement assignment = (AssignmentStatement) last;
+            if (assignment.isAsync()) {
+                return;
+            }
+            if (!(assignment.getLeftValue() instanceof VariableExpr)) {
+                return;
+            }
+            VariableExpr var = (VariableExpr) assignment.getLeftValue();
+            if (friendlyToDebugger) {
+                if (currentLocation != null && assignment.getLocation() != null
+                        && !assignment.getLocation().equals(currentLocation)) {
+                    return;
+                }
+            }
+            if (var.getIndex() == index) {
+                resultSequence.remove(resultSequence.size() - 1);
+                assignment.getRightValue().setLocation(assignment.getLocation());
+                assignment.getRightValue().acceptVisitor(this);
+            }
+        } finally {
+            popLocation();
         }
     }
 
     @Override
     public void visit(SubscriptExpr expr) {
-        expr.getIndex().acceptVisitor(this);
-        Expr index = resultExpr;
-        expr.getArray().acceptVisitor(this);
-        Expr array = resultExpr;
-        expr.setArray(array);
-        expr.setIndex(index);
-        resultExpr = expr;
+        pushLocation(expr.getLocation());
+        try {
+            Expr index = expr.getIndex();
+            Expr array = expr.getArray();
+
+            int barrierPosition = 0;
+            if (isSideEffectFree(array)) {
+                ++barrierPosition;
+                if (isSideEffectFree(index)) {
+                    ++barrierPosition;
+                }
+            }
+
+            Statement barrier = addBarrier();
+
+            if (barrierPosition == 2) {
+                removeBarrier(barrier);
+            }
+
+            expr.getIndex().acceptVisitor(this);
+            index = resultExpr;
+
+            if (barrierPosition == 1) {
+                removeBarrier(barrier);
+            }
+
+            expr.getArray().acceptVisitor(this);
+            array = resultExpr;
+
+            if (barrierPosition == 0) {
+                removeBarrier(barrier);
+            }
+
+            expr.setArray(array);
+            expr.setIndex(index);
+            resultExpr = expr;
+        } finally {
+            popLocation();
+        }
     }
 
     @Override
     public void visit(UnwrapArrayExpr expr) {
-        expr.getArray().acceptVisitor(this);
-        Expr arrayExpr = resultExpr;
-        expr.setArray(arrayExpr);
-        resultExpr = expr;
+        pushLocation(expr.getLocation());
+        try {
+            expr.getArray().acceptVisitor(this);
+            Expr arrayExpr = resultExpr;
+            expr.setArray(arrayExpr);
+            resultExpr = expr;
+        } finally {
+            popLocation();
+        }
     }
 
     @Override
     public void visit(InvocationExpr expr) {
-        Expr[] args = new Expr[expr.getArguments().size()];
-        for (int i = expr.getArguments().size() - 1; i >= 0; --i) {
-            expr.getArguments().get(i).acceptVisitor(this);
-            args[i] = resultExpr;
+        pushLocation(expr.getLocation());
+        try {
+            Expr[] args = expr.getArguments().toArray(new Expr[0]);
+            int barrierPos;
+
+            for (barrierPos = 0; barrierPos < args.length; ++barrierPos) {
+                if (!isSideEffectFree(args[barrierPos])) {
+                    break;
+                }
+            }
+
+            Statement barrier = addBarrier();
+
+            if (barrierPos == args.length) {
+                removeBarrier(barrier);
+            }
+
+            for (int i = args.length - 1; i >= 0; --i) {
+                args[i].acceptVisitor(this);
+                args[i] = resultExpr;
+                if (i == barrierPos) {
+                    removeBarrier(barrier);
+                }
+            }
+
+            for (int i = 0; i < args.length; ++i) {
+                expr.getArguments().set(i, args[i]);
+            }
+
+            resultExpr = expr;
+        } finally {
+            popLocation();
         }
-        for (int i = 0; i < args.length; ++i) {
-            expr.getArguments().set(i, args[i]);
-        }
-        resultExpr = expr;
     }
 
     private boolean tryApplyConstructor(InvocationExpr expr) {
@@ -298,12 +463,17 @@ class OptimizingVisitor implements StatementVisitor, ExprVisitor {
 
     @Override
     public void visit(QualificationExpr expr) {
-        if (expr.getQualified() != null) {
-            expr.getQualified().acceptVisitor(this);
-            Expr qualified = resultExpr;
-            expr.setQualified(qualified);
+        pushLocation(expr.getLocation());
+        try {
+            if (expr.getQualified() != null) {
+                expr.getQualified().acceptVisitor(this);
+                Expr qualified = resultExpr;
+                expr.setQualified(qualified);
+            }
+            resultExpr = expr;
+        } finally {
+            popLocation();
         }
-        resultExpr = expr;
     }
 
     @Override
@@ -313,74 +483,129 @@ class OptimizingVisitor implements StatementVisitor, ExprVisitor {
 
     @Override
     public void visit(NewArrayExpr expr) {
-        expr.getLength().acceptVisitor(this);
-        Expr length = resultExpr;
-        expr.setLength(length);
-        resultExpr = expr;
+        pushLocation(expr.getLocation());
+        try {
+            expr.getLength().acceptVisitor(this);
+            Expr length = resultExpr;
+            expr.setLength(length);
+            resultExpr = expr;
+        } finally {
+            popLocation();
+        }
     }
 
     @Override
     public void visit(NewMultiArrayExpr expr) {
-        for (int i = 0; i < expr.getDimensions().size(); ++i) {
-            Expr dimension = expr.getDimensions().get(i);
-            dimension.acceptVisitor(this);
-            expr.getDimensions().set(i, resultExpr);
+        pushLocation(expr.getLocation());
+        try {
+            for (int i = 0; i < expr.getDimensions().size(); ++i) {
+                Expr dimension = expr.getDimensions().get(i);
+                dimension.acceptVisitor(this);
+                expr.getDimensions().set(i, resultExpr);
+            }
+            resultExpr = expr;
+        } finally {
+            popLocation();
         }
-        resultExpr = expr;
+    }
+
+    @Override
+    public void visit(ArrayFromDataExpr expr) {
+        pushLocation(expr.getLocation());
+        try {
+            for (int i = 0; i < expr.getData().size(); ++i) {
+                Expr element = expr.getData().get(i);
+                element.acceptVisitor(this);
+                expr.getData().set(i, resultExpr);
+            }
+            resultExpr = expr;
+        } finally {
+            popLocation();
+        }
     }
 
     @Override
     public void visit(InstanceOfExpr expr) {
-        expr.getExpr().acceptVisitor(this);
-        expr.setExpr(resultExpr);
-        resultExpr = expr;
+        pushLocation(expr.getLocation());
+        try {
+            expr.getExpr().acceptVisitor(this);
+            expr.setExpr(resultExpr);
+            resultExpr = expr;
+        } finally {
+            popLocation();
+        }
     }
 
     @Override
     public void visit(CastExpr expr) {
-        expr.getValue().acceptVisitor(this);
-        expr.setValue(resultExpr);
-        resultExpr = expr;
+        pushLocation(expr.getLocation());
+        try {
+            expr.getValue().acceptVisitor(this);
+            expr.setValue(resultExpr);
+            resultExpr = expr;
+        } finally {
+            popLocation();
+        }
     }
 
     @Override
     public void visit(PrimitiveCastExpr expr) {
-        expr.getValue().acceptVisitor(this);
-        expr.setValue(resultExpr);
-        resultExpr = expr;
+        pushLocation(expr.getLocation());
+        try {
+            expr.getValue().acceptVisitor(this);
+            expr.setValue(resultExpr);
+            resultExpr = expr;
+        } finally {
+            popLocation();
+        }
     }
 
     @Override
     public void visit(AssignmentStatement statement) {
-        if (statement.getLeftValue() == null) {
-            statement.getRightValue().acceptVisitor(this);
-            if (resultExpr instanceof InvocationExpr && tryApplyConstructor((InvocationExpr) resultExpr)) {
-                resultStmt = new SequentialStatement();
+        pushLocation(statement.getLocation());
+        try {
+            if (statement.getLeftValue() == null) {
+                statement.getRightValue().acceptVisitor(this);
+                if (resultExpr instanceof InvocationExpr && tryApplyConstructor((InvocationExpr) resultExpr)) {
+                    resultStmt = new SequentialStatement();
+                } else {
+                    statement.setRightValue(resultExpr);
+                    resultStmt = statement;
+                }
             } else {
-                statement.setRightValue(resultExpr);
+                statement.getRightValue().acceptVisitor(this);
+                Expr right = resultExpr;
+                Expr left = statement.getLeftValue();
+                if (!(statement.getLeftValue() instanceof VariableExpr)) {
+                    statement.getLeftValue().acceptVisitor(this);
+                    left = resultExpr;
+                } else {
+                    int varIndex = ((VariableExpr) statement.getLeftValue()).getIndex();
+                    if (!preservedVars[varIndex] && initialWriteFrequencies[varIndex] == 1
+                            && constants[varIndex] != null) {
+                        resultStmt = new SequentialStatement();
+                        return;
+                    }
+                }
+                statement.setLeftValue(left);
+                statement.setRightValue(right);
                 resultStmt = statement;
             }
-        } else {
-            statement.getRightValue().acceptVisitor(this);
-            Expr right = resultExpr;
-            Expr left = statement.getLeftValue();
-            if (!(statement.getLeftValue() instanceof VariableExpr)) {
-                statement.getLeftValue().acceptVisitor(this);
-                left = resultExpr;
-            }
-            statement.setLeftValue(left);
-            statement.setRightValue(right);
-            resultStmt = statement;
+        } finally {
+            popLocation();
         }
     }
 
     private List<Statement> processSequence(List<Statement> statements) {
         List<Statement> backup = resultSequence;
         resultSequence = new ArrayList<>();
+        List<ArrayOptimization> pendingArrayOptimizationsBackup = pendingArrayOptimizations;
+        pendingArrayOptimizations = new ArrayList<>();
         processSequenceImpl(statements);
         wieldTryCatch(resultSequence);
         List<Statement> result = resultSequence.stream().filter(part -> part != null).collect(Collectors.toList());
         resultSequence = backup;
+        pendingArrayOptimizations = pendingArrayOptimizationsBackup;
         return result;
     }
 
@@ -401,11 +626,166 @@ class OptimizingVisitor implements StatementVisitor, ExprVisitor {
                 continue;
             }
             resultSequence.add(part);
+            tryArrayOptimization();
             if (part instanceof BreakStatement) {
                 return false;
             }
         }
         return true;
+    }
+
+    private void tryArrayOptimization() {
+        Statement statement;
+        while (!pendingArrayOptimizations.isEmpty()) {
+            statement = resultSequence.get(resultSequence.size() - 1);
+            int i = pendingArrayOptimizations.size() - 1;
+            if (!tryArrayUnwrap(pendingArrayOptimizations.get(i), statement)
+                    || tryArraySet(pendingArrayOptimizations.get(i), statement)) {
+                pendingArrayOptimizations.remove(i);
+            } else {
+                break;
+            }
+        }
+        statement = resultSequence.get(resultSequence.size() - 1);
+        tryArrayConstruction(statement);
+    }
+
+    private void tryArrayConstruction(Statement statement) {
+        if (!(statement instanceof AssignmentStatement)) {
+            return;
+        }
+        AssignmentStatement assign = (AssignmentStatement) statement;
+
+        if (!(assign.getLeftValue() instanceof VariableExpr)) {
+            return;
+        }
+        int constructedArrayVariable = ((VariableExpr) assign.getLeftValue()).getIndex();
+
+        if (!(assign.getRightValue() instanceof NewArrayExpr)) {
+            return;
+        }
+        NewArrayExpr constructedArray = (NewArrayExpr) assign.getRightValue();
+        if (!(constructedArray.getLength() instanceof ConstantExpr)) {
+            return;
+        }
+
+        Object sizeConst = ((ConstantExpr) constructedArray.getLength()).getValue();
+        if (!(sizeConst instanceof Integer)) {
+            return;
+        }
+
+        int constructedArraySize = (int) sizeConst;
+        ArrayOptimization optimization = new ArrayOptimization();
+        optimization.index = resultSequence.size() - 1;
+        optimization.arrayVariable = constructedArrayVariable;
+        optimization.arraySize = constructedArraySize;
+        optimization.array = constructedArray;
+        pendingArrayOptimizations.add(optimization);
+    }
+
+    private boolean tryArrayUnwrap(ArrayOptimization optimization, Statement statement) {
+        if (optimization.unwrappedArray != null) {
+            return true;
+        }
+
+        if (!(statement instanceof AssignmentStatement)) {
+            return false;
+        }
+        AssignmentStatement assign = (AssignmentStatement) statement;
+
+        if (!(assign.getLeftValue() instanceof VariableExpr)) {
+            return false;
+        }
+        optimization.unwrappedArrayVariable = ((VariableExpr) assign.getLeftValue()).getIndex();
+        if (writeFrequencies[optimization.unwrappedArrayVariable] != 1) {
+            return false;
+        }
+
+        if (!(assign.getRightValue() instanceof UnwrapArrayExpr)) {
+            return false;
+        }
+        optimization.unwrappedArray = (UnwrapArrayExpr) assign.getRightValue();
+
+        if (!(optimization.unwrappedArray.getArray() instanceof VariableExpr)) {
+            return false;
+        }
+
+        VariableExpr arrayVar = (VariableExpr) optimization.unwrappedArray.getArray();
+        if (arrayVar.getIndex() != optimization.arrayVariable) {
+            return false;
+        }
+
+        if (!matchArrayType(optimization.array.getType(), optimization.unwrappedArray.getElementType())) {
+            return false;
+        }
+
+        if (optimization.arraySize != readFrequencies[optimization.unwrappedArrayVariable]) {
+            return false;
+        }
+
+        optimization.arrayElementIndex = 0;
+        return true;
+    }
+
+    private boolean tryArraySet(ArrayOptimization optimization, Statement statement) {
+        int expectedIndex = optimization.index + 2 + optimization.arrayElementIndex;
+        if (resultSequence.size() - 1 != expectedIndex) {
+            return false;
+        }
+
+        if (!(statement instanceof AssignmentStatement)) {
+            return false;
+        }
+        AssignmentStatement assign = (AssignmentStatement) statement;
+
+        if (!(assign.getLeftValue() instanceof SubscriptExpr)) {
+            return false;
+        }
+        SubscriptExpr subscript = (SubscriptExpr) assign.getLeftValue();
+
+        if (subscript.getType() != optimization.unwrappedArray.getElementType()) {
+            return false;
+        }
+
+        if (!(subscript.getArray() instanceof VariableExpr)) {
+            return false;
+        }
+        if (((VariableExpr) subscript.getArray()).getIndex() != optimization.unwrappedArrayVariable) {
+            return false;
+        }
+
+        if (!(subscript.getIndex() instanceof ConstantExpr)) {
+            return false;
+        }
+        Object constantValue = ((ConstantExpr) subscript.getIndex()).getValue();
+        if (!Integer.valueOf(optimization.arrayElementIndex).equals(constantValue)) {
+            return false;
+        }
+
+        VariableAccessFinder isVariableAccessed = new VariableAccessFinder(v -> v == optimization.arrayVariable
+                || v == optimization.unwrappedArrayVariable);
+        assign.getRightValue().acceptVisitor(isVariableAccessed);
+        if (isVariableAccessed.isFound()) {
+            return false;
+        }
+
+        optimization.elements.add(assign.getRightValue());
+        if (++optimization.arrayElementIndex == optimization.arraySize) {
+            applyArrayOptimization(optimization);
+            return true;
+        }
+        return false;
+    }
+
+    private void applyArrayOptimization(ArrayOptimization optimization) {
+        AssignmentStatement assign = (AssignmentStatement) resultSequence.get(optimization.index);
+        ArrayFromDataExpr arrayFromData = new ArrayFromDataExpr();
+        arrayFromData.setLocation(optimization.array.getLocation());
+        arrayFromData.setType(optimization.array.getType());
+        arrayFromData.getData().addAll(optimization.elements);
+        assign.setRightValue(arrayFromData);
+        readFrequencies[optimization.arrayVariable]--;
+        resultSequence.subList(optimization.index + 1, resultSequence.size()).clear();
     }
 
     private void wieldTryCatch(List<Statement> statements) {
@@ -442,6 +822,29 @@ class OptimizingVisitor implements StatementVisitor, ExprVisitor {
         return false;
     }
 
+    private static boolean matchArrayType(ValueType type, ArrayType arrayType) {
+        switch (arrayType) {
+            case BYTE:
+                return type == ValueType.BYTE || type == ValueType.BOOLEAN;
+            case SHORT:
+                return type == ValueType.SHORT;
+            case CHAR:
+                return type == ValueType.CHARACTER;
+            case INT:
+                return type == ValueType.INTEGER;
+            case LONG:
+                return type == ValueType.LONG;
+            case FLOAT:
+                return type == ValueType.FLOAT;
+            case DOUBLE:
+                return type == ValueType.DOUBLE;
+            case OBJECT:
+                return type instanceof ValueType.Object || type instanceof ValueType.Array;
+            default:
+                return false;
+        }
+    }
+
     private void eliminateRedundantBreaks(List<Statement> statements, IdentifiedStatement exit) {
         if (statements.isEmpty()) {
             return;
@@ -456,11 +859,14 @@ class OptimizingVisitor implements StatementVisitor, ExprVisitor {
         if (statements.isEmpty()) {
             return;
         }
+
+        boolean shouldOptimizeBreaks = !hitsRedundantBreakThreshold(statements, exit);
+
         for (int i = 0; i < statements.size(); ++i) {
             Statement stmt = statements.get(i);
             if (stmt instanceof ConditionalStatement) {
                 ConditionalStatement cond = (ConditionalStatement) stmt;
-                check_conditional: {
+                check_conditional: if (shouldOptimizeBreaks) {
                     last = cond.getConsequent().isEmpty() ? null
                             : cond.getConsequent().get(cond.getConsequent().size() - 1);
                     if (last instanceof BreakStatement) {
@@ -526,9 +932,43 @@ class OptimizingVisitor implements StatementVisitor, ExprVisitor {
         }
     }
 
+    private boolean hitsRedundantBreakThreshold(List<Statement> statements, IdentifiedStatement exit) {
+        int count = 0;
+        for (int i = 0; i < statements.size(); ++i) {
+            Statement stmt = statements.get(i);
+            if (!(stmt instanceof ConditionalStatement)) {
+                continue;
+            }
+
+            ConditionalStatement conditional = (ConditionalStatement) stmt;
+            if (!conditional.getConsequent().isEmpty() && !conditional.getAlternative().isEmpty()) {
+                continue;
+            }
+            List<Statement> innerStatements = !conditional.getConsequent().isEmpty()
+                    ? conditional.getConsequent() : conditional.getAlternative();
+            if (innerStatements.isEmpty()) {
+                continue;
+            }
+
+            Statement last = innerStatements.get(innerStatements.size() - 1);
+            if (!(last instanceof BreakStatement)) {
+                continue;
+            }
+
+            BreakStatement breakStmt = (BreakStatement) last;
+            if (exit != null && exit == breakStmt.getTarget() && ++count == 8) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private void normalizeConditional(ConditionalStatement stmt) {
         if (stmt.getConsequent().isEmpty()) {
+            if (stmt.getAlternative().isEmpty()) {
+                return;
+            }
             stmt.getConsequent().addAll(stmt.getAlternative());
             stmt.getAlternative().clear();
             stmt.setCondition(ExprOptimizer.invert(stmt.getCondition()));
@@ -550,7 +990,7 @@ class OptimizingVisitor implements StatementVisitor, ExprVisitor {
     @Override
     public void visit(ConditionalStatement statement) {
         statement.getCondition().acceptVisitor(this);
-        statement.setCondition(resultExpr);
+        statement.setCondition(optimizeCondition(resultExpr));
         List<Statement> consequent = processSequence(statement.getConsequent());
         List<Statement> alternative = processSequence(statement.getAlternative());
         if (consequent.isEmpty()) {
@@ -569,7 +1009,58 @@ class OptimizingVisitor implements StatementVisitor, ExprVisitor {
         statement.getConsequent().addAll(consequent);
         statement.getAlternative().clear();
         statement.getAlternative().addAll(alternative);
-        resultStmt = statement;
+
+        Statement asConditional = tryConvertToConditionalExpression(statement);
+        if (asConditional != null) {
+            asConditional.acceptVisitor(this);
+        } else {
+            resultStmt = statement;
+        }
+    }
+
+    private Statement tryConvertToConditionalExpression(ConditionalStatement statement) {
+        if (statement.getConsequent().size() != 1 || statement.getAlternative().size() != 1) {
+            return null;
+        }
+
+        Statement first = statement.getConsequent().get(0);
+        Statement second = statement.getAlternative().get(0);
+        if (!(first instanceof AssignmentStatement) || !(second instanceof AssignmentStatement)) {
+            return null;
+        }
+
+        AssignmentStatement firstAssignment = (AssignmentStatement) first;
+        AssignmentStatement secondAssignment = (AssignmentStatement) second;
+        if (firstAssignment.getLeftValue() == null || secondAssignment.getRightValue() == null) {
+            return null;
+        }
+        if (firstAssignment.isAsync() || secondAssignment.isAsync()) {
+            return null;
+        }
+
+        if (!(firstAssignment.getLeftValue() instanceof VariableExpr)
+                || !(secondAssignment.getLeftValue() instanceof VariableExpr)) {
+            return null;
+        }
+        VariableExpr firstLhs = (VariableExpr) firstAssignment.getLeftValue();
+        VariableExpr secondLhs = (VariableExpr) secondAssignment.getLeftValue();
+        if (firstLhs.getIndex() == secondLhs.getIndex()) {
+            ConditionalExpr conditionalExpr = new ConditionalExpr();
+            conditionalExpr.setCondition(statement.getCondition());
+            conditionalExpr.setConsequent(firstAssignment.getRightValue());
+            conditionalExpr.setAlternative(secondAssignment.getRightValue());
+            conditionalExpr.setLocation(statement.getCondition().getLocation());
+            AssignmentStatement assignment = new AssignmentStatement();
+            assignment.setLocation(conditionalExpr.getLocation());
+            VariableExpr lhs = new VariableExpr();
+            lhs.setIndex(firstLhs.getIndex());
+            assignment.setLeftValue(lhs);
+            assignment.setRightValue(conditionalExpr);
+            writeFrequencies[lhs.getIndex()]--;
+            return assignment;
+        }
+
+        return null;
     }
 
     @Override
@@ -584,7 +1075,14 @@ class OptimizingVisitor implements StatementVisitor, ExprVisitor {
         List<Statement> newDefault = processSequence(statement.getDefaultClause());
         statement.getDefaultClause().clear();
         statement.getDefaultClause().addAll(newDefault);
-        resultStmt = statement;
+
+        if (statement.getClauses().isEmpty()) {
+            SequentialStatement seq = new SequentialStatement();
+            seq.getSequence().addAll(statement.getDefaultClause());
+            resultStmt = seq;
+        } else {
+            resultStmt = statement;
+        }
     }
 
     @Override
@@ -668,23 +1166,38 @@ class OptimizingVisitor implements StatementVisitor, ExprVisitor {
 
     @Override
     public void visit(ReturnStatement statement) {
-        if (statement.getResult() != null) {
-            statement.getResult().acceptVisitor(this);
-            statement.setResult(resultExpr);
+        pushLocation(statement.getLocation());
+        try {
+            if (statement.getResult() != null) {
+                statement.getResult().acceptVisitor(this);
+                statement.setResult(resultExpr);
+            }
+            resultStmt = statement;
+        } finally {
+            popLocation();
         }
-        resultStmt = statement;
     }
 
     @Override
     public void visit(ThrowStatement statement) {
-        statement.getException().acceptVisitor(this);
-        statement.setException(resultExpr);
-        resultStmt = statement;
+        pushLocation(statement.getLocation());
+        try {
+            statement.getException().acceptVisitor(this);
+            statement.setException(resultExpr);
+            resultStmt = statement;
+        } finally {
+            popLocation();
+        }
     }
 
     @Override
     public void visit(InitClassStatement statement) {
-        resultStmt = statement;
+        pushLocation(statement.getLocation());
+        try {
+            resultStmt = statement;
+        } finally {
+            popLocation();
+        }
     }
 
     @Override
@@ -705,15 +1218,119 @@ class OptimizingVisitor implements StatementVisitor, ExprVisitor {
 
     @Override
     public void visit(MonitorEnterStatement statement) {
-        statement.getObjectRef().acceptVisitor(this);
-        statement.setObjectRef(resultExpr);
-        resultStmt = statement;
+        pushLocation(statement.getLocation());
+        try {
+            statement.getObjectRef().acceptVisitor(this);
+            statement.setObjectRef(resultExpr);
+            resultStmt = statement;
+        } finally {
+            popLocation();
+        }
     }
 
     @Override
     public void visit(MonitorExitStatement statement) {
-        statement.getObjectRef().acceptVisitor(this);
-        statement.setObjectRef(resultExpr);
-        resultStmt = statement;
+        pushLocation(statement.getLocation());
+        try {
+            statement.getObjectRef().acceptVisitor(this);
+            statement.setObjectRef(resultExpr);
+            resultStmt = statement;
+        } finally {
+            popLocation();
+        }
+    }
+
+    @Override
+    public void visit(BoundCheckExpr expr) {
+        pushLocation(expr.getLocation());
+        try {
+            expr.getIndex().acceptVisitor(this);
+            Expr index = resultExpr;
+
+            Expr array = null;
+            if (expr.getArray() != null) {
+                expr.getArray().acceptVisitor(this);
+                array = resultExpr;
+            }
+
+            expr.setIndex(index);
+            expr.setArray(array);
+
+            resultExpr = expr;
+        } finally {
+            popLocation();
+        }
+    }
+
+    private Statement addBarrier() {
+        SequentialStatement barrier = new SequentialStatement();
+        resultSequence.add(barrier);
+        return barrier;
+    }
+
+    private void removeBarrier(Statement barrier) {
+        Statement removedBarrier = resultSequence.remove(resultSequence.size() - 1);
+        if (removedBarrier != barrier) {
+            throw new AssertionError();
+        }
+    }
+
+    private boolean isSideEffectFree(Expr expr) {
+        if (expr == null) {
+            return true;
+        }
+
+        if (expr instanceof VariableExpr || expr instanceof ConstantExpr) {
+            return true;
+        }
+
+        if (expr instanceof BinaryExpr) {
+            BinaryExpr binary = (BinaryExpr) expr;
+            return isSideEffectFree(binary.getFirstOperand()) && isSideEffectFree(binary.getSecondOperand());
+        }
+
+        if (expr instanceof UnaryExpr) {
+            return isSideEffectFree(((UnaryExpr) expr).getOperand());
+        }
+
+        if (expr instanceof InstanceOfExpr) {
+            return isSideEffectFree(((InstanceOfExpr) expr).getExpr());
+        }
+
+        if (expr instanceof PrimitiveCastExpr) {
+            return isSideEffectFree(((PrimitiveCastExpr) expr).getValue());
+        }
+
+        if (expr instanceof NewExpr) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private Expr optimizeCondition(Expr expr) {
+        if (expr instanceof BinaryExpr) {
+            BinaryExpr binary = (BinaryExpr) expr;
+            if (isZero(((BinaryExpr) expr).getSecondOperand())) {
+                switch (binary.getOperation()) {
+                    case EQUALS:
+                        return ExprOptimizer.invert(binary.getFirstOperand());
+                    case NOT_EQUALS:
+                        return binary.getFirstOperand();
+                }
+            }
+        }
+        return expr;
+    }
+
+    static class ArrayOptimization {
+        int index;
+        NewArrayExpr array;
+        int arrayVariable;
+        UnwrapArrayExpr unwrappedArray;
+        int unwrappedArrayVariable;
+        int arrayElementIndex;
+        int arraySize;
+        List<Expr> elements = new ArrayList<>();
     }
 }

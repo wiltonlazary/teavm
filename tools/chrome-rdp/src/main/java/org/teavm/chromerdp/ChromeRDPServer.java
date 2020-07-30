@@ -15,7 +15,10 @@
  */
 package org.teavm.chromerdp;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import javax.websocket.Decoder;
 import javax.websocket.Encoder;
 import javax.websocket.Extension;
@@ -26,10 +29,6 @@ import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.websocket.jsr356.server.deploy.WebSocketServerContainerInitializer;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class ChromeRDPServer {
     private int port = 2357;
     private ChromeRDPExchangeConsumer exchangeConsumer;
@@ -61,9 +60,8 @@ public class ChromeRDPServer {
         context.setContextPath("/");
         server.setHandler(context);
 
-        ServerContainer wscontainer = WebSocketServerContainerInitializer.configureContext(context);
-
         try {
+            ServerContainer wscontainer = WebSocketServerContainerInitializer.configureContext(context);
             wscontainer.addEndpoint(new RPDEndpointConfig());
             server.start();
             server.join();

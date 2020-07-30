@@ -16,9 +16,6 @@
 package org.teavm.vm;
 
 public enum TeaVMPhase {
-    DEPENDENCY_CHECKING,
-    LINKING,
-    OPTIMIZATION,
-    DECOMPILATION,
-    RENDERING
+    DEPENDENCY_ANALYSIS,
+    COMPILING
 }

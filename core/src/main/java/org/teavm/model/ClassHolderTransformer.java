@@ -15,13 +15,6 @@
  */
 package org.teavm.model;
 
-import org.teavm.diagnostics.Diagnostics;
-
-
-/**
- *
- * @author Alexey Andreev
- */
 public interface ClassHolderTransformer {
-    void transformClass(ClassHolder cls, ClassReaderSource innerSource, Diagnostics diagnostics);
+    void transformClass(ClassHolder cls, ClassHolderTransformerContext context);
 }

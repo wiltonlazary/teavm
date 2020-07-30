@@ -15,6 +15,10 @@
  */
 package org.teavm.classlib.java.lang;
 
+import static org.teavm.classlib.impl.IntegerUtil.toUnsignedLogRadixString;
+import org.teavm.backend.javascript.spi.InjectedBy;
+import org.teavm.interop.NoSideEffects;
+
 public class TInteger extends TNumber implements TComparable<TInteger> {
     public static final int SIZE = 32;
     public static final int MIN_VALUE = 0x80000000;
@@ -27,39 +31,43 @@ public class TInteger extends TNumber implements TComparable<TInteger> {
         this.value = value;
     }
 
-    public TInteger(TString s) throws NumberFormatException {
+    public TInteger(String s) throws NumberFormatException {
         this(parseInt(s));
     }
 
     public static String toString(int i, int radix) {
-        if (radix < MIN_VALUE || radix > MAX_VALUE) {
+        if (radix < Character.MIN_RADIX || radix > Character.MAX_RADIX) {
             radix = 10;
         }
         return new TAbstractStringBuilder(20).append(i, radix).toString();
     }
 
+    public static int hashCode(int value) {
+        return (value >>> 4) ^ (value << 28) ^ (value << 8) ^ (value >>> 24);
+    }
+
     public static String toHexString(int i) {
-        return toString(i, 16);
+        return toUnsignedLogRadixString(i, 4);
     }
 
     public static String toOctalString(int i) {
-        return toString(i, 8);
+        return toUnsignedLogRadixString(i, 3);
     }
 
     public static String toBinaryString(int i) {
-        return toString(i, 2);
+        return toUnsignedLogRadixString(i, 1);
     }
 
     public static String toString(int i) {
         return toString(i, 10);
     }
 
-    public static int parseInt(TString s, int radix) throws TNumberFormatException {
+    public static int parseInt(String s, int radix) throws TNumberFormatException {
         if (radix < TCharacter.MIN_RADIX || radix > TCharacter.MAX_RADIX) {
-            throw new TNumberFormatException(TString.wrap("Illegal radix: " + radix));
+            throw new TNumberFormatException("Illegal radix: " + radix);
         }
         if (s == null || s.isEmpty()) {
-            throw new TNumberFormatException(TString.wrap("String is null or empty"));
+            throw new TNumberFormatException("String is null or empty");
         }
         boolean negative = false;
         int index = 0;
@@ -79,32 +87,32 @@ public class TInteger extends TNumber implements TComparable<TInteger> {
         while (index < s.length()) {
             int digit = TCharacter.getNumericValue(s.charAt(index++));
             if (digit < 0) {
-                throw new TNumberFormatException(TString.wrap("String contains invalid digits: " + s));
+                throw new TNumberFormatException("String contains invalid digits: " + s);
             }
             if (digit >= radix) {
-                throw new TNumberFormatException(TString.wrap("String contains digits out of radix " + radix
-                        + ": " + s));
+                throw new TNumberFormatException("String contains digits out of radix " + radix
+                        + ": " + s);
             }
             value = radix * value + digit;
             if (value < 0) {
                 if (index == s.length() && value == MIN_VALUE && negative) {
                     return MIN_VALUE;
                 }
-                throw new TNumberFormatException(TString.wrap("The value is too big for int type: " + s));
+                throw new TNumberFormatException("The value is too big for int type: " + s);
             }
         }
         return negative ? -value : value;
     }
 
-    public static int parseInt(TString s) throws TNumberFormatException {
+    public static int parseInt(String s) throws TNumberFormatException {
         return parseInt(s, 10);
     }
 
-    public static TInteger valueOf(TString s, int radix) throws TNumberFormatException {
+    public static TInteger valueOf(String s, int radix) throws TNumberFormatException {
         return valueOf(parseInt(s, radix));
     }
 
-    public static TInteger valueOf(TString s) throws TNumberFormatException {
+    public static TInteger valueOf(String s) throws TNumberFormatException {
         return valueOf(s, 10);
     }
 
@@ -152,7 +160,7 @@ public class TInteger extends TNumber implements TComparable<TInteger> {
 
     @Override
     public int hashCode() {
-        return (value >>> 4) ^ (value << 28) ^ (value << 8) ^ (value >>> 24);
+        return TInteger.hashCode(value);
     }
 
     @Override
@@ -172,13 +180,17 @@ public class TInteger extends TNumber implements TComparable<TInteger> {
     }
 
     public static TInteger getInteger(TString nm, TInteger val) {
-        TString result = TSystem.getProperty(nm);
-        return result != null ? TInteger.valueOf(result) : val;
+        String result = nm != null ? TSystem.getProperty(nm.toString()) : null;
+        try {
+            return result != null ? TInteger.valueOf(result) : val;
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
-    public static TInteger decode(TString nm) throws TNumberFormatException {
+    public static TInteger decode(String nm) throws TNumberFormatException {
         if (nm == null || nm.isEmpty()) {
-            throw new TNumberFormatException(TString.wrap("Can't parse empty or null string"));
+            throw new TNumberFormatException("Can't parse empty or null string");
         }
         int index = 0;
         boolean negaive = false;
@@ -189,7 +201,7 @@ public class TInteger extends TNumber implements TComparable<TInteger> {
             negaive = true;
         }
         if (index >= nm.length()) {
-            throw new TNumberFormatException(TString.wrap("The string does not represent a number"));
+            throw new TNumberFormatException("The string does not represent a number");
         }
         int radix = 10;
         if (nm.charAt(index) == '#') {
@@ -208,20 +220,20 @@ public class TInteger extends TNumber implements TComparable<TInteger> {
             }
         }
         if (index >= nm.length()) {
-            throw new TNumberFormatException(TString.wrap("The string does not represent a number"));
+            throw new TNumberFormatException("The string does not represent a number");
         }
         int value = 0;
         while (index < nm.length()) {
             int digit = decodeDigit(nm.charAt(index++));
             if (digit >= radix) {
-                throw new TNumberFormatException(TString.wrap("The string does not represent a number"));
+                throw new TNumberFormatException("The string does not represent a number");
             }
             value = value * radix + digit;
             if (value < 0) {
                 if (negaive && value == MIN_VALUE && index == nm.length()) {
                     return TInteger.valueOf(MIN_VALUE);
                 }
-                throw new TNumberFormatException(TString.wrap("The string represents a too big number"));
+                throw new TNumberFormatException("The string represents a too big number");
             }
         }
         return TInteger.valueOf(negaive ? -value : value);
@@ -244,9 +256,8 @@ public class TInteger extends TNumber implements TComparable<TInteger> {
         return compare(value, other.value);
     }
 
-    public static int compare(int x, int y) {
-        return x > y ? 1 : x < y ? -1 : 0;
-    }
+    @NoSideEffects
+    public static native int compare(int x, int y);
 
     public static int numberOfLeadingZeros(int i) {
         if (i == 0) {
@@ -349,4 +360,12 @@ public class TInteger extends TNumber implements TComparable<TInteger> {
     public static int signum(int i) {
         return (i >> 31) | (-i >>> 31);
     }
+
+    @InjectedBy(IntegerNativeGenerator.class)
+    @NoSideEffects
+    public static native int divideUnsigned(int dividend, int divisor);
+
+    @InjectedBy(IntegerNativeGenerator.class)
+    @NoSideEffects
+    public static native int remainderUnsigned(int dividend, int divisor);
 }

@@ -24,6 +24,7 @@ import org.teavm.model.BasicBlock;
 import org.teavm.model.CallLocation;
 import org.teavm.model.ClassHolder;
 import org.teavm.model.FieldHolder;
+import org.teavm.model.MethodDescriptor;
 import org.teavm.model.MethodHolder;
 import org.teavm.model.MethodReference;
 import org.teavm.model.Program;
@@ -43,6 +44,7 @@ public class ProxyVariableContext extends VariableContext {
     private int suffixGenerator;
     private Map<Variable, CapturedValue> capturedValueMap = new HashMap<>();
     private List<CapturedValue> capturedValues = new ArrayList<>();
+    private static final MethodDescriptor INIT_METHOD = new MethodDescriptor("<init>", ValueType.VOID);
 
     public ProxyVariableContext(VariableContext parent, ClassHolder proxyClass) {
         super(parent);
@@ -83,7 +85,7 @@ public class ProxyVariableContext extends VariableContext {
         insn.setField(capturedValue.field.getReference());
         insn.setFieldType(capturedValue.field.getType());
         insn.setReceiver(var);
-        startBlock.getInstructions().add(insn);
+        startBlock.add(insn);
 
         return var;
     }
@@ -103,9 +105,9 @@ public class ProxyVariableContext extends VariableContext {
 
         InvokeInstruction invokeSuper = new InvokeInstruction();
         invokeSuper.setInstance(ctorProgram.createVariable());
-        invokeSuper.setMethod(new MethodReference(proxyClass.getParent(), "<init>", ValueType.VOID));
+        invokeSuper.setMethod(new MethodReference(proxyClass.getParent(), INIT_METHOD));
         invokeSuper.setType(InvocationType.SPECIAL);
-        ctorBlock.getInstructions().add(invokeSuper);
+        ctorBlock.add(invokeSuper);
 
         for (int i = 0; i < capturedValues.size(); ++i) {
             PutFieldInstruction putInsn = new PutFieldInstruction();
@@ -113,11 +115,11 @@ public class ProxyVariableContext extends VariableContext {
             putInsn.setFieldType(capturedValues.get(i).field.getType());
             putInsn.setValue(ctorProgram.createVariable());
             putInsn.setInstance(ctorProgram.variableAt(0));
-            ctorBlock.getInstructions().add(putInsn);
+            ctorBlock.add(putInsn);
         }
 
         ExitInstruction exit = new ExitInstruction();
-        ctorBlock.getInstructions().add(exit);
+        ctorBlock.add(exit);
 
         proxyClass.addMethod(ctor);
 
@@ -130,9 +132,11 @@ public class ProxyVariableContext extends VariableContext {
         initInsn.setInstance(constructInsn.getReceiver());
         initInsn.setMethod(ctor.getReference());
         initInsn.setType(InvocationType.SPECIAL);
+        Variable[] initArgs = new Variable[capturedValues.size()];
         for (int i = 0; i < capturedValues.size(); ++i) {
-            initInsn.getArguments().add(capturedValues.get(i).value);
+            initArgs[i] =  capturedValues.get(i).value;
         }
+        initInsn.setArguments(initArgs);
         generator.add(initInsn);
 
         return constructInsn.getReceiver();

@@ -15,13 +15,9 @@
  */
 package org.teavm.chromerdp.messages;
 
-import org.codehaus.jackson.annotate.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import org.teavm.chromerdp.data.RemoteObjectDTO;
 
-/**
- *
- * @author Alexey Andreev
- */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class CallFunctionResponse {
     private RemoteObjectDTO result;

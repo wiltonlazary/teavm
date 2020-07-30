@@ -15,7 +15,11 @@
  */
 package org.teavm.platform.metadata;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.teavm.junit.SkipJVM;
@@ -23,8 +27,8 @@ import org.teavm.junit.TeaVMTestRunner;
 
 @RunWith(TeaVMTestRunner.class)
 @SkipJVM
+@Ignore
 public class MetadataGeneratorTest {
-    @MetadataProvider(TestResourceGenerator.class)
     private native TestResource getNull();
 
     @Test
@@ -32,7 +36,6 @@ public class MetadataGeneratorTest {
         assertNull(getNull());
     }
 
-    @MetadataProvider(TestResourceGenerator.class)
     private native IntResource getInt();
 
     @Test
@@ -40,7 +43,6 @@ public class MetadataGeneratorTest {
         assertEquals(23, getInt().getValue());
     }
 
-    @MetadataProvider(TestResourceGenerator.class)
     private native TestResource getResource();
 
     @Test
@@ -63,7 +65,6 @@ public class MetadataGeneratorTest {
         assertNull(res.getArrayC());
     }
 
-    @MetadataProvider(TestResourceGenerator.class)
     private native TestResource getEmptyResource();
 
     @Test
@@ -89,8 +90,8 @@ public class MetadataGeneratorTest {
         TestResource res = getEmptyResource();
         res.setA(23);
         res.setB(true);
-        res.setD((byte)24);
-        res.setE((short)25);
+        res.setD((byte) 24);
+        res.setE((short) 25);
         res.setF(3.14f);
         res.setG(2.72);
 

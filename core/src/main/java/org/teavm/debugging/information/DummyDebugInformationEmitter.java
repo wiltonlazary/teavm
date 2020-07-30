@@ -19,13 +19,19 @@ import org.teavm.backend.javascript.codegen.LocationProvider;
 import org.teavm.model.MethodDescriptor;
 import org.teavm.model.MethodReference;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class DummyDebugInformationEmitter implements DebugInformationEmitter {
     @Override
     public void emitLocation(String fileName, int line) {
+    }
+
+    @Override
+    public void enterLocation() {
+
+    }
+
+    @Override
+    public void exitLocation() {
+
     }
 
     @Override
@@ -58,7 +64,7 @@ public class DummyDebugInformationEmitter implements DebugInformationEmitter {
     }
 
     @Override
-    public void addClass(String className, String parentName) {
+    public void addClass(String jsName, String className, String parentName) {
     }
 
     @Override

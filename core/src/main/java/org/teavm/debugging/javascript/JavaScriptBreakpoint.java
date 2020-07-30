@@ -15,14 +15,12 @@
  */
 package org.teavm.debugging.javascript;
 
-/**
- *
- * @author Alexey Andreev
- */
+import org.teavm.common.Promise;
+
 public interface JavaScriptBreakpoint {
     JavaScriptLocation getLocation();
 
     boolean isValid();
 
-    void destroy();
+    Promise<Void> destroy();
 }

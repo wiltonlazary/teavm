@@ -17,10 +17,6 @@ package org.teavm.jso.dom.html;
 
 import org.teavm.jso.JSProperty;
 
-/**
- *
- * @author Alexey Andreev
- */
 public interface HTMLSelectElement extends HTMLElement {
     @JSProperty
     boolean isDisabled();
@@ -60,4 +56,8 @@ public interface HTMLSelectElement extends HTMLElement {
 
     @JSProperty
     void setValue(String value);
+
+    void setCustomValidity(String validationFailure);
+    
+    boolean reportValidity();
 }

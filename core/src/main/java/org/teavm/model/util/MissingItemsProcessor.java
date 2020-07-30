@@ -16,58 +16,68 @@
 package org.teavm.model.util;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.teavm.dependency.DependencyInfo;
+import org.teavm.dependency.MethodDependencyInfo;
 import org.teavm.diagnostics.Diagnostics;
+import org.teavm.interop.SupportedOn;
+import org.teavm.interop.UnsupportedOn;
 import org.teavm.model.*;
 import org.teavm.model.instructions.*;
 import org.teavm.model.optimization.UnreachableBasicBlockEliminator;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class MissingItemsProcessor {
     private DependencyInfo dependencyInfo;
+    private ClassHierarchy hierarchy;
     private Diagnostics diagnostics;
     private List<Instruction> instructionsToAdd = new ArrayList<>();
-    private MethodHolder methodHolder;
+    private MethodReference methodRef;
     private Program program;
-    private Collection<String> achievableClasses;
-    private Collection<MethodReference> achievableMethods;
-    private Collection<FieldReference> achievableFields;
+    private Collection<String> reachableClasses;
+    private Collection<MethodReference> reachableMethods;
+    private Collection<FieldReference> reachableFields;
+    private Set<String> platformTags = new HashSet<>();
 
-    public MissingItemsProcessor(DependencyInfo dependencyInfo, Diagnostics diagnostics) {
+    public MissingItemsProcessor(DependencyInfo dependencyInfo, ClassHierarchy hierarchy, Diagnostics diagnostics,
+            String[] platformTags) {
         this.dependencyInfo = dependencyInfo;
         this.diagnostics = diagnostics;
-        achievableClasses = dependencyInfo.getReachableClasses();
-        achievableMethods = dependencyInfo.getReachableMethods();
-        achievableFields = dependencyInfo.getReachableFields();
+        this.hierarchy = hierarchy;
+        reachableClasses = dependencyInfo.getReachableClasses();
+        reachableMethods = dependencyInfo.getReachableMethods();
+        reachableFields = dependencyInfo.getReachableFields();
+        this.platformTags.addAll(Arrays.asList(platformTags));
     }
 
     public void processClass(ClassHolder cls) {
         for (MethodHolder method : cls.getMethods()) {
-            if (achievableMethods.contains(method.getReference()) && method.getProgram() != null) {
+            if (reachableMethods.contains(method.getReference()) && method.getProgram() != null) {
                 processMethod(method);
             }
         }
     }
 
     public void processMethod(MethodHolder method) {
-        this.methodHolder = method;
-        this.program = method.getProgram();
+        processMethod(method.getReference(), method.getProgram());
+    }
+
+    public void processMethod(MethodReference method, Program program) {
+        this.methodRef = method;
+        this.program = program;
         boolean wasModified = false;
         for (int i = 0; i < program.basicBlockCount(); ++i) {
             BasicBlock block = program.basicBlockAt(i);
             instructionsToAdd.clear();
             boolean missing = false;
-            for (int j = 0; j < block.getInstructions().size(); ++j) {
-                Instruction insn = block.getInstructions().get(j);
+            for (Instruction insn : block) {
                 insn.acceptVisitor(instructionProcessor);
                 if (!instructionsToAdd.isEmpty()) {
                     wasModified = true;
-                    truncateBlock(block, j);
+                    truncateBlock(insn);
                     missing = true;
                     break;
                 }
@@ -83,16 +93,20 @@ public class MissingItemsProcessor {
         }
     }
 
-    private void truncateBlock(BasicBlock block, int index) {
-        InstructionTransitionExtractor transitionExtractor = new InstructionTransitionExtractor();
+    private void truncateBlock(Instruction instruction) {
+        TransitionExtractor transitionExtractor = new TransitionExtractor();
+        BasicBlock block = instruction.getBasicBlock();
         if (block.getLastInstruction() != null) {
             block.getLastInstruction().acceptVisitor(transitionExtractor);
         }
         for (BasicBlock successor : transitionExtractor.getTargets()) {
             successor.removeIncomingsFrom(block);
         }
-        block.getInstructions().subList(index, block.getInstructions().size()).clear();
-        block.getInstructions().addAll(instructionsToAdd);
+        while (instruction.getNext() != null) {
+            instruction.getNext().delete();
+        }
+        instruction.insertNextAll(instructionsToAdd);
+        instruction.delete();
     }
 
     private void emitExceptionThrow(TextLocation location, String exceptionName, String text) {
@@ -115,7 +129,7 @@ public class MissingItemsProcessor {
         initExceptionInsn.setMethod(new MethodReference(exceptionName, "<init>", ValueType.object("java.lang.String"),
                 ValueType.VOID));
         initExceptionInsn.setType(InvocationType.SPECIAL);
-        initExceptionInsn.getArguments().add(constVar);
+        initExceptionInsn.setArguments(constVar);
         initExceptionInsn.setLocation(location);
         instructionsToAdd.add(initExceptionInsn);
 
@@ -126,10 +140,22 @@ public class MissingItemsProcessor {
     }
 
     private boolean checkClass(TextLocation location, String className) {
-        if (!achievableClasses.contains(className) || !dependencyInfo.getClass(className).isMissing()) {
+        if (!reachableClasses.contains(className)) {
+            return false;
+        }
+
+        if (!dependencyInfo.getClass(className).isMissing()) {
+            ClassReader cls = dependencyInfo.getClassSource().get(className);
+            if (cls != null && !checkPlatformSupported(cls.getAnnotations())) {
+                diagnostics.error(new CallLocation(methodRef, location), "Class {{c0}} is not supported on "
+                        + "current target", className);
+                emitExceptionThrow(location, NoClassDefFoundError.class.getName(), "Class not found: " + className);
+                return false;
+            }
             return true;
         }
-        diagnostics.error(new CallLocation(methodHolder.getReference(), location), "Class {{c0}} was not found",
+
+        diagnostics.error(new CallLocation(methodRef, location), "Class {{c0}} was not found",
                 className);
         emitExceptionThrow(location, NoClassDefFoundError.class.getName(), "Class not found: " + className);
         return false;
@@ -149,10 +175,47 @@ public class MissingItemsProcessor {
         if (!checkClass(location, method.getClassName())) {
             return false;
         }
-        if (!achievableMethods.contains(method) || !dependencyInfo.getMethod(method).isMissing()) {
+        if (!reachableMethods.contains(method)) {
             return true;
         }
-        diagnostics.error(new CallLocation(methodHolder.getReference(), location), "Method {{m0}} was not found",
+        MethodDependencyInfo methodDep = dependencyInfo.getMethod(method);
+        if (!methodDep.isUsed()) {
+            return true;
+        }
+
+        if (!methodDep.isMissing()) {
+            ClassReader cls = dependencyInfo.getClassSource().get(method.getClassName());
+            if (cls != null) {
+                MethodReader methodReader = cls.getMethod(method.getDescriptor());
+                if (methodReader != null && !checkPlatformSupported(methodReader.getAnnotations())) {
+                    diagnostics.error(new CallLocation(methodRef, location), "Method {{m0}} is not supported on "
+                            + "current target", method);
+                    emitExceptionThrow(location, NoSuchMethodError.class.getName(), "Method not found: " + method);
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        diagnostics.error(new CallLocation(methodRef, location), "Method {{m0}} was not found",
+                method);
+        emitExceptionThrow(location, NoSuchMethodError.class.getName(), "Method not found: " + method);
+        return false;
+    }
+
+    private boolean checkVirtualMethod(TextLocation location, MethodReference method) {
+        if (!checkClass(location, method.getClassName())) {
+            return false;
+        }
+        if (!reachableMethods.contains(method)) {
+            return true;
+        }
+
+        if (hierarchy.resolve(method) != null) {
+            return true;
+        }
+
+        diagnostics.error(new CallLocation(methodRef, location), "Method {{m0}} was not found",
                 method);
         emitExceptionThrow(location, NoSuchMethodError.class.getName(), "Method not found: " + method);
         return true;
@@ -162,20 +225,38 @@ public class MissingItemsProcessor {
         if (!checkClass(location, field.getClassName())) {
             return false;
         }
-        if (!achievableFields.contains(field) || !dependencyInfo.getField(field).isMissing()) {
+        if (!reachableFields.contains(field) || !dependencyInfo.getField(field).isMissing()) {
             return true;
         }
-        diagnostics.error(new CallLocation(methodHolder.getReference(), location), "Field {{f0}} was not found",
+        diagnostics.error(new CallLocation(methodRef, location), "Field {{f0}} was not found",
                 field);
         emitExceptionThrow(location, NoSuchFieldError.class.getName(), "Field not found: " + field);
         return true;
     }
 
-    private InstructionVisitor instructionProcessor = new InstructionVisitor() {
-        @Override
-        public void visit(NullCheckInstruction insn) {
+    private boolean checkPlatformSupported(AnnotationContainerReader annotations) {
+        AnnotationReader supportedAnnot = annotations.get(SupportedOn.class.getName());
+        AnnotationReader unsupportedAnnot = annotations.get(UnsupportedOn.class.getName());
+        if (supportedAnnot != null) {
+            for (AnnotationValue value : supportedAnnot.getValue("value").getList()) {
+                if (platformTags.contains(value.getString())) {
+                    return true;
+                }
+            }
+            return false;
         }
+        if (unsupportedAnnot != null) {
+            for (AnnotationValue value : unsupportedAnnot.getValue("value").getList()) {
+                if (platformTags.contains(value.getString())) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return true;
+    }
 
+    private InstructionVisitor instructionProcessor = new AbstractInstructionVisitor() {
         @Override
         public void visit(InitClassInstruction insn) {
             checkClass(insn.getLocation(), insn.getClassName());
@@ -188,31 +269,11 @@ public class MissingItemsProcessor {
 
         @Override
         public void visit(InvokeInstruction insn) {
-            checkMethod(insn.getLocation(), insn.getMethod());
-        }
-
-        @Override
-        public void visit(InvokeDynamicInstruction insn) {
-        }
-
-        @Override
-        public void visit(PutElementInstruction insn) {
-        }
-
-        @Override
-        public void visit(GetElementInstruction insn) {
-        }
-
-        @Override
-        public void visit(UnwrapArrayInstruction insn) {
-        }
-
-        @Override
-        public void visit(CloneArrayInstruction insn) {
-        }
-
-        @Override
-        public void visit(ArrayLengthInstruction insn) {
+            if (insn.getType() != InvocationType.VIRTUAL) {
+                checkMethod(insn.getLocation(), insn.getMethod());
+            } else {
+                checkVirtualMethod(insn.getLocation(), insn.getMethod());
+            }
         }
 
         @Override
@@ -241,93 +302,13 @@ public class MissingItemsProcessor {
         }
 
         @Override
-        public void visit(RaiseInstruction insn) {
-        }
-
-        @Override
-        public void visit(ExitInstruction insn) {
-        }
-
-        @Override
-        public void visit(SwitchInstruction insn) {
-        }
-
-        @Override
-        public void visit(JumpInstruction insn) {
-        }
-
-        @Override
-        public void visit(BinaryBranchingInstruction insn) {
-        }
-
-        @Override
-        public void visit(BranchingInstruction insn) {
-        }
-
-        @Override
-        public void visit(CastIntegerInstruction insn) {
-        }
-
-        @Override
-        public void visit(CastNumberInstruction insn) {
-        }
-
-        @Override
         public void visit(CastInstruction insn) {
             checkClass(insn.getLocation(), insn.getTargetType());
         }
 
         @Override
-        public void visit(AssignInstruction insn) {
-        }
-
-        @Override
-        public void visit(NegateInstruction insn) {
-        }
-
-        @Override
-        public void visit(BinaryInstruction insn) {
-        }
-
-        @Override
-        public void visit(StringConstantInstruction insn) {
-        }
-
-        @Override
-        public void visit(DoubleConstantInstruction insn) {
-        }
-
-        @Override
-        public void visit(FloatConstantInstruction insn) {
-        }
-
-        @Override
-        public void visit(LongConstantInstruction insn) {
-        }
-
-        @Override
-        public void visit(IntegerConstantInstruction insn) {
-        }
-
-        @Override
-        public void visit(NullConstantInstruction insn) {
-        }
-
-        @Override
         public void visit(ClassConstantInstruction insn) {
             checkClass(insn.getLocation(), insn.getConstant());
-        }
-
-        @Override
-        public void visit(EmptyInstruction insn) {
-        }
-
-        @Override
-        public void visit(MonitorEnterInstruction insn) {
-        }
-
-        @Override
-        public void visit(MonitorExitInstruction insn) {
         }
     };
 }

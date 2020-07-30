@@ -15,10 +15,6 @@
  */
 package org.teavm.classlib.java.lang;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class TNoSuchFieldError extends TIncompatibleClassChangeError {
     private static final long serialVersionUID = 7907885242472547035L;
 
@@ -26,7 +22,7 @@ public class TNoSuchFieldError extends TIncompatibleClassChangeError {
         super();
     }
 
-    public TNoSuchFieldError(TString message) {
+    public TNoSuchFieldError(String message) {
         super(message);
     }
 }

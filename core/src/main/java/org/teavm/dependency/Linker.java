@@ -15,32 +15,47 @@
  */
 package org.teavm.dependency;
 
+import org.teavm.model.AccessLevel;
 import org.teavm.model.BasicBlock;
 import org.teavm.model.ClassHolder;
+import org.teavm.model.ClassReader;
 import org.teavm.model.ElementModifier;
 import org.teavm.model.FieldHolder;
 import org.teavm.model.FieldReference;
 import org.teavm.model.Instruction;
 import org.teavm.model.MethodHolder;
+import org.teavm.model.MethodReader;
 import org.teavm.model.MethodReference;
 import org.teavm.model.Program;
 import org.teavm.model.instructions.GetFieldInstruction;
-import org.teavm.model.instructions.InitClassInstruction;
+import org.teavm.model.instructions.InvocationType;
 import org.teavm.model.instructions.InvokeInstruction;
 import org.teavm.model.instructions.PutFieldInstruction;
+import org.teavm.model.transformation.ClassInitInsertion;
 
 public class Linker {
-    public void link(DependencyInfo dependency, ClassHolder cls) {
+    private DependencyInfo dependency;
+    private ClassInitInsertion classInitInsertion;
+
+    public Linker(DependencyInfo dependency) {
+        this.dependency = dependency;
+        classInitInsertion = new ClassInitInsertion(dependency);
+    }
+
+    public void link(ClassHolder cls) {
         for (MethodHolder method : cls.getMethods().toArray(new MethodHolder[0])) {
-            MethodReference methodRef = new MethodReference(cls.getName(), method.getDescriptor());
+            MethodReference methodRef = method.getReference();
             MethodDependencyInfo methodDep = dependency.getMethod(methodRef);
-            if (methodDep == null) {
-                cls.removeMethod(method);
-            } else if (!methodDep.isUsed()) {
-                method.getModifiers().add(ElementModifier.ABSTRACT);
-                method.setProgram(null);
+            if (methodDep == null || !methodDep.isUsed()) {
+                if (method.hasModifier(ElementModifier.STATIC)) {
+                    cls.removeMethod(method);
+                } else {
+                    method.getModifiers().add(ElementModifier.ABSTRACT);
+                    method.getModifiers().remove(ElementModifier.NATIVE);
+                    method.setProgram(null);
+                }
             } else if (method.getProgram() != null) {
-                link(dependency, method);
+                link(method, method.getProgram());
             }
         }
         for (FieldHolder field : cls.getFields().toArray(new FieldHolder[0])) {
@@ -51,18 +66,43 @@ public class Linker {
         }
     }
 
-    private void link(DependencyInfo dependency, MethodHolder method) {
-        Program program = method.getProgram();
+    public void link(MethodReader method, Program program) {
         for (int i = 0; i < program.basicBlockCount(); ++i) {
             BasicBlock block = program.basicBlockAt(i);
-            for (int j = 0; j < block.getInstructions().size(); ++j) {
-                Instruction insn = block.getInstructions().get(j);
-
+            for (Instruction insn : block) {
                 if (insn instanceof InvokeInstruction) {
                     InvokeInstruction invoke = (InvokeInstruction) insn;
-                    MethodDependencyInfo linkedMethod = dependency.getMethodImplementation(invoke.getMethod());
-                    if (linkedMethod != null) {
-                        invoke.setMethod(linkedMethod.getReference());
+                    MethodReference calledRef = invoke.getMethod();
+                    if (invoke.getType() == InvocationType.SPECIAL) {
+                        MethodDependencyInfo linkedMethod = dependency.getMethodImplementation(calledRef);
+                        if (linkedMethod != null) {
+                            invoke.setMethod(linkedMethod.getReference());
+                        }
+                    } else if (invoke.getType() == InvocationType.VIRTUAL) {
+                        MethodDependencyInfo linkedMethod = dependency.getMethodImplementation(calledRef);
+                        if (linkedMethod == null || linkedMethod.isMissing()) {
+                            continue;
+                        }
+                        calledRef = linkedMethod.getReference();
+                        ClassReader cls = dependency.getClassSource().get(calledRef.getClassName());
+                        boolean isFinal = false;
+                        if (cls != null) {
+                            if (cls.hasModifier(ElementModifier.FINAL)) {
+                                isFinal = true;
+                            } else {
+                                MethodReader calledMethod = cls.getMethod(calledRef.getDescriptor());
+                                if (calledMethod != null) {
+                                    if (calledMethod.hasModifier(ElementModifier.FINAL)
+                                            || calledMethod.getLevel() == AccessLevel.PRIVATE) {
+                                        isFinal = true;
+                                    }
+                                }
+                            }
+                        }
+                        if (isFinal) {
+                            invoke.setType(InvocationType.SPECIAL);
+                            invoke.setMethod(calledRef);
+                        }
                     }
                 } else if (insn instanceof GetFieldInstruction) {
                     GetFieldInstruction getField = (GetFieldInstruction) insn;
@@ -71,21 +111,16 @@ public class Linker {
                         getField.setField(linkedField.getReference());
                     }
 
-                    FieldReference fieldRef = getField.getField();
-                    if (!fieldRef.getClassName().equals(method.getOwnerName())) {
-                        InitClassInstruction initInsn = new InitClassInstruction();
-                        initInsn.setClassName(fieldRef.getClassName());
-                        block.getInstructions().add(j++, initInsn);
-                    }
-
                 } else if (insn instanceof PutFieldInstruction) {
-                    PutFieldInstruction getField = (PutFieldInstruction) insn;
-                    FieldDependencyInfo linkedField = dependency.getField(getField.getField());
+                    PutFieldInstruction putField = (PutFieldInstruction) insn;
+                    FieldDependencyInfo linkedField = dependency.getField(putField.getField());
                     if (linkedField != null) {
-                        getField.setField(linkedField.getReference());
+                        putField.setField(linkedField.getReference());
                     }
                 }
             }
         }
+
+        classInitInsertion.apply(program, method);
     }
 }

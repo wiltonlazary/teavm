@@ -17,19 +17,16 @@ package org.teavm.classlib.java.text;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.teavm.classlib.java.util.TCalendar;
 import org.teavm.classlib.java.util.TGregorianCalendar;
 import org.teavm.classlib.java.util.TLocale;
 import org.teavm.classlib.java.util.TTimeZone;
 
-/**
- *
- * @author Alexey Andreev
- */
 abstract class TDateFormatElement {
     public abstract void format(TCalendar date, StringBuffer buffer);
 
@@ -86,6 +83,25 @@ abstract class TDateFormatElement {
                 date.set(TCalendar.MONTH, month);
             }
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            MonthText monthText = (MonthText) o;
+            return abbreviated == monthText.abbreviated
+                    && Arrays.equals(months, monthText.months)
+                    && Arrays.equals(shortMonths, monthText.shortMonths);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(months, shortMonths, abbreviated);
+        }
     }
 
     public static class WeekdayText extends TDateFormatElement {
@@ -117,6 +133,25 @@ abstract class TDateFormatElement {
                 date.set(TCalendar.WEEK_OF_MONTH, weekday + 1);
             }
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            WeekdayText that = (WeekdayText) o;
+            return abbreviated == that.abbreviated
+                    && Arrays.equals(weeks, that.weeks)
+                    && Arrays.equals(shortWeeks, that.shortWeeks);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(weeks, shortWeeks, abbreviated);
+        }
     }
 
     public static class EraText extends TDateFormatElement {
@@ -140,6 +175,23 @@ abstract class TDateFormatElement {
             } else {
                 date.set(TCalendar.ERA, era);
             }
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            EraText eraText = (EraText) o;
+            return Arrays.equals(eras, eraText.eras);
+        }
+
+        @Override
+        public int hashCode() {
+            return Arrays.hashCode(eras);
         }
     }
 
@@ -165,15 +217,34 @@ abstract class TDateFormatElement {
                 date.set(TCalendar.AM_PM, ampm);
             }
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            AmPmText amPmText = (AmPmText) o;
+            return Arrays.equals(ampms, amPmText.ampms);
+        }
+
+        @Override
+        public int hashCode() {
+            return Arrays.hashCode(ampms);
+        }
     }
 
     public static class Numeric extends TDateFormatElement {
         private int field;
         private int length;
+        private int maxLength;
 
-        public Numeric(int field, int length) {
+        public Numeric(int field, int length, int maxLength) {
             this.field = field;
             this.length = length;
+            this.maxLength = Math.max(length, maxLength);
         }
 
         @Override
@@ -191,7 +262,7 @@ abstract class TDateFormatElement {
             int num = 0;
             int i = 0;
             int pos = position.getIndex();
-            while (pos < text.length()) {
+            while (pos < text.length() && i < maxLength) {
                 char c = text.charAt(pos);
                 if (c >= '0' && c <= '9') {
                     num = num * 10 + (c - '0');
@@ -216,11 +287,28 @@ abstract class TDateFormatElement {
         protected int processAfterParse(int num) {
             return num;
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            Numeric numeric = (Numeric) o;
+            return field == numeric.field && length == numeric.length;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(field, length);
+        }
     }
 
     public static class NumericMonth extends Numeric {
         public NumericMonth(int length) {
-            super(TCalendar.MONTH, length);
+            super(TCalendar.MONTH, length, 2);
         }
 
         @Override
@@ -236,7 +324,7 @@ abstract class TDateFormatElement {
 
     public static class NumericWeekday extends Numeric {
         public NumericWeekday(int length) {
-            super(TCalendar.DAY_OF_WEEK, length);
+            super(TCalendar.DAY_OF_WEEK, length, 1);
         }
 
         @Override
@@ -254,7 +342,7 @@ abstract class TDateFormatElement {
         private int limit;
 
         public NumericHour(int field, int length, int limit) {
-            super(field, length);
+            super(field, length, 2);
             this.limit = limit;
         }
 
@@ -266,6 +354,26 @@ abstract class TDateFormatElement {
         @Override
         protected int processAfterParse(int num) {
             return num == limit ? 0 : num;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            if (!super.equals(o)) {
+                return false;
+            }
+            NumericHour that = (NumericHour) o;
+            return limit == that.limit;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(super.hashCode(), limit);
         }
     }
 
@@ -289,7 +397,7 @@ abstract class TDateFormatElement {
 
         @Override
         public void parse(String text, TCalendar date, TParsePosition position) {
-            int num = 0;
+            int num;
             int pos = position.getIndex();
             char c = text.charAt(pos++);
             if (c < '0' || c > '9') {
@@ -318,6 +426,23 @@ abstract class TDateFormatElement {
             }
             date.set(field, num + century * 100);
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            Year year = (Year) o;
+            return field == year.field;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(field);
+        }
     }
 
     public static class ConstantText extends TDateFormatElement {
@@ -339,6 +464,23 @@ abstract class TDateFormatElement {
             } else {
                 position.setErrorIndex(position.getIndex());
             }
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            ConstantText that = (ConstantText) o;
+            return Objects.equals(textConstant, that.textConstant);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(textConstant);
         }
     }
 
@@ -429,6 +571,23 @@ abstract class TDateFormatElement {
                 builder.add(tz.getID(), tz);
             }
             idSearchTrie = builder.build();
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            BaseTimezone that = (BaseTimezone) o;
+            return Objects.equals(locale, that.locale) && Objects.equals(searchTrie, that.searchTrie);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(locale, searchTrie);
         }
     }
 
@@ -560,6 +719,23 @@ abstract class TDateFormatElement {
             position.setIndex(index);
             date.setTimeZone(getStaticTimeZone(sign * hours, minutes));
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            Iso8601Timezone that = (Iso8601Timezone) o;
+            return size == that.size;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(size);
+        }
     }
 
     static boolean tryParseFixedTimeZone(String text, TCalendar date, TParsePosition position) {
@@ -682,7 +858,7 @@ abstract class TDateFormatElement {
                 builders.add(tmp);
                 tmp = tmp.sibling;
             }
-            Collections.sort(builders, (o1, o2) -> Character.compare(o1.ch, o2.ch));
+            builders.sort(Comparator.comparingInt(o -> o.ch));
             node.chars = new char[builders.size()];
             node.childNodes = new TrieNode[builders.size()];
             for (int i = 0; i < node.chars.length; ++i) {

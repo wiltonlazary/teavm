@@ -15,10 +15,8 @@
  */
 package org.teavm.jso.dom.xml;
 
-/**
- *
- * @author Alexey Andreev
- */
+import org.teavm.jso.JSProperty;
+
 public interface Element extends Node {
     String getTagName();
 
@@ -51,4 +49,14 @@ public interface Element extends Node {
     boolean hasAttribute(String name);
 
     boolean hasAttributeNS(String namespaceURI, String localName);
+
+    Element querySelector(String selectors);
+
+    NodeList<? extends Element> querySelectorAll(String selectors);
+    
+    @JSProperty
+    String getId();
+
+    @JSProperty
+    void setId(String id);
 }

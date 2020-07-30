@@ -15,7 +15,10 @@
  */
 package org.teavm.classlib.java.util;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.ServiceLoader;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -28,6 +31,25 @@ public class ServiceLoaderTest {
         TestService instance = ServiceLoader.load(TestService.class).iterator().next();
         instance.foo();
         assertEquals(TestServiceImpl.class, instance.getClass());
-        assertEquals(1, ((TestServiceImpl)instance).getCounter());
+        assertEquals(1, ((TestServiceImpl) instance).getCounter());
+    }
+
+    @Test
+    public void loadsMultipleServices() {
+        List<String> strings = new ArrayList<>();
+        for (MultipleTestService instance : ServiceLoader.load(MultipleTestService.class)) {
+            strings.add(instance.foo());
+        }
+        strings.sort(String::compareTo);
+        assertEquals(Arrays.asList("A", "B"), strings);
+    }
+
+    @Test
+    public void classLoading() {
+        LoadOrderServiceLog.content.append("before;");
+        for (LoadOrderService service : ServiceLoader.load(LoadOrderService.class)) {
+            service.run();
+        }
+        assertEquals("before;class init;log create;log run;service run;", LoadOrderServiceLog.content.toString());
     }
 }

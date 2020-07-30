@@ -17,13 +17,14 @@ package org.teavm.vm;
 
 import java.io.IOException;
 import java.util.List;
-import org.teavm.dependency.DependencyChecker;
+import org.teavm.dependency.DependencyAnalyzer;
 import org.teavm.dependency.DependencyListener;
 import org.teavm.model.ClassHolderTransformer;
 import org.teavm.model.ListableClassHolderSource;
 import org.teavm.model.ListableClassReaderSource;
 import org.teavm.model.MethodReader;
 import org.teavm.model.Program;
+import org.teavm.model.optimization.InliningFilterFactory;
 import org.teavm.vm.spi.TeaVMHostExtension;
 
 public interface TeaVMTarget {
@@ -37,9 +38,22 @@ public interface TeaVMTarget {
 
     boolean requiresRegisterAllocation();
 
-    void contributeDependencies(DependencyChecker dependencyChecker);
+    void contributeDependencies(DependencyAnalyzer dependencyAnalyzer);
 
-    void afterOptimizations(Program program, MethodReader method, ListableClassReaderSource classSource);
+    default void analyzeBeforeOptimizations(ListableClassReaderSource classSource) {
+    }
+
+    void beforeOptimizations(Program program, MethodReader method);
+
+    void afterOptimizations(Program program, MethodReader method);
 
     void emit(ListableClassHolderSource classes, BuildTarget buildTarget, String outputName) throws IOException;
+
+    String[] getPlatformTags();
+
+    boolean isAsyncSupported();
+
+    default InliningFilterFactory getInliningFilter() {
+        return InliningFilterFactory.DEFAULT;
+    }
 }

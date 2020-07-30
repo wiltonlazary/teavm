@@ -15,15 +15,12 @@
  */
 package org.teavm.jso.core;
 
+import org.teavm.interop.NoSideEffects;
 import org.teavm.jso.JSBody;
 import org.teavm.jso.JSIndexer;
 import org.teavm.jso.JSObject;
+import org.teavm.jso.JSProperty;
 
-/**
- *
- * @author Alexey Andreev
- * @param <T>
- */
 public abstract class JSArray<T extends JSObject> implements JSArrayReader<T> {
     private JSArray() {
     }
@@ -82,11 +79,16 @@ public abstract class JSArray<T extends JSObject> implements JSArrayReader<T> {
     public abstract JSArray<T> splice(int start, int count, T a, T b, T c);
 
     public abstract JSArray<T> splice(int start, int count, T a, T b, T c, T d);
+    
+    @JSProperty
+    public abstract void setLength(int len);
 
-    @JSBody(params = {}, script = "return new Array();")
+    @JSBody(script = "return new Array();")
+    @NoSideEffects
     public static native <T extends JSObject> JSArray<T> create();
 
     @JSBody(params = "size", script = "return new Array(size);")
+    @NoSideEffects
     public static native <T extends JSObject> JSArray<T> create(int size);
 
     @SafeVarargs

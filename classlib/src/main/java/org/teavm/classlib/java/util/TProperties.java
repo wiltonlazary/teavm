@@ -15,19 +15,14 @@
  */
 package org.teavm.classlib.java.util;
 
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
 import org.teavm.classlib.java.io.TBufferedInputStream;
-import org.teavm.classlib.java.io.TIOException;
 import org.teavm.classlib.java.io.TInputStream;
-import org.teavm.classlib.java.io.TOutputStream;
-import org.teavm.classlib.java.io.TOutputStreamWriter;
 import org.teavm.classlib.java.io.TPrintStream;
-import org.teavm.classlib.java.io.TWriter;
-import org.teavm.classlib.java.lang.TString;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class TProperties extends THashtable<Object, Object> {
     /**
      * The default values for keys not found in this {@code Properties}
@@ -35,7 +30,12 @@ public class TProperties extends THashtable<Object, Object> {
      */
     protected TProperties defaults;
 
-    private static final int NONE = 0, SLASH = 1, UNICODE = 2, CONTINUE = 3,  KEY_DONE = 4, IGNORE = 5;
+    private static final int NONE = 0;
+    private static final int SLASH = 1;
+    private static final int UNICODE = 2;
+    private static final int CONTINUE = 3;
+    private static final int KEY_DONE = 4;
+    private static final int IGNORE = 5;
 
     public TProperties() {
         super();
@@ -46,7 +46,8 @@ public class TProperties extends THashtable<Object, Object> {
     }
 
     private void dumpString(StringBuilder buffer, String string, boolean isKey) {
-        int index = 0, length = string.length();
+        int index = 0;
+        int length = string.length();
         if (!isKey && index < length && string.charAt(index) == ' ') {
             buffer.append("\\ "); //$NON-NLS-1$
             index++;
@@ -82,7 +83,9 @@ public class TProperties extends THashtable<Object, Object> {
 
     private char[] toHexaDecimal(final int ch) {
         char[] hexChars = { '\\', 'u', '0', '0', '0', '0' };
-        int hexChar, index = hexChars.length, copyOfCh = ch;
+        int hexChar;
+        int index = hexChars.length;
+        int copyOfCh = ch;
         do {
             hexChar = copyOfCh & 15;
             if (hexChar > 9) {
@@ -91,7 +94,8 @@ public class TProperties extends THashtable<Object, Object> {
                 hexChar += '0';
             }
             hexChars[--index] = (char) hexChar;
-        } while ((copyOfCh >>>= 4) != 0);
+            copyOfCh >>>= 4;
+        } while (copyOfCh != 0);
         return hexChars;
     }
 
@@ -134,23 +138,28 @@ public class TProperties extends THashtable<Object, Object> {
             }
             if (property.length() > 40) {
                 buffer.append(property.substring(0, 37));
-                buffer.append("..."); //$NON-NLS-1$
+                buffer.append("...");
             } else {
                 buffer.append(property);
             }
-            out.println(TString.wrap(buffer.toString()));
+            out.println(buffer.toString());
             buffer.setLength(0);
         }
     }
 
     @SuppressWarnings("fallthrough")
-    public synchronized void load(TInputStream in) throws TIOException {
+    public synchronized void load(TInputStream in) throws IOException {
         if (in == null) {
             throw new NullPointerException();
         }
-        int mode = NONE, unicode = 0, count = 0;
-        char nextChar, buf[] = new char[40];
-        int offset = 0, keyLength = -1, intVal;
+        int mode = NONE;
+        int unicode = 0;
+        int count = 0;
+        char nextChar;
+        char[] buf = new char[40];
+        int offset = 0;
+        int keyLength = -1;
+        int intVal;
         boolean firstChar = true;
         TBufferedInputStream bis = new TBufferedInputStream(in);
 
@@ -218,7 +227,8 @@ public class TProperties extends THashtable<Object, Object> {
                     break;
                 case 'u':
                     mode = UNICODE;
-                    unicode = count = 0;
+                    unicode = 0;
+                    count = 0;
                     continue;
                 }
             } else {
@@ -246,7 +256,13 @@ public class TProperties extends THashtable<Object, Object> {
                         continue;
                     }
                     // fall into the next case
+                    break;
                 case '\r':
+                    if (mode == CONTINUE) { // Part of a \r\n sequence
+                        mode = IGNORE; // Ignore whitespace on the next line
+                        continue;
+                    }
+
                     mode = NONE;
                     firstChar = true;
                     if (offset > 0 || (offset == 0 && keyLength == 0)) {
@@ -275,7 +291,7 @@ public class TProperties extends THashtable<Object, Object> {
                     }
                     break;
                 }
-                if (nextChar < 256 && Character.isWhitespace(nextChar)) {
+                if (Character.isWhitespace(nextChar)) {
                     if (mode == CONTINUE) {
                         mode = IGNORE;
                     }
@@ -314,18 +330,19 @@ public class TProperties extends THashtable<Object, Object> {
         return selected.keys();
     }
 
-    private void selectProperties(THashtable<Object, Object> selected) {
-        if(defaults != null) {
+    private void selectProperties(TMap<Object, Object> selected) {
+        if (defaults != null) {
             defaults.selectProperties(selected);
         }
         selected.putAll(this);
     }
 
     @Deprecated
-    public void save(TOutputStream out, String comment) {
+    public void save(OutputStream out, String comment) {
         try {
             store(out, comment);
-        } catch (TIOException e) {
+        } catch (IOException e) {
+            // do nothing
         }
     }
 
@@ -333,8 +350,8 @@ public class TProperties extends THashtable<Object, Object> {
         return put(name, value);
     }
 
-    public synchronized void store(TOutputStream out, String comments) throws TIOException {
-        TOutputStreamWriter writer = new TOutputStreamWriter(out, "ISO8859_1");
+    public synchronized void store(OutputStream out, String comments) throws IOException {
+        OutputStreamWriter writer = new OutputStreamWriter(out, "ISO8859_1");
         if (comments != null) {
             writeComments(writer, comments);
         }
@@ -356,7 +373,7 @@ public class TProperties extends THashtable<Object, Object> {
         writer.flush();
     }
 
-    private void writeComments(TWriter writer, String comments) throws TIOException {
+    private void writeComments(Writer writer, String comments) throws IOException {
         writer.write('#');
         char[] chars = comments.toCharArray();
         for (int index = 0; index < chars.length; index++) {
@@ -379,5 +396,25 @@ public class TProperties extends THashtable<Object, Object> {
             }
         }
         writer.write("\n");
+    }
+
+    public TSet<String> stringPropertyNames() {
+        TSet<String> selected = new THashSet<>();
+        selectPropertyNames(selected);
+        return selected;
+    }
+
+    private void selectPropertyNames(TSet<String> selected) {
+        if (defaults != null) {
+            defaults.selectPropertyNames(selected);
+        }
+
+        TEnumeration<Object> e = keys();
+        while (e.hasMoreElements()) {
+            Object key = e.nextElement();
+            if (key instanceof String) {
+                selected.add((String) key);
+            }
+        }
     }
 }

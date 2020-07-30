@@ -17,28 +17,26 @@ package org.teavm.junit;
 
 import java.io.File;
 import java.lang.reflect.Method;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Set;
 import org.junit.runner.Description;
-import org.teavm.model.MethodReference;
 
 class TestRun {
     private File baseDirectory;
     private Method method;
-    private MethodReference reference;
     private Description description;
+    private String fileName;
+    private RunKind kind;
     private TestRunCallback callback;
-    private Set<Class<?>> expectedExceptions;
+    private String argument;
 
-    TestRun(File baseDirectory, Method method, MethodReference reference, Description description,
-            TestRunCallback callback, Set<Class<?>> expectedExceptions) {
+    TestRun(File baseDirectory, Method method, Description description, String fileName, RunKind kind,
+            String argument, TestRunCallback callback) {
         this.baseDirectory = baseDirectory;
         this.method = method;
-        this.reference = reference;
         this.description = description;
+        this.fileName = fileName;
+        this.kind = kind;
+        this.argument = argument;
         this.callback = callback;
-        this.expectedExceptions = Collections.unmodifiableSet(new HashSet<>(expectedExceptions));
     }
 
     public File getBaseDirectory() {
@@ -49,19 +47,23 @@ class TestRun {
         return method;
     }
 
-    public MethodReference getReference() {
-        return reference;
-    }
-
     public Description getDescription() {
         return description;
     }
 
-    public TestRunCallback getCallback() {
-        return callback;
+    public String getFileName() {
+        return fileName;
     }
 
-    public Set<Class<?>> getExpectedExceptions() {
-        return expectedExceptions;
+    public RunKind getKind() {
+        return kind;
+    }
+
+    public String getArgument() {
+        return argument;
+    }
+
+    public TestRunCallback getCallback() {
+        return callback;
     }
 }

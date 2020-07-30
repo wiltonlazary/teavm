@@ -15,10 +15,8 @@
  */
 package org.teavm.classlib.java.io;
 
-/**
- *
- * @author Alexey Andreev
- */
+import java.io.IOException;
+
 public interface TFlushable {
-    void flush() throws TIOException;
+    void flush() throws IOException;
 }

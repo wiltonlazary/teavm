@@ -17,12 +17,9 @@ package org.teavm.debugging.information;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URL;
+import java.net.URI;
+import java.net.URISyntaxException;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class URLDebugInformationProvider implements DebugInformationProvider {
     private String baseURL;
 
@@ -33,11 +30,13 @@ public class URLDebugInformationProvider implements DebugInformationProvider {
     @Override
     public DebugInformation getDebugInformation(String script) {
         try {
-            URL url = new URL(baseURL + script + ".teavmdbg");
-            try (InputStream input = url.openStream()) {
+            URI uri = new URI(baseURL + script);
+            uri = new URI(uri.getScheme(), uri.getUserInfo(), uri.getHost(), uri.getPort(),
+                    uri.getPath() + ".teavmdbg", uri.getQuery(), uri.getFragment());
+            try (InputStream input = uri.toURL().openStream()) {
                 return DebugInformation.read(input);
             }
-        } catch (IOException e) {
+        } catch (IOException | URISyntaxException e) {
             return null;
         }
     }

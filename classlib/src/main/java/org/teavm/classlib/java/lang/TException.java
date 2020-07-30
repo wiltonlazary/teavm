@@ -15,10 +15,6 @@
  */
 package org.teavm.classlib.java.lang;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class TException extends TThrowable {
     private static final long serialVersionUID = -2188339106250208952L;
 
@@ -26,11 +22,11 @@ public class TException extends TThrowable {
         super();
     }
 
-    public TException(TString message, TThrowable cause) {
+    public TException(String message, TThrowable cause) {
         super(message, cause);
     }
 
-    public TException(TString message) {
+    public TException(String message) {
         super(message);
     }
 

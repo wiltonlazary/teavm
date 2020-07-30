@@ -18,10 +18,6 @@ package org.teavm.jso.dom.events;
 import org.teavm.jso.JSObject;
 import org.teavm.jso.JSProperty;
 
-/**
- *
- * @author Alexey Andreev
- */
 public interface MouseEvent extends Event {
     short LEFT_BUTTON = 0;
     short MIDDLE_BUTTON = 1;
@@ -62,6 +58,12 @@ public interface MouseEvent extends Event {
 
     @JSProperty
     EventTarget getRelatedTarget();
+
+    @JSProperty
+    double getMovementX();
+
+    @JSProperty
+    double getMovementY();
 
     void initMouseEvent(String type, boolean canBubble, boolean cancelable, JSObject view, int detail, int screenX,
             int screenY, int clientX, int clientY, boolean ctrlKey, boolean altKey, boolean shiftKey, boolean metaKey,

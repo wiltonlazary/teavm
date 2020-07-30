@@ -15,16 +15,11 @@
  */
 package org.teavm.model;
 
+import java.io.Serializable;
 import java.util.*;
 import java.util.stream.Collectors;
 
-
-/**
- *
- * @author Alexey Andreev
- */
-public abstract class ValueType {
-    volatile String reprCache;
+public abstract class ValueType implements Serializable {
     private static final Map<Class<?>, ValueType> primitiveMap = new HashMap<>();
 
     private ValueType() {
@@ -32,6 +27,7 @@ public abstract class ValueType {
 
     public static class Object extends ValueType {
         private String className;
+        private transient int hash;
 
         public Object(String className) {
             this.className = className;
@@ -43,38 +39,59 @@ public abstract class ValueType {
 
         @Override
         public String toString() {
-            if (reprCache == null) {
-                reprCache = "L" + className.replace('.', '/') + ";";
-            }
-            return reprCache;
+            return "L" + className.replace('.', '/') + ";";
         }
 
         @Override
         public boolean isObject(String className) {
             return this.className.equals(className);
         }
+
+        @Override
+        public boolean equals(java.lang.Object obj) {
+            if (obj == this) {
+                return true;
+            }
+            if (!(obj instanceof Object)) {
+                return false;
+            }
+            Object that = (Object) obj;
+            return that.className.equals(className);
+        }
+
+        @Override
+        public int hashCode() {
+            if (hash == 0) {
+                hash = 85396296 ^ (className.hashCode() * 167);
+                if (hash == 0) {
+                    ++hash;
+                }
+            }
+            return hash;
+        }
     }
 
     public static class Primitive extends ValueType {
         private PrimitiveType kind;
+        private final ValueType.Object boxedType;
+        private int hash;
 
-        Primitive(PrimitiveType kind) {
+        private Primitive(PrimitiveType kind, ValueType.Object boxedType) {
             this.kind = kind;
+            this.boxedType = boxedType;
+            hash = 17988782 ^ (kind.ordinal() * 31);
         }
 
         public PrimitiveType getKind() {
             return kind;
         }
 
-        @Override
-        public String toString() {
-            if (reprCache == null) {
-                reprCache = createString();
-            }
-            return reprCache;
+        public ValueType.Object getBoxedType() {
+            return boxedType;
         }
 
-        private String createString() {
+        @Override
+        public String toString() {
             switch (kind) {
                 case BOOLEAN:
                     return "Z";
@@ -101,10 +118,21 @@ public abstract class ValueType {
         public boolean isObject(String cls) {
             return false;
         }
+
+        @Override
+        public boolean equals(java.lang.Object obj) {
+            return this == obj;
+        }
+
+        @Override
+        public int hashCode() {
+            return hash;
+        }
     }
 
     public static class Array extends ValueType {
         private ValueType itemType;
+        private transient int hash;
 
         public Array(ValueType itemType) {
             this.itemType = itemType;
@@ -116,19 +144,43 @@ public abstract class ValueType {
 
         @Override
         public String toString() {
-            if (reprCache == null) {
-                reprCache = "[" + itemType.toString();
-            }
-            return reprCache;
+            return "[" + itemType;
         }
 
         @Override
         public boolean isObject(String cls) {
             return false;
         }
+
+        @Override
+        public boolean equals(java.lang.Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (!(obj instanceof Array)) {
+                return false;
+            }
+
+            Array that = (Array) obj;
+            return itemType.equals(that.itemType);
+        }
+
+        @Override
+        public int hashCode() {
+            if (hash == 0) {
+                hash = 27039876 ^ (itemType.hashCode() * 193);
+                if (hash == 0) {
+                    ++hash;
+                }
+            }
+            return hash;
+        }
     }
 
     public static class Void extends ValueType {
+        private Void() {
+        }
+
         @Override
         public String toString() {
             return "V";
@@ -138,35 +190,39 @@ public abstract class ValueType {
         public boolean isObject(String cls) {
             return false;
         }
-    }
 
-    public static class Null extends ValueType {
         @Override
-        public boolean isObject(String cls) {
-            return false;
+        public boolean equals(java.lang.Object obj) {
+            return this == obj;
+        }
+
+        @Override
+        public int hashCode() {
+            return 53604390;
         }
     }
 
     public static final Void VOID = new Void();
 
-    public static final Primitive BOOLEAN = new Primitive(PrimitiveType.BOOLEAN);
+    public static final Primitive BOOLEAN =
+            new Primitive(PrimitiveType.BOOLEAN, ValueType.object(Boolean.class.getName()));
 
-    public static final Primitive BYTE = new Primitive(PrimitiveType.BYTE);
+    public static final Primitive BYTE = new Primitive(PrimitiveType.BYTE, ValueType.object(Byte.class.getName()));
 
-    public static final Primitive SHORT = new Primitive(PrimitiveType.SHORT);
+    public static final Primitive SHORT = new Primitive(PrimitiveType.SHORT, ValueType.object(Short.class.getName()));
 
-    public static final Primitive INTEGER = new Primitive(PrimitiveType.INTEGER);
+    public static final Primitive INTEGER =
+            new Primitive(PrimitiveType.INTEGER, ValueType.object(Integer.class.getName()));
 
-    public static final Primitive FLOAT = new Primitive(PrimitiveType.FLOAT);
+    public static final Primitive FLOAT = new Primitive(PrimitiveType.FLOAT, ValueType.object(Float.class.getName()));
 
-    public static final Primitive LONG = new Primitive(PrimitiveType.LONG);
+    public static final Primitive LONG = new Primitive(PrimitiveType.LONG, ValueType.object(Long.class.getName()));
 
-    public static final Primitive DOUBLE = new Primitive(PrimitiveType.DOUBLE);
+    public static final Primitive DOUBLE =
+            new Primitive(PrimitiveType.DOUBLE, ValueType.object(Double.class.getName()));
 
-    public static final Primitive CHARACTER = new Primitive(PrimitiveType.CHARACTER);
-
-    public static final Null NULL = new Null();
-
+    public static final Primitive CHARACTER =
+            new Primitive(PrimitiveType.CHARACTER, ValueType.object(Character.class.getName()));
 
     static {
         primitiveMap.put(boolean.class, BOOLEAN);
@@ -180,7 +236,7 @@ public abstract class ValueType {
         primitiveMap.put(void.class, VOID);
     }
 
-    public static ValueType object(String cls) {
+    public static ValueType.Object object(String cls) {
         return new Object(cls);
     }
 
@@ -224,14 +280,14 @@ public abstract class ValueType {
         int index = 0;
         while (index < text.length()) {
             int nextIndex = cut(text, index);
-            ValueType type = parse(text.substring(index, nextIndex));
+            ValueType type = parseIfPossible(text.substring(index, nextIndex));
             if (type == null) {
                 return null;
             }
             types.add(type);
             index = nextIndex;
         }
-        return types.toArray(new ValueType[types.size()]);
+        return types.toArray(new ValueType[0]);
     }
 
     private static int cut(String text, int index) {
@@ -321,7 +377,7 @@ public abstract class ValueType {
                 return VOID;
             case 'L':
                 if (!string.endsWith(";")) {
-                    throw new IllegalArgumentException("Wrong type descriptor");
+                    return null;
                 }
                 return object(string.substring(1, string.length() - 1).replace('/', '.'));
             default:
@@ -347,21 +403,5 @@ public abstract class ValueType {
         } else {
             return ValueType.object(cls.getName());
         }
-    }
-
-    @Override
-    public int hashCode() {
-        return toString().hashCode();
-    }
-
-    @Override
-    public boolean equals(java.lang.Object obj) {
-        if (this == obj) {
-           return true;
-        }
-        if (!(obj instanceof ValueType)) {
-            return false;
-        }
-        return toString().equals(obj.toString());
     }
 }

@@ -15,15 +15,12 @@
  */
 package org.teavm.classlib.java.io;
 
+import java.io.IOException;
 import org.teavm.classlib.java.lang.TIllegalArgumentException;
 import org.teavm.classlib.java.lang.TMath;
 import org.teavm.classlib.java.lang.TNullPointerException;
 import org.teavm.classlib.java.lang.TString;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class TStringReader extends TReader {
     private TString string;
     private int index;
@@ -37,7 +34,7 @@ public class TStringReader extends TReader {
     }
 
     @Override
-    public int read() throws TIOException {
+    public int read() throws IOException {
         checkOpened();
         if (index >= string.length()) {
             return -1;
@@ -46,7 +43,7 @@ public class TStringReader extends TReader {
     }
 
     @Override
-    public int read(char[] cbuf, int off, int len) throws TIOException {
+    public int read(char[] cbuf, int off, int len) throws IOException {
         checkOpened();
         if (index >= string.length()) {
             return -1;
@@ -59,7 +56,7 @@ public class TStringReader extends TReader {
     }
 
     @Override
-    public long skip(long n) throws TIOException {
+    public long skip(long n) throws IOException {
         checkOpened();
         if (n < 0) {
             n = TMath.max(n, -index);
@@ -71,7 +68,7 @@ public class TStringReader extends TReader {
     }
 
     @Override
-    public boolean ready() throws TIOException {
+    public boolean ready() throws IOException {
         checkOpened();
         return true;
     }
@@ -82,7 +79,7 @@ public class TStringReader extends TReader {
     }
 
     @Override
-    public void mark(int readAheadLimit) throws TIOException {
+    public void mark(int readAheadLimit) throws IOException {
         checkOpened();
         if (readAheadLimit < 0) {
             throw new TIllegalArgumentException();
@@ -91,7 +88,7 @@ public class TStringReader extends TReader {
     }
 
     @Override
-    public void reset() throws TIOException {
+    public void reset() throws IOException {
         checkOpened();
         index = mark;
     }
@@ -101,9 +98,9 @@ public class TStringReader extends TReader {
         string = null;
     }
 
-    private void checkOpened() throws TIOException {
+    private void checkOpened() throws IOException {
         if (string == null) {
-            throw new TIOException();
+            throw new IOException();
         }
     }
 }

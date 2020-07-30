@@ -15,26 +15,33 @@
  */
 package org.teavm.model.optimization;
 
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Set;
+import org.teavm.common.OptionalPredicate;
 import org.teavm.dependency.DependencyInfo;
 import org.teavm.dependency.MethodDependencyInfo;
 import org.teavm.dependency.ValueDependencyInfo;
-import org.teavm.model.*;
+import org.teavm.model.BasicBlock;
+import org.teavm.model.ClassHierarchy;
+import org.teavm.model.ClassReader;
+import org.teavm.model.Instruction;
+import org.teavm.model.MethodHolder;
+import org.teavm.model.MethodReference;
+import org.teavm.model.Program;
 import org.teavm.model.instructions.InvocationType;
 import org.teavm.model.instructions.InvokeInstruction;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class Devirtualization {
     private DependencyInfo dependency;
-    private ClassReaderSource classSource;
+    private ClassHierarchy hierarchy;
+    private Set<MethodReference> virtualMethods = new HashSet<>();
+    private Set<? extends MethodReference> readonlyVirtualMethods = Collections.unmodifiableSet(virtualMethods);
 
-    public Devirtualization(DependencyInfo dependency, ClassReaderSource classSource) {
+    public Devirtualization(DependencyInfo dependency, ClassHierarchy hierarchy) {
         this.dependency = dependency;
-        this.classSource = classSource;
+        this.hierarchy = hierarchy;
     }
 
     public void apply(MethodHolder method) {
@@ -45,7 +52,7 @@ public class Devirtualization {
         Program program = method.getProgram();
         for (int i = 0; i < program.basicBlockCount(); ++i) {
             BasicBlock block = program.basicBlockAt(i);
-            for (Instruction insn : block.getInstructions()) {
+            for (Instruction insn : block) {
                 if (!(insn instanceof InvokeInstruction)) {
                     continue;
                 }
@@ -59,19 +66,27 @@ public class Devirtualization {
                 if (implementations.size() == 1) {
                     invoke.setType(InvocationType.SPECIAL);
                     invoke.setMethod(implementations.iterator().next());
+                } else {
+                    virtualMethods.addAll(implementations);
                 }
             }
         }
     }
 
     private Set<MethodReference> getImplementations(String[] classNames, MethodReference ref) {
-        Set<MethodReference> methods = new HashSet<>();
+        return implementations(hierarchy, dependency, classNames, ref);
+    }
+
+    public static Set<MethodReference> implementations(ClassHierarchy hierarchy, DependencyInfo dependency,
+            String[] classNames, MethodReference ref) {
+        OptionalPredicate<String> isSuperclass = hierarchy.getSuperclassPredicate(ref.getClassName());
+        Set<MethodReference> methods = new LinkedHashSet<>();
         for (String className : classNames) {
             if (className.startsWith("[")) {
                 className = "java.lang.Object";
             }
-            ClassReader cls = classSource.get(className);
-            if (cls == null || !classSource.isSuperType(ref.getClassName(), cls.getName()).orElse(false)) {
+            ClassReader cls = hierarchy.getClassSource().get(className);
+            if (cls == null || !isSuperclass.test(cls.getName(), false)) {
                 continue;
             }
             MethodDependencyInfo methodDep = dependency.getMethodImplementation(new MethodReference(
@@ -81,5 +96,9 @@ public class Devirtualization {
             }
         }
         return methods;
+    }
+
+    public Set<? extends MethodReference> getVirtualMethods() {
+        return readonlyVirtualMethods;
     }
 }

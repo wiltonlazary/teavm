@@ -23,14 +23,9 @@ import org.mozilla.javascript.ast.ExpressionStatement;
 import org.mozilla.javascript.ast.Name;
 import org.mozilla.javascript.ast.NodeVisitor;
 import org.mozilla.javascript.ast.ReturnStatement;
-import org.mozilla.javascript.ast.ThrowStatement;
 import org.teavm.model.MethodReference;
 import org.teavm.model.ValueType;
 
-/**
- *
- * @author Alexey Andreev
- */
 final class JSBodyInlineUtil {
     private static final int COMPLEXITY_THRESHOLD = 20;
     private JSBodyInlineUtil() {
@@ -48,7 +43,7 @@ final class JSBodyInlineUtil {
 
         ComplexityCounter complexityCounter = new ComplexityCounter();
         expression.visit(complexityCounter);
-        if (complexityCounter.getComplexity() > COMPLEXITY_THRESHOLD) {
+        if (complexityCounter.hasUnsupportedConstructs || complexityCounter.getComplexity() > COMPLEXITY_THRESHOLD) {
             return null;
         }
 
@@ -67,8 +62,6 @@ final class JSBodyInlineUtil {
         if (method.getReturnType() == ValueType.VOID) {
             if (statement instanceof ExpressionStatement) {
                 return ((ExpressionStatement) statement).getExpression();
-            } else if (statement instanceof ThrowStatement) {
-                return ((ThrowStatement) statement).getExpression();
             }
         } else {
             if (statement instanceof ReturnStatement) {
@@ -90,6 +83,7 @@ final class JSBodyInlineUtil {
 
     static class ComplexityCounter implements NodeVisitor {
         private int complexity;
+        boolean hasUnsupportedConstructs;
 
         public int getComplexity() {
             return complexity;
@@ -98,6 +92,13 @@ final class JSBodyInlineUtil {
         @Override
         public boolean visit(AstNode node) {
             ++complexity;
+            switch (node.getType()) {
+                case Token.FUNCTION:
+                case Token.OBJECTLIT:
+                case Token.ARRAYLIT:
+                    hasUnsupportedConstructs = true;
+                    break;
+            }
             return true;
         }
     }

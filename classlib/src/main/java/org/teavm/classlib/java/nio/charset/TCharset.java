@@ -20,19 +20,10 @@ import org.teavm.classlib.java.nio.TByteBuffer;
 import org.teavm.classlib.java.nio.TCharBuffer;
 import org.teavm.classlib.java.nio.charset.impl.TUTF8Charset;
 
-/**
- *
- * @author Alexey Andreev
- */
 public abstract class TCharset implements Comparable<TCharset> {
     private String canonicalName;
     private String[] aliases;
     private Set<String> aliasSet;
-    private static final Map<String, TCharset> charsets = new HashMap<>();
-
-    static {
-        charsets.put("UTF-8", new TUTF8Charset());
-    }
 
     protected TCharset(String canonicalName, String[] aliases) {
         checkCanonicalName(canonicalName);
@@ -69,7 +60,7 @@ public abstract class TCharset implements Comparable<TCharset> {
     }
 
     private static boolean isValidCharsetStart(char c) {
-        return c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' || c <= 'Z';
+        return c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z';
     }
 
     public static TCharset forName(String charsetName) {
@@ -77,11 +68,15 @@ public abstract class TCharset implements Comparable<TCharset> {
             throw new IllegalArgumentException("charsetName is null");
         }
         checkCanonicalName(charsetName);
-        TCharset charset = charsets.get(charsetName.toUpperCase());
+        TCharset charset = Charsets.value.get(charsetName.toUpperCase());
         if (charset == null) {
             throw new TUnsupportedCharsetException(charsetName);
         }
         return charset;
+    }
+
+    public static TCharset defaultCharset() {
+        return Charsets.value.get("UTF-8");
     }
 
     public final String name() {
@@ -142,5 +137,13 @@ public abstract class TCharset implements Comparable<TCharset> {
     @Override
     public final int compareTo(TCharset that) {
         return canonicalName.compareToIgnoreCase(that.canonicalName);
+    }
+
+    static class Charsets {
+        private static final Map<String, TCharset> value = new HashMap<>();
+
+        static {
+            value.put("UTF-8", new TUTF8Charset());
+        }
     }
 }

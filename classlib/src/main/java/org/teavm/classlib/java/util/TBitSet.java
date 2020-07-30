@@ -19,10 +19,6 @@ import org.teavm.classlib.java.io.TSerializable;
 import org.teavm.classlib.java.lang.*;
 import org.teavm.interop.Rename;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class TBitSet extends TObject implements TCloneable, TSerializable {
     private int[] data;
     private int length;
@@ -140,7 +136,9 @@ public class TBitSet extends TObject implements TCloneable, TSerializable {
             for (int i = fromDataIndex + 1; i < toDataIndex; ++i) {
                 data[i] ^= 0xFFFFFFFF;
             }
-            data[toDataIndex] ^= trailingOneBits(toIndex);
+            if ((toIndex & 31) != 0) {
+                data[toDataIndex] ^= trailingOneBits(toIndex);
+            }
         }
         if (toIndex == length) {
             recalculateLength();
@@ -181,7 +179,9 @@ public class TBitSet extends TObject implements TCloneable, TSerializable {
             for (int i = fromDataIndex + 1; i < toDataIndex; ++i) {
                 data[i] = 0xFFFFFFFF;
             }
-            data[toDataIndex] |= trailingOneBits(toIndex);
+            if ((toIndex & 31) != 0) {
+                data[toDataIndex] |= trailingOneBits(toIndex);
+            }
         }
     }
 
@@ -230,7 +230,9 @@ public class TBitSet extends TObject implements TCloneable, TSerializable {
             for (int i = fromDataIndex + 1; i < toDataIndex; ++i) {
                 data[i] = 0;
             }
-            data[toDataIndex] &= trailingZeroBits(toIndex);
+            if ((toIndex & 31) != 0) {
+                data[toDataIndex] &= trailingZeroBits(toIndex);
+            }
         }
         recalculateLength();
     }
@@ -426,7 +428,7 @@ public class TBitSet extends TObject implements TCloneable, TSerializable {
     public void or(TBitSet set) {
         length = TMath.max(length, set.length);
         ensureCapacity((length + 31) / 32);
-        int sz = TMath.min(data.length, set.length);
+        int sz = TMath.min(data.length, set.data.length);
         for (int i = 0; i < sz; ++i) {
             data[i] |= set.data[i];
         }
@@ -435,7 +437,7 @@ public class TBitSet extends TObject implements TCloneable, TSerializable {
     public void xor(TBitSet set) {
         length = TMath.max(length, set.length);
         ensureCapacity((length + 31) / 32);
-        int sz = TMath.min(data.length, set.length);
+        int sz = TMath.min(data.length, set.data.length);
         for (int i = 0; i < sz; ++i) {
             data[i] ^= set.data[i];
         }

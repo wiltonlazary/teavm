@@ -15,7 +15,8 @@
  */
 package org.teavm.classlib.java.util;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
 import java.util.List;
@@ -157,5 +158,20 @@ public class ArrayListTest {
         } catch (IllegalArgumentException e) {
             // OK
         }
+    }
+
+    @Test
+    public void removeIf() {
+        List<String> list = new ArrayList<>();
+        list.add("A1");
+        list.add("A2");
+        list.add("B1");
+        list.add("B2");
+
+        list.removeIf(e -> e.endsWith("2"));
+
+        assertEquals(2, list.size());
+        assertEquals("A1", list.get(0));
+        assertEquals("B1", list.get(1));
     }
 }

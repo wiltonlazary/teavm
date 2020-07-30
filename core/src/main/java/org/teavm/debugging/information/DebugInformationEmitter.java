@@ -23,6 +23,10 @@ public interface DebugInformationEmitter {
 
     void emitLocation(String fileName, int line);
 
+    void enterLocation();
+
+    void exitLocation();
+
     void emitStatementStart();
 
     void emitMethod(MethodDescriptor method);
@@ -33,7 +37,7 @@ public interface DebugInformationEmitter {
 
     DeferredCallSite emitCallSite();
 
-    void addClass(String className, String parentName);
+    void addClass(String jsName, String className, String parentName);
 
     void addField(String fieldName, String jsName);
 

@@ -24,10 +24,6 @@ import org.teavm.common.ServiceRepository;
 import org.teavm.model.ListableClassReaderSource;
 import org.teavm.model.ValueType;
 
-/**
- *
- * @author Alexey Andreev
- */
 public interface InjectorContext extends ServiceRepository {
     Expr getArgument(int index);
 
@@ -43,9 +39,9 @@ public interface InjectorContext extends ServiceRepository {
 
     void writeType(ValueType type) throws IOException;
 
-    void writeExpr(Expr expr) throws IOException;
+    void writeExpr(Expr expr);
 
-    void writeExpr(Expr expr, Precedence precedence) throws IOException;
+    void writeExpr(Expr expr, Precedence precedence);
 
     Precedence getPrecedence();
 

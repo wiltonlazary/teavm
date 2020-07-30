@@ -16,8 +16,12 @@
 package org.teavm.classlib.java.lang;
 
 import org.teavm.backend.javascript.spi.GeneratedBy;
+import org.teavm.classlib.PlatformDetector;
 import org.teavm.interop.Import;
+import org.teavm.interop.NoSideEffects;
+import org.teavm.interop.Unmanaged;
 
+@NoSideEffects
 public final class TMath extends TObject {
     public static final double E = 2.71828182845904523536;
     public static final double PI = 3.14159265358979323846;
@@ -26,27 +30,33 @@ public final class TMath extends TObject {
     }
 
     @GeneratedBy(MathNativeGenerator.class)
-    @Import(module = "math", name = "sin")
+    @Import(module = "teavmMath", name = "sin")
+    @Unmanaged
     public static native double sin(double a);
 
     @GeneratedBy(MathNativeGenerator.class)
-    @Import(module = "math", name = "cos")
+    @Import(module = "teavmMath", name = "cos")
+    @Unmanaged
     public static native double cos(double a);
 
     @GeneratedBy(MathNativeGenerator.class)
-    @Import(module = "math", name = "tan")
+    @Import(module = "teavmMath", name = "tan")
+    @Unmanaged
     public static native double tan(double a);
 
     @GeneratedBy(MathNativeGenerator.class)
-    @Import(module = "math", name = "asin")
+    @Import(module = "teavmMath", name = "asin")
+    @Unmanaged
     public static native double asin(double a);
 
     @GeneratedBy(MathNativeGenerator.class)
-    @Import(module = "math", name = "acos")
+    @Import(module = "teavmMath", name = "acos")
+    @Unmanaged
     public static native double acos(double a);
 
     @GeneratedBy(MathNativeGenerator.class)
-    @Import(module = "math", name = "atan")
+    @Import(module = "teavmMath", name = "atan")
+    @Unmanaged
     public static native double atan(double a);
 
     public static double toRadians(double angdeg) {
@@ -58,11 +68,13 @@ public final class TMath extends TObject {
     }
 
     @GeneratedBy(MathNativeGenerator.class)
-    @Import(module = "math", name = "exp")
+    @Import(module = "teavmMath", name = "exp")
+    @Unmanaged
     public static native double exp(double a);
 
     @GeneratedBy(MathNativeGenerator.class)
-    @Import(module = "math", name = "log")
+    @Import(module = "teavmMath", name = "log")
+    @Unmanaged
     public static native double log(double a);
 
     public static double log10(double a) {
@@ -70,7 +82,8 @@ public final class TMath extends TObject {
     }
 
     @GeneratedBy(MathNativeGenerator.class)
-    @Import(module = "math", name = "sqrt")
+    @Import(module = "teavmMath", name = "sqrt")
+    @Unmanaged
     public static native double sqrt(double a);
 
     public static double cbrt(double a) {
@@ -83,15 +96,18 @@ public final class TMath extends TObject {
     }
 
     @GeneratedBy(MathNativeGenerator.class)
-    @Import(module = "math", name = "ceil")
+    @Import(module = "teavmMath", name = "ceil")
+    @Unmanaged
     public static native double ceil(double a);
 
     @GeneratedBy(MathNativeGenerator.class)
-    @Import(module = "math", name = "floor")
+    @Import(module = "teavmMath", name = "floor")
+    @Unmanaged
     public static native double floor(double a);
 
     @GeneratedBy(MathNativeGenerator.class)
-    @Import(module = "math", name = "pow")
+    @Import(module = "teavmMath", name = "pow")
+    @Unmanaged
     public static native double pow(double x, double y);
 
     public static double rint(double a) {
@@ -99,7 +115,8 @@ public final class TMath extends TObject {
     }
 
     @GeneratedBy(MathNativeGenerator.class)
-    @Import(module = "math", name = "atan2")
+    @Import(module = "teavmMath", name = "atan2")
+    @Unmanaged
     public static native double atan2(double y, double x);
 
     public static int round(float a) {
@@ -110,9 +127,17 @@ public final class TMath extends TObject {
         return (long) (a + signum(a) * 0.5);
     }
 
+    @Unmanaged
+    public static double random() {
+        return PlatformDetector.isC() ? randomC() : randomImpl();
+    }
+
+    @Import(name = "teavm_rand")
+    private static native double randomC();
+
     @GeneratedBy(MathNativeGenerator.class)
-    @Import(module = "math", name = "random")
-    public static native double random();
+    @Import(module = "teavmMath", name = "random")
+    private static native double randomImpl();
 
     public static int min(int a, int b) {
         return a < b ? a : b;
@@ -163,11 +188,45 @@ public final class TMath extends TObject {
     }
 
     public static double ulp(double d) {
-        return pow(2, getExponent(d) - 52);
+        if (TDouble.isNaN(d)) {
+            return d;
+        } else if (TDouble.isInfinite(d)) {
+            return TDouble.POSITIVE_INFINITY;
+        }
+
+        if (TDouble.isNaN(d)) {
+            return d;
+        } else if (TDouble.isInfinite(d)) {
+            return TDouble.POSITIVE_INFINITY;
+        }
+
+        long bits = TDouble.doubleToLongBits(d);
+        bits &= 0xEFF0000000000000L;
+        if (bits >= 53L << 52L) {
+            bits -= 52L << 52L;
+        } else {
+            int exponent = (int) (bits >> 52);
+            bits = 1 << Math.max(0, exponent - 1);
+        }
+        return TDouble.longBitsToDouble(bits);
     }
 
     public static float ulp(float d) {
-        return (float) pow(2, getExponent(d) - 23);
+        if (TFloat.isNaN(d)) {
+            return d;
+        } else if (TFloat.isInfinite(d)) {
+            return TFloat.POSITIVE_INFINITY;
+        }
+
+        int bits = TFloat.floatToIntBits(d);
+        bits &= 0x7F800000;
+        if (bits >= 24L << 23L) {
+            bits -= 23L << 23L;
+        } else {
+            int exponent = bits >> 23;
+            bits = 1 << Math.max(0, exponent - 1);
+        }
+        return TFloat.intBitsToFloat(bits);
     }
 
     public static double signum(double d) {
@@ -194,7 +253,7 @@ public final class TMath extends TObject {
     }
 
     public static double hypot(double x, double y) {
-        return x * x + y * y;
+        return sqrt(x * x + y * y);
     }
 
     public static double expm1(double x) {
@@ -220,109 +279,96 @@ public final class TMath extends TObject {
     }
 
     public static int getExponent(double d) {
-        d = abs(d);
-        int exp = 0;
-        double[] exponents = ExponentConstants.exponents;
-        double[] negativeExponents = ExponentConstants.negativeExponents;
-        double[] negativeExponents2 = ExponentConstants.negativeExponents2;
-        if (d > 1) {
-            int expBit = 1 << (exponents.length - 1);
-            for (int i = exponents.length - 1; i >= 0; --i) {
-                if (d >= exponents[i]) {
-                    d *= negativeExponents[i];
-                    exp |= expBit;
-                }
-                expBit >>>= 1;
-            }
-        } else if (d < 1) {
-            int expBit = 1 << (negativeExponents.length - 1);
-            int offset = 0;
-            if (d < 0x1p-1022) {
-                d *= 0x1p52;
-                offset = 52;
-            }
-            for (int i = negativeExponents2.length - 1; i >= 0; --i) {
-                if (d < negativeExponents2[i]) {
-                    d *= exponents[i];
-                    exp |= expBit;
-                }
-                expBit >>>= 1;
-            }
-            exp = -(exp + offset);
-        }
-        return exp;
+        long bits = TDouble.doubleToLongBits(d);
+        int exponent = (int) ((bits >> 52) & 0x7FF);
+        return exponent - 1023;
     }
 
     public static int getExponent(float f) {
-        f = abs(f);
-        int exp = 0;
-        float[] exponents = FloatExponents.exponents;
-        float[] negativeExponents = FloatExponents.negativeExponents;
-        float[] negativeExponents2 = FloatExponents.negativeExponents2;
-        if (f > 1) {
-            int expBit = 1 << (exponents.length - 1);
-            for (int i = exponents.length - 1; i >= 0; --i) {
-                if (f >= exponents[i]) {
-                    f *= negativeExponents[i];
-                    exp |= expBit;
-                }
-                expBit >>>= 1;
-            }
-        } else if (f < 1) {
-            int expBit = 1 << (negativeExponents.length - 1);
-            int offset = 0;
-            if (f < 0x1p-126) {
-                f *= 0x1p23f;
-                offset = 23;
-            }
-            for (int i = negativeExponents2.length - 1; i >= 0; --i) {
-                if (f < negativeExponents2[i]) {
-                    f *= exponents[i];
-                    exp |= expBit;
-                }
-                expBit >>>= 1;
-            }
-            exp = -(exp + offset);
-        }
-        return exp;
+        int bits = TFloat.floatToIntBits(f);
+        int exponent = (bits >> 23) & 0xF;
+        return exponent + 128;
     }
 
     public static double nextAfter(double start, double direction) {
         if (start == direction) {
             return direction;
         }
-        return direction > start ? start + ulp(start) : start - ulp(start);
+        return direction > start ? nextUp(start) : nextDown(start);
     }
 
     public static float nextAfter(float start, double direction) {
         if (start == direction) {
             return start;
         }
-        return direction > start ? start + ulp(start) : start - ulp(start);
+        return direction > start ? nextUp(start) : nextDown(start);
     }
 
     public static double nextUp(double d) {
-        return d + ulp(d);
+        if (TDouble.isNaN(d)) {
+            return d;
+        }
+        if (d == TDouble.POSITIVE_INFINITY) {
+            return d;
+        }
+        long bits = TDouble.doubleToLongBits(d);
+        boolean negative = (bits & (1L << 63)) != 0;
+        if (negative) {
+            bits--;
+        } else {
+            bits++;
+        }
+        return TDouble.longBitsToDouble(bits);
     }
 
     public static float nextUp(float d) {
-        return d + ulp(d);
+        if (TFloat.isNaN(d)) {
+            return d;
+        }
+        if (d == TFloat.POSITIVE_INFINITY) {
+            return d;
+        }
+        int bits = TFloat.floatToIntBits(d);
+        boolean negative = (bits & (1L << 31)) != 0;
+        if (negative) {
+            bits--;
+        } else {
+            bits++;
+        }
+        return TFloat.intBitsToFloat(bits);
     }
 
-    private static class ExponentConstants {
-        public static double[] exponents = { 0x1p1, 0x1p2, 0x1p4, 0x1p8, 0x1p16, 0x1p32, 0x1p64, 0x1p128,
-                0x1p256, 0x1p512 };
-        public static double[] negativeExponents = { 0x1p-1, 0x1p-2, 0x1p-4, 0x1p-8, 0x1p-16, 0x1p-32,
-                0x1p-64, 0x1p-128, 0x1p-256, 0x1p-512 };
-        public static double[] negativeExponents2 = { 0x1p-0, 0x1p-1, 0x1p-3, 0x1p-7, 0x1p-15, 0x1p-31,
-                0x1p-63, 0x1p-127, 0x1p-255, 0x1p-511 };
+    public static double nextDown(double d) {
+        if (TDouble.isNaN(d)) {
+            return d;
+        }
+        if (d == TDouble.NEGATIVE_INFINITY) {
+            return d;
+        }
+        long bits = TDouble.doubleToLongBits(d);
+        boolean negative = (bits & (1L << 63)) != 0;
+        if (negative) {
+            bits++;
+        } else {
+            bits--;
+        }
+        return TDouble.longBitsToDouble(bits);
     }
 
-    private static class FloatExponents {
-        public static float[] exponents = { 0x1p1f, 0x1p2f, 0x1p4f, 0x1p8f, 0x1p16f, 0x1p32f, 0x1p64f };
-        public static float[] negativeExponents = { 0x1p-1f, 0x1p-2f, 0x1p-4f, 0x1p-8f, 0x1p-16f, 0x1p-32f,
-                0x1p-64f };
-        public static float[] negativeExponents2 = { 0x1p-0f, 0x1p-1f, 0x1p-3f, 0x1p-7f, 0x1p-15f, 0x1p-31f,
-                0x1p-63f };
+    public static float nextDown(float d) {
+        if (TFloat.isNaN(d)) {
+            return d;
+        }
+        if (d == TFloat.POSITIVE_INFINITY) {
+            return d;
+        }
+        int bits = TFloat.floatToIntBits(d);
+        boolean negative = (bits & (1L << 31)) != 0;
+        if (negative) {
+            bits++;
+        } else {
+            bits--;
+        }
+        return TFloat.intBitsToFloat(bits);
     }
 }

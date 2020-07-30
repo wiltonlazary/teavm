@@ -15,10 +15,6 @@
  */
 package org.teavm.classlib.java.lang;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class TSecurityException extends TRuntimeException {
     private static final long serialVersionUID = 720572643357872552L;
 
@@ -26,11 +22,11 @@ public class TSecurityException extends TRuntimeException {
         super();
     }
 
-    public TSecurityException(TString message, TThrowable cause) {
+    public TSecurityException(String message, TThrowable cause) {
         super(message, cause);
     }
 
-    public TSecurityException(TString message) {
+    public TSecurityException(String message) {
         super(message);
     }
 

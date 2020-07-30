@@ -15,10 +15,9 @@
  */
 package org.teavm.classlib.java.util;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 import java.util.Currency;
 import java.util.Locale;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.teavm.junit.SkipJVM;
@@ -57,11 +56,11 @@ public class CurrencyTest {
 
         Currency currency = Currency.getInstance("USD");
         assertEquals("US Dollar", currency.getDisplayName(english));
-        assertEquals("Доллар США", currency.getDisplayName(russian));
+        assertEquals("доллар сша", currency.getDisplayName(russian).toLowerCase());
 
         currency = Currency.getInstance("RUB");
         assertEquals("Russian Ruble", currency.getDisplayName(english));
-        assertEquals("Российский рубль", currency.getDisplayName(russian));
+        assertEquals("российский рубль", currency.getDisplayName(russian).toLowerCase());
 
         assertEquals("CHF", Currency.getInstance("CHF").getDisplayName(new Locale("xx", "YY")));
     }
@@ -78,7 +77,7 @@ public class CurrencyTest {
 
         currency = Currency.getInstance("RUB");
         assertEquals("RUB", currency.getSymbol(english));
-        assertEquals("руб.", currency.getSymbol(russian));
+        assertEquals("\u20BD", currency.getSymbol(russian));
     }
 
     @Test(expected = IllegalArgumentException.class)

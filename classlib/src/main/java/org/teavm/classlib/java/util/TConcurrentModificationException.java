@@ -16,13 +16,8 @@
 package org.teavm.classlib.java.util;
 
 import org.teavm.classlib.java.lang.TRuntimeException;
-import org.teavm.classlib.java.lang.TString;
 import org.teavm.classlib.java.lang.TThrowable;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class TConcurrentModificationException extends TRuntimeException {
     private static final long serialVersionUID = -2871226388713811335L;
 
@@ -30,11 +25,11 @@ public class TConcurrentModificationException extends TRuntimeException {
         super();
     }
 
-    public TConcurrentModificationException(TString message, TThrowable cause) {
+    public TConcurrentModificationException(String message, TThrowable cause) {
         super(message, cause);
     }
 
-    public TConcurrentModificationException(TString message) {
+    public TConcurrentModificationException(String message) {
         super(message);
     }
 

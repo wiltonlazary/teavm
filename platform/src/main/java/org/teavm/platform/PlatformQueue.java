@@ -17,12 +17,14 @@ package org.teavm.platform;
 
 import org.teavm.backend.javascript.spi.InjectedBy;
 import org.teavm.dependency.PluggableDependency;
+import org.teavm.interop.NoSideEffects;
 import org.teavm.jso.JSObject;
 import org.teavm.jso.JSProperty;
 import org.teavm.platform.plugin.PlatformQueueGenerator;
 
 public abstract class PlatformQueue<T> implements JSObject {
     @JSProperty
+    @NoSideEffects
     public abstract int getLength();
 
     public final boolean isEmpty() {
@@ -33,11 +35,11 @@ public abstract class PlatformQueue<T> implements JSObject {
 
     abstract PlatformObject shift();
 
-    public final void add(T e) {
+    public void add(T e) {
         push(wrap(e));
     }
 
-    public final T remove() {
+    public T remove() {
         return unwrap(shift());
     }
 
@@ -47,5 +49,6 @@ public abstract class PlatformQueue<T> implements JSObject {
 
     @InjectedBy(PlatformQueueGenerator.class)
     @PluggableDependency(PlatformQueueGenerator.class)
+    @NoSideEffects
     private static native <S> S unwrap(PlatformObject obj);
 }

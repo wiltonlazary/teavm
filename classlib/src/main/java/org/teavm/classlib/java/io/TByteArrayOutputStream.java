@@ -15,14 +15,11 @@
  */
 package org.teavm.classlib.java.io;
 
+import java.io.IOException;
 import org.teavm.classlib.java.lang.TMath;
 import org.teavm.classlib.java.lang.TString;
 import org.teavm.classlib.java.util.TArrays;
 
-/**
- *
- * @author Alexey Andreev
- */
 public class TByteArrayOutputStream extends TOutputStream {
     protected byte[] buf;
     protected int count;
@@ -69,7 +66,7 @@ public class TByteArrayOutputStream extends TOutputStream {
         return new TString(buf, 0, count, charsetName);
     }
 
-    public void writeTo(TOutputStream out) throws TIOException {
+    public void writeTo(TOutputStream out) throws IOException {
         out.write(buf, 0, count);
     }
 

@@ -15,13 +15,10 @@
  */
 package org.teavm.jso.core;
 
+import org.teavm.interop.NoSideEffects;
 import org.teavm.jso.JSBody;
 import org.teavm.jso.JSObject;
 
-/**
- *
- * @author Alexey Andreev
- */
 public abstract class JSBoolean implements JSObject {
     private JSBoolean() {
     }
@@ -31,8 +28,10 @@ public abstract class JSBoolean implements JSObject {
     }
 
     @JSBody(params = "value", script = "return value;")
+    @NoSideEffects
     private static native boolean booleanValue(JSBoolean value);
 
     @JSBody(params = "value", script = "return value;")
+    @NoSideEffects
     public static native JSBoolean valueOf(boolean value);
 }

@@ -15,10 +15,14 @@
  */
 package org.teavm.jso.test;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.teavm.jso.JSBody;
+import org.teavm.jso.JSByRef;
 import org.teavm.jso.JSObject;
 import org.teavm.jso.JSProperty;
 import org.teavm.jso.core.JSString;
@@ -142,13 +146,35 @@ public class ConversionTest {
         assertEquals(23, array[0]);
     }
 
+    @Test
+    public void passesArrayByRef() {
+        int[] array = { 23, 42 };
+
+        mutateByRef(array);
+        assertEquals(24, array[0]);
+        assertEquals(43, array[1]);
+
+        createByRefMutator().mutate(array);
+        assertEquals(25, array[0]);
+        assertEquals(44, array[1]);
+    }
+
+    @Test
+    public void returnsArrayByRef() {
+        int[] first = { 23, 42 };
+        int[] second = rewrap(first);
+        assertNotSame(first, second);
+        second[0] = 99;
+        assertEquals(99, first[0]);
+    }
+
     @JSBody(params = { "a", "b", "c", "d", "e", "f", "g", "h" }, script = ""
             + "return '' + a + ':' + b + ':' + c + ':' + d + ':' + e + ':' + f.toFixed(1) + ':'"
                     + "+ g.toFixed(1) + ':' + h;")
     private static native String combinePrimitives(boolean a, byte b, short c, char d, int e, float f, double g,
             String h);
 
-    @JSBody(params = {}, script = "return { a : true, b : 2, c : 3, d : 64, e : 4, f : 5.5, g : 6.5, h : 'foo' };")
+    @JSBody(script = "return { a : true, b : 2, c : 3, d : 64, e : 4, f : 5.5, g : 6.5, h : 'foo' };")
     private static native Primitives getPrimitives();
 
     @JSBody(params = { "a", "b", "c", "d", "e", "f", "g", "h" }, script = ""
@@ -300,4 +326,28 @@ public class ConversionTest {
 
     @JSBody(params = "array", script = "array[0]++; return array[0];")
     private static native int mutate(int[] array);
+
+    @JSBody(params = "array", script = ""
+            + "for (var i = 0; i < array.length; ++i) {"
+                + "array[i]++;"
+            + "}")
+    private static native void mutateByRef(@JSByRef int[] array);
+
+    private interface ByRefMutator extends JSObject {
+        void mutate(@JSByRef int[] array);
+    }
+
+    @JSBody(script = ""
+            + "return {"
+                + "mutate : function(array) {"
+                    + "for (var i = 0; i < array.length; ++i) {"
+                        + "array[i]++;"
+                    + "}"
+                + "}"
+            + "};")
+    private static native ByRefMutator createByRefMutator();
+
+    @JSByRef
+    @JSBody(params = "array", script = "return array;")
+    private static native int[] rewrap(@JSByRef int[] array);
 }

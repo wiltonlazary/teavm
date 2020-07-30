@@ -15,8 +15,6 @@
  */
 package org.teavm.junit;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -33,10 +31,6 @@ class TestRunner {
         this.strategy = strategy;
     }
 
-    public int getNumThreads() {
-        return numThreads;
-    }
-
     public void setNumThreads(int numThreads) {
         this.numThreads = numThreads;
     }
@@ -44,7 +38,7 @@ class TestRunner {
     public void init() {
         latch = new CountDownLatch(numThreads);
         for (int i = 0; i < numThreads; ++i) {
-            new Thread(() -> {
+            Thread thread = new Thread(() -> {
                 strategy.beforeThread();
                 while (!stopped || !taskQueue.isEmpty()) {
                     Runnable task;
@@ -59,7 +53,10 @@ class TestRunner {
                 }
                 strategy.afterThread();
                 latch.countDown();
-            }).start();
+            });
+            thread.setDaemon(true);
+            thread.setName("teavm-test-runner-" + i);
+            thread.start();
         }
     }
 
@@ -90,50 +87,9 @@ class TestRunner {
 
     private void runImpl(TestRun run) {
         try {
-            String result = strategy.runTest(run);
-            if (result == null) {
-                run.getCallback().complete();
-                return;
-            }
-            ObjectMapper mapper = new ObjectMapper();
-            ObjectNode resultObject = (ObjectNode) mapper.readTree(result);
-            String status = resultObject.get("status").asText();
-            switch (status) {
-                case "ok":
-                    if (!run.getExpectedExceptions().isEmpty()) {
-                        run.getCallback().error(new AssertionError("Expected exception was not thrown"));
-                    } else {
-                        run.getCallback().complete();
-                    }
-                    break;
-                case "exception": {
-                    String stack = resultObject.get("stack").asText();
-                    String exception = resultObject.has("exception") ? resultObject.get("exception").asText() : null;
-                    Class<?> exceptionClass;
-                    if (exception != null) {
-                        try {
-                            exceptionClass = Class.forName(exception, false, TestRunner.class.getClassLoader());
-                        } catch (ClassNotFoundException e) {
-                            exceptionClass = null;
-                        }
-                    } else {
-                        exceptionClass = null;
-                    }
-                    if (exceptionClass != null) {
-                        Class<?> caught = exceptionClass;
-                        if (run.getExpectedExceptions().stream().anyMatch(e -> e.isAssignableFrom(caught))) {
-                            run.getCallback().complete();
-                            break;
-                        }
-                    }
-                    run.getCallback().error(new AssertionError(exception + "\n" + stack));
-                    run.getCallback().complete();
-                    break;
-                }
-            }
+            strategy.runTest(run);
         } catch (Exception e) {
             run.getCallback().error(e);
-            run.getCallback().complete();
         }
     }
 }

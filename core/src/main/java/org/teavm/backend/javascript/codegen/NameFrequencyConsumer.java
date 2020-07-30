@@ -19,10 +19,6 @@ import org.teavm.model.FieldReference;
 import org.teavm.model.MethodDescriptor;
 import org.teavm.model.MethodReference;
 
-/**
- *
- * @author Alexey Andreev
- */
 public interface NameFrequencyConsumer {
     void consume(MethodReference method);
 
@@ -31,6 +27,8 @@ public interface NameFrequencyConsumer {
     void consume(MethodDescriptor method);
 
     void consume(String className);
+
+    void consumeClassInit(String className);
 
     void consume(FieldReference field);
 
